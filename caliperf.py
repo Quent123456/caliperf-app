@@ -1,24 +1,21 @@
 import streamlit as st
 import pandas as pd
 import time
-import requests  # La "brique" qui permet de parler à Google
+import requests
 from datetime import datetime
 
-# --- CONFIGURATION AUTOMATIQUE (C'est rempli !) ---
-# J'ai remplacé 'viewform' par 'formResponse' pour que l'envoi fonctionne
+# --- TA CONFIGURATION (Déjà remplie) ---
 URL_GOOGLE_FORM = "https://docs.google.com/forms/d/e/1FAIpQLSfVrYwDZOWr1G800WwguVdiMMYokE1ryHL_yx_5wClsWmSuyg/formResponse"
 
-# Tes codes d'identification extraits de ton lien :
 ENTRY_NOM = "entry.1696045241"
 ENTRY_EXO = "entry.957125700"
 ENTRY_TST = "entry.2108294063"
 ENTRY_RPE = "entry.1582638667"
-# --------------------------------------------------
+# ---------------------------------------
 
 st.set_page_config(page_title="Caliperf - Cloud", layout="wide")
 st.title("🏋️ Caliperf : Analyse & Performance")
 
-# Création des onglets
 tab1, tab2 = st.tabs(["📝 Séance & Volume", "🎥 Zone Vidéo & Analyse"])
 
 # --- ONGLET 1 : SÉANCE ---
@@ -32,11 +29,10 @@ with tab1:
     if series*reps*poids > 0:
         st.info(f"Volume : {series*reps*poids} kg")
 
-# --- ONGLET 2 : VIDÉO & ANALYSE ---
+# --- ONGLET 2 : VIDÉO ---
 with tab2:
     st.header("1️⃣ Espace Athlète")
 
-    # ZONE ÉLÈVE
     video_file = st.file_uploader("Déposer la vidéo ici", type=['mp4', 'mov', 'avi'])
     
     st.subheader("Ressenti (RPE)")
@@ -92,18 +88,16 @@ with tab2:
 
             st.write("---")
 
-            # --- ENVOI GOOGLE SHEETS ---
+            # --- ENVOI GOOGLE SHEETS (MODE DIAGNOSTIC) ---
             st.subheader("3️⃣ Validation Cloud")
             with st.form("google_form"):
                 nom = st.text_input("Nom de l'athlète")
                 exo = st.text_input("Exercice")
-                # Récupère automatiquement le temps du chrono
                 final_tst = st.number_input("Temps Final (s)", value=float(t), step=0.1)
                 
                 submitted = st.form_submit_button("☁️ ENVOYER SUR GOOGLE SHEETS", type="primary", use_container_width=True)
                 
-               if submitted and nom and final_tst > 0:
-                    # Préparation des données
+                if submitted and nom and final_tst > 0:
                     form_data = {
                         ENTRY_NOM: nom,
                         ENTRY_EXO: exo,
@@ -111,21 +105,25 @@ with tab2:
                         ENTRY_RPE: str(rpe_value)
                     }
                     
-                    st.write("Tentative d'envoi des données...", form_data) # Pour vérifier ce qu'on envoie
+                    st.info("⏳ Tentative de connexion à Google...")
 
                     try:
-                        import requests # On force l'import ici pour être sûr
                         response = requests.post(URL_GOOGLE_FORM, data=form_data)
                         
-                        # LE DIAGNOSTIC PRÉCIS
                         if response.status_code == 200:
-                            st.success("✅ C'est passé ! Données envoyées.")
+                            st.success("✅ SUCCESS ! Données envoyées.")
                             st.balloons()
                         else:
-                            st.error(f"⚠️ Google a refusé (Code {response.status_code}).")
-                            st.write("Vérifie que tes questions sont bien en 'Réponse courte' et pas 'Choix multiples'.")
+                            st.error(f"⚠️ Google refuse (Code {response.status_code}).")
+                            st.write("Ton formulaire attend peut-être des 'Choix multiples' alors qu'on envoie du texte.")
                     
                     except Exception as e:
-                        # C'est ici qu'on verra la vraie erreur
-                        st.error(f"❌ PLANTAGE TECHNIQUE : {e}")
-                        st.info("Si l'erreur dit 'No module named requests', c'est que le fichier requirements.txt n'est pas bon sur GitHub.")
+                        st.error(f"❌ ERREUR TECHNIQUE : {e}")
+                        if "No module named" in str(e):
+                            st.warning("Il faut ajouter 'requests' dans le fichier requirements.txt sur GitHub !")
+
+        else:
+            st.warning("⚠️ En attente de vidéo...")
+            
+    elif password:
+        st.error("Mot de passe incorrect")
