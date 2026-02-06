@@ -102,8 +102,8 @@ with tab2:
                 
                 submitted = st.form_submit_button("☁️ ENVOYER SUR GOOGLE SHEETS", type="primary", use_container_width=True)
                 
-                if submitted and nom and final_tst > 0:
-                    # Préparation des données pour Google Form
+               if submitted and nom and final_tst > 0:
+                    # Préparation des données
                     form_data = {
                         ENTRY_NOM: nom,
                         ENTRY_EXO: exo,
@@ -111,22 +111,21 @@ with tab2:
                         ENTRY_RPE: str(rpe_value)
                     }
                     
-                    try:
-                        # Envoi silencieux à Google
-                        response = requests.post(URL_GOOGLE_FORM, data=form_data)
-                        if response.status_code == 200:
-                            st.success(f"✅ Performance envoyée ! ({nom} - {final_tst}s)")
-                            st.balloons()
-                            # Reset automatique du chrono après envoi
-                            st.session_state.accumulated_time = 0.0
-                            st.session_state.running = False
-                        else:
-                            st.error("⚠️ Erreur technique lors de l'envoi.")
-                    except:
-                        st.error("❌ Problème de connexion internet.")
+                    st.write("Tentative d'envoi des données...", form_data) # Pour vérifier ce qu'on envoie
 
-        else:
-            st.warning("⚠️ En attente de vidéo...")
-            
-    elif password:
-        st.error("Mot de passe incorrect")
+                    try:
+                        import requests # On force l'import ici pour être sûr
+                        response = requests.post(URL_GOOGLE_FORM, data=form_data)
+                        
+                        # LE DIAGNOSTIC PRÉCIS
+                        if response.status_code == 200:
+                            st.success("✅ C'est passé ! Données envoyées.")
+                            st.balloons()
+                        else:
+                            st.error(f"⚠️ Google a refusé (Code {response.status_code}).")
+                            st.write("Vérifie que tes questions sont bien en 'Réponse courte' et pas 'Choix multiples'.")
+                    
+                    except Exception as e:
+                        # C'est ici qu'on verra la vraie erreur
+                        st.error(f"❌ PLANTAGE TECHNIQUE : {e}")
+                        st.info("Si l'erreur dit 'No module named requests', c'est que le fichier requirements.txt n'est pas bon sur GitHub.")
