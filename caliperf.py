@@ -1,11 +1,21 @@
 import streamlit as st
 import pandas as pd
 import time
-import os
+import requests  # La "brique" qui permet de parler à Google
 from datetime import datetime
 
-# Configuration de la page
-st.set_page_config(page_title="Caliperf - Mobile", layout="wide")
+# --- CONFIGURATION AUTOMATIQUE (C'est rempli !) ---
+# J'ai remplacé 'viewform' par 'formResponse' pour que l'envoi fonctionne
+URL_GOOGLE_FORM = "https://docs.google.com/forms/d/e/1FAIpQLSfVrYwDZOWr1G800WwguVdiMMYokE1ryHL_yx_5wClsWmSuyg/formResponse"
+
+# Tes codes d'identification extraits de ton lien :
+ENTRY_NOM = "entry.1696045241"
+ENTRY_EXO = "entry.957125700"
+ENTRY_TST = "entry.2108294063"
+ENTRY_RPE = "entry.1582638667"
+# --------------------------------------------------
+
+st.set_page_config(page_title="Caliperf - Cloud", layout="wide")
 st.title("🏋️ Caliperf : Analyse & Performance")
 
 # Création des onglets
@@ -22,7 +32,7 @@ with tab1:
     if series*reps*poids > 0:
         st.info(f"Volume : {series*reps*poids} kg")
 
-# --- ONGLET 2 : VIDÉO ---
+# --- ONGLET 2 : VIDÉO & ANALYSE ---
 with tab2:
     st.header("1️⃣ Espace Athlète")
 
@@ -52,7 +62,7 @@ with tab2:
             st.video(video_file)
             st.write("") 
 
-            # --- LE CHRONO ---
+            # --- CHRONO ---
             if 'running' not in st.session_state: st.session_state.running = False
             if 'start_time' not in st.session_state: st.session_state.start_time = None
             if 'accumulated_time' not in st.session_state: st.session_state.accumulated_time = 0.0
@@ -82,52 +92,38 @@ with tab2:
 
             st.write("---")
 
-            # --- VALIDATION ---
-            st.subheader("3️⃣ Sauvegarde")
-            nom = st.text_input("Nom de l'athlète")
-            exo = st.text_input("Exercice")
-            final_tst = st.number_input("Temps Final (s)", value=float(t), step=0.1)
-
-            if nom and final_tst > 0:
-                now = datetime.now()
-                # Création de la donnée
-                data = {
-                    "Date": [now.strftime("%d/%m/%Y")],
-                    "Athlète": [nom],
-                    "Exercice": [exo],
-                    "TST (s)": [str(final_tst).replace('.', ',')],
-                    "RPE": [rpe_value]
-                }
-                df = pd.DataFrame(data)
-
-                # --- OPTION A : TÉLÉCHARGEMENT (MOBILE / CLOUD) ---
-                st.markdown("#### 📱 Option Mobile (Cloud)")
-                csv = df.to_csv(index=False, sep=';', encoding='utf-8-sig')
-                nom_fichier_mobile = f"Perf_{nom}_{now.strftime('%Hh%M')}.csv"
+            # --- ENVOI GOOGLE SHEETS ---
+            st.subheader("3️⃣ Validation Cloud")
+            with st.form("google_form"):
+                nom = st.text_input("Nom de l'athlète")
+                exo = st.text_input("Exercice")
+                # Récupère automatiquement le temps du chrono
+                final_tst = st.number_input("Temps Final (s)", value=float(t), step=0.1)
                 
-                st.download_button(
-                    label="📥 TÉLÉCHARGER LE FICHIER",
-                    data=csv,
-                    file_name=nom_fichier_mobile,
-                    mime='text/csv',
-                    type="primary",
-                    use_container_width=True
-                )
-
-                # --- OPTION B : SAUVEGARDE LOCALE (PC SEULEMENT) ---
-                st.write("")
-                st.markdown("#### 💻 Option PC (Bureau)")
+                submitted = st.form_submit_button("☁️ ENVOYER SUR GOOGLE SHEETS", type="primary", use_container_width=True)
                 
-                if st.button("💾 AJOUTER AU FICHIER PRINCIPAL (PC)", use_container_width=True):
+                if submitted and nom and final_tst > 0:
+                    # Préparation des données pour Google Form
+                    form_data = {
+                        ENTRY_NOM: nom,
+                        ENTRY_EXO: exo,
+                        ENTRY_TST: str(final_tst).replace('.', ','),
+                        ENTRY_RPE: str(rpe_value)
+                    }
+                    
                     try:
-                        file_name_pc = "suivi_tst.csv"
-                        if not os.path.isfile(file_name_pc):
-                            df.to_csv(file_name_pc, index=False, sep=';', encoding='utf-8-sig')
+                        # Envoi silencieux à Google
+                        response = requests.post(URL_GOOGLE_FORM, data=form_data)
+                        if response.status_code == 200:
+                            st.success(f"✅ Performance envoyée ! ({nom} - {final_tst}s)")
+                            st.balloons()
+                            # Reset automatique du chrono après envoi
+                            st.session_state.accumulated_time = 0.0
+                            st.session_state.running = False
                         else:
-                            df.to_csv(file_name_pc, mode='a', header=False, index=False, sep=';', encoding='utf-8-sig')
-                        st.success(f"✅ Ajouté à {file_name_pc} sur ton Bureau !")
+                            st.error("⚠️ Erreur technique lors de l'envoi.")
                     except:
-                        st.error("❌ Impossible d'écrire sur le disque. (C'est normal si tu es sur la version Mobile/Web). Utilise le bouton Télécharger ci-dessus.")
+                        st.error("❌ Problème de connexion internet.")
 
         else:
             st.warning("⚠️ En attente de vidéo...")
