@@ -12,10 +12,10 @@ from datetime import datetime
 LINK_UNIQUE = "https://docs.google.com/forms/d/e/1FAIpQLSe-eaoZyDbe2ZTl_NfNKbkeDYKyEdRX_zchoK-Xjef7tGZGIA/formResponse"
 
 STUDENTS_DB = {
-    "Élève Test": LINK_UNIQUE,
-    "Lucas": LINK_UNIQUE,
-    "Sarah": LINK_UNIQUE,
-    "Nouveau": LINK_UNIQUE,
+    "cali-1": LINK_UNIQUE,
+    "cali-2": LINK_UNIQUE,
+    "cali-3": LINK_UNIQUE,
+    "cali-4": LINK_UNIQUE,
 }
 # --- 2. CONFIGURATION DES CHAMPS ---
 ENTRY_NOM = "entry.1847695661"
@@ -142,4 +142,5 @@ with tab_eleves:
     st.header("👥 Répertoire")
     df_students = pd.DataFrame(list(STUDENTS_DB.items()), columns=["Nom", "Lien Form"])
     st.dataframe(df_students, use_container_width=True)
+
 
