@@ -4,15 +4,19 @@ import time
 import requests
 from datetime import datetime
 
-st.set_page_config(page_title="Caliperf - Coach Pro", layout="wide", page_icon="💪")
+# --- 1. CONFIGURATION DES ÉLÈVES ---
+# ASTUCE DE PRO : Utilise le MÊME lien pour tout le monde !
+# Le code enverra le nom (Sarah, Lucas) et tu pourras trier dans Excel.
+# Cela évite l'erreur "Google Forms" car les questions restent les mêmes.
 
-# --- 1. CONFIGURATION DES ÉLÈVES (TES LIENS SONT ICI) ---
+LINK_UNIQUE = "https://docs.google.com/forms/d/e/1FAIpQLSe-eaoZyDbe2ZTl_NfNKbkeDYKyEdRX_zchoK-Xjef7tGZGIA/formResponse"
+
 STUDENTS_DB = {
-    "Élève Test": "https://docs.google.com/forms/d/e/1FAIpQLSe-eaoZyDbe2ZTl_NfNKbkeDYKyEdRX_zchoK-Xjef7tGZGIA/formResponse",
-    "Lucas": "https://docs.google.com/forms/d/e/1FAIpQLSfI3cJ1SpZF59IVYnDDaWrDoIbYXRiaaUAkVJgoBgYZ22KZw/formResponse",
-    "Sarah": "https://docs.google.com/forms/d/e/1FAIpQLSf9av0xM-bwlyD5gSK1oT4eyblJrsnlWFRv_93bV444MBQbYA/formResponse",
+    "Élève Test": LINK_UNIQUE,
+    "Lucas": LINK_UNIQUE,
+    "Sarah": LINK_UNIQUE,
+    "Nouveau": LINK_UNIQUE,
 }
-
 # --- 2. CONFIGURATION DES CHAMPS ---
 ENTRY_NOM = "entry.1847695661"
 ENTRY_EXO = "entry.1595307876"
@@ -138,3 +142,4 @@ with tab_eleves:
     st.header("👥 Répertoire")
     df_students = pd.DataFrame(list(STUDENTS_DB.items()), columns=["Nom", "Lien Form"])
     st.dataframe(df_students, use_container_width=True)
+
