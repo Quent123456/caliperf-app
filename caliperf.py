@@ -4,15 +4,15 @@ import time
 import requests
 from datetime import datetime
 
-# --- CONFIGURATION (C'est tes codes validés, ne touche pas !) ---
-# URL corrigée sans espace
-URL_GOOGLE_FORM = "https://docs.google.com/forms/d/e/1FAIpQLSe-eao7yDbe2ZT1_NfNKbkeDYKyEdRX_zchoK-Xjef7tGZGIA/formResponse"
+# --- CONFIGURATION (Corrigée avec ton lien valide) ---
+# J'ai remplacé viewform par formResponse et corrigé les fautes (Z et l)
+URL_GOOGLE_FORM = "https://docs.google.com/forms/d/e/1FAIpQLSe-eaoZyDbe2ZTl_NfNKbkeDYKyEdRX_zchoK-Xjef7tGZGIA/formResponse"
 
 ENTRY_NOM = "entry.1847695661"
 ENTRY_EXO = "entry.1595307876"
 ENTRY_TST = "entry.549289703"
 ENTRY_RPE = "entry.46344190"
-# --------------------------------------------------------------
+# -----------------------------------------------------
 
 st.set_page_config(page_title="Caliperf - Cloud", layout="wide")
 st.title("🏋️ Caliperf : Analyse & Performance")
@@ -66,9 +66,7 @@ with tab2:
 
             col_btn1, col_btn2 = st.columns(2)
             with col_btn1:
-                # C'EST ICI QUE TU AVAIS L'ERREUR, J'AI CORRIGÉ LES GUILLEMETS :
                 label = "⏸️ PAUSE" if st.session_state.running else "▶️ START"
-                
                 if st.button(label, use_container_width=True):
                     if st.session_state.running:
                         st.session_state.accumulated_time += time.time() - st.session_state.start_time
@@ -111,19 +109,4 @@ with tab2:
                     st.info("⏳ Envoi en cours...")
 
                     try:
-                        response = requests.post(URL_GOOGLE_FORM, data=form_data)
-                        
-                        if response.status_code == 200:
-                            st.success("✅ SUCCESS ! Données envoyées.")
-                            st.balloons()
-                        else:
-                            st.error(f"⚠️ Google refuse (Code {response.status_code}).")
-                    
-                    except Exception as e:
-                        st.error(f"❌ ERREUR TECHNIQUE : {e}")
-
-        else:
-            st.warning("⚠️ En attente de vidéo...")
-            
-    elif password:
-        st.error("Mot de passe incorrect")
+                        response
