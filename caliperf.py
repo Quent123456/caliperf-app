@@ -1,126 +1,143 @@
 import streamlit as st
-import pandas as pd
 import time
 import requests
 from datetime import datetime
 
-# --- CONFIGURATION (Tes infos valides) ---
+# --- CONFIGURATION (Tes clés Google Form) ---
 URL_GOOGLE_FORM = "https://docs.google.com/forms/d/e/1FAIpQLSe-eaoZyDbe2ZTl_NfNKbkeDYKyEdRX_zchoK-Xjef7tGZGIA/formResponse"
 
 ENTRY_NOM = "entry.1847695661"
 ENTRY_EXO = "entry.1595307876"
 ENTRY_TST = "entry.549289703"
 ENTRY_RPE = "entry.46344190"
-# -----------------------------------------
 
-st.set_page_config(page_title="Caliperf - Cloud", layout="wide")
-st.title("🏋️ Caliperf : Analyse & Performance")
+st.set_page_config(page_title="Caliperf - Multi", layout="wide", page_icon="🏋️")
 
-tab1, tab2 = st.tabs(["📝 Séance & Volume", "🎥 Zone Vidéo & Analyse"])
+# --- INITIALISATION DE L'ÉTAT (SESSION STATE) ---
+# On stocke les temps et les statuts "traité" pour chaque fichier
+if 'processed_files' not in st.session_state:
+    st.session_state.processed_files = set()
+if 'timers' not in st.session_state:
+    st.session_state.timers = {} # Format: {'nom_video': {'start': t, 'accumulated': 0, 'running': False}}
 
-# --- ONGLET 1 : SÉANCE ---
-with tab1:
-    st.header("Calcul Rapide")
-    col1, col2, col3 = st.columns(3)
-    with col1: series = st.number_input("Séries", 0, step=1)
-    with col2: reps = st.number_input("Répétitions", 0, step=1)
-    with col3: poids = st.number_input("Poids (kg)", 0.0, step=0.5)
-    
-    if series*reps*poids > 0:
-        st.info(f"Volume : {series*reps*poids} kg")
+st.title("🏋️ Caliperf : Analyse Multi-Vidéos")
 
-# --- ONGLET 2 : VIDÉO ---
-with tab2:
-    st.header("1️⃣ Espace Athlète")
+# --- ZONE 1 : UPLOAD (ATHLÈTE) ---
+st.header("1️⃣ Espace Athlète : Dépôt de Séance")
+uploaded_files = st.file_uploader(
+    "Charge toutes tes vidéos ici (Tu peux en sélectionner plusieurs)", 
+    type=['mp4', 'mov', 'avi'], 
+    accept_multiple_files=True # <--- C'est ici que la magie opère
+)
 
-    video_file = st.file_uploader("Déposer la vidéo ici", type=['mp4', 'mov', 'avi'])
-    
-    st.subheader("Ressenti (RPE)")
-    rpe_value = st.slider("Niveau d'effort (1-10) :", 1, 10, 5)
-    
-    if rpe_value <= 3: st.success(f"RPE {rpe_value} : Facile 🟢")
-    elif rpe_value <= 7: st.warning(f"RPE {rpe_value} : Moyen 🟠")
-    else: st.error(f"RPE {rpe_value} : Maximal 🔴")
+if uploaded_files:
+    count = len(uploaded_files)
+    st.success(f"📂 {count} fichiers reçus. En attente d'analyse coach.")
+    st.divider()
 
-    if video_file:
-        st.caption("✅ Vidéo chargée.")
-
-    st.write("---")
-    
-    # ZONE ADMIN
+    # --- ZONE 2 : ANALYSE (COACH) ---
+    st.header("2️⃣ Espace Coach : Analyse")
     password = st.text_input("🔒 Mot de passe Coach :", type="password")
 
     if password == "admin":
-        st.divider()
-        st.header("2️⃣ Espace Coach (Analyse)")
+        
+        # Création des onglets ou d'un sélecteur pour naviguer entre les vidéos
+        # On crée une liste de noms avec un indicateur visuel si c'est déjà traité
+        video_options = {f.name: f for f in uploaded_files}
+        option_labels = [f"✅ {name}" if name in st.session_state.processed_files else f"⏳ {name}" for name in video_options.keys()]
+        
+        # Sélecteur pour choisir quelle vidéo travailler
+        selected_label = st.selectbox("Choisir la vidéo à analyser :", option_labels)
+        
+        # On retrouve le vrai nom du fichier à partir du label
+        selected_filename = selected_label.replace("✅ ", "").replace("⏳ ", "")
+        current_file = video_options[selected_filename]
 
-        if video_file:
-            st.video(video_file)
-            st.write("") 
+        # --- INTERFACE D'ANALYSE POUR LA VIDÉO SÉLECTIONNÉE ---
+        st.subheader(f"Analyse de : {selected_filename}")
+        
+        col_video, col_controls = st.columns([1.5, 1])
 
-            # --- CHRONO ---
-            if 'running' not in st.session_state: st.session_state.running = False
-            if 'start_time' not in st.session_state: st.session_state.start_time = None
-            if 'accumulated_time' not in st.session_state: st.session_state.accumulated_time = 0.0
+        with col_video:
+            st.video(current_file)
 
-            col_btn1, col_btn2 = st.columns(2)
-            with col_btn1:
-                label = "⏸️ PAUSE" if st.session_state.running else "▶️ START"
-                if st.button(label, use_container_width=True):
-                    if st.session_state.running:
-                        st.session_state.accumulated_time += time.time() - st.session_state.start_time
-                        st.session_state.running = False
-                    else:
-                        st.session_state.start_time = time.time()
-                        st.session_state.running = True
+        with col_controls:
+            # --- LOGIQUE DU CHRONO PAR VIDÉO ---
+            # Initialiser le chrono pour CE fichier spécifique s'il n'existe pas
+            if selected_filename not in st.session_state.timers:
+                st.session_state.timers[selected_filename] = {'start': 0, 'accumulated': 0.0, 'running': False}
             
-            with col_btn2:
-                if st.button("🗑️ RESET", use_container_width=True):
-                    st.session_state.running = False
-                    st.session_state.accumulated_time = 0.0
+            timer_data = st.session_state.timers[selected_filename]
 
-            if st.session_state.running:
-                t = st.session_state.accumulated_time + (time.time() - st.session_state.start_time)
-                st.warning(f"⏱️ CHRONO : {t:.2f} s")
-            else:
-                t = st.session_state.accumulated_time
-                st.info(f"⏸️ TEMPS RETENU : {t:.2f} s")
+            # Boutons Chrono
+            c1, c2 = st.columns(2)
+            with c1:
+                btn_label = "⏸️ PAUSE" if timer_data['running'] else "▶️ START"
+                if st.button(btn_label, key=f"btn_start_{selected_filename}", use_container_width=True):
+                    if timer_data['running']:
+                        # On arrête : on ajoute le temps écoulé au total
+                        elapsed = time.time() - timer_data['start']
+                        timer_data['accumulated'] += elapsed
+                        timer_data['running'] = False
+                    else:
+                        # On démarre
+                        timer_data['start'] = time.time()
+                        timer_data['running'] = True
+            
+            with c2:
+                if st.button("🗑️ RESET", key=f"btn_reset_{selected_filename}", use_container_width=True):
+                    timer_data['accumulated'] = 0.0
+                    timer_data['running'] = False
+            
+            # Calcul Affichage
+            current_time = timer_data['accumulated']
+            if timer_data['running']:
+                current_time += time.time() - timer_data['start']
+            
+            st.metric("Temps sous tension (TST)", f"{current_time:.2f} s")
 
             st.write("---")
 
-            # --- ENVOI GOOGLE SHEETS ---
-            st.subheader("3️⃣ Validation Cloud")
-            with st.form("google_form"):
-                nom = st.text_input("Nom de l'athlète")
-                exo = st.text_input("Exercice")
-                final_tst = st.number_input("Temps Final (s)", value=float(t), step=0.1)
+            # --- FORMULAIRE D'ENVOI ---
+            with st.form(key=f"form_{selected_filename}"):
+                st.caption("Validation des données")
+                # Pré-remplissage intelligent
+                nom_input = st.text_input("Athlète", placeholder="Nom de l'élève")
+                # On essaie de deviner l'exo via le nom du fichier (ex: "Traction.mp4")
+                exo_input = st.text_input("Exercice", value=selected_filename.split('.')[0])
+                rpe_input = st.slider("RPE (Difficulté)", 1, 10, 7)
                 
-                submitted = st.form_submit_button("☁️ ENVOYER SUR GOOGLE SHEETS", type="primary", use_container_width=True)
-                
-                if submitted and nom and final_tst > 0:
-                    form_data = {
-                        ENTRY_NOM: nom,
-                        ENTRY_EXO: exo,
-                        ENTRY_TST: str(final_tst).replace('.', ','),
-                        ENTRY_RPE: str(rpe_value)
-                    }
-                    
-                    st.info("⏳ Envoi en cours...")
+                submit_btn = st.form_submit_button("☁️ ENVOYER DONNÉES", type="primary", use_container_width=True)
 
-                    try:
-                        response = requests.post(URL_GOOGLE_FORM, data=form_data)
-                        
-                        if response.status_code == 200:
-                            st.success("✅ SUCCESS ! Données envoyées.")
-                            st.balloons()
-                        else:
-                            st.error(f"⚠️ Google refuse (Code {response.status_code}).")
-                    
-                    except Exception as e:
-                        st.error(f"❌ ERREUR TECHNIQUE : {e}")
+                if submit_btn:
+                    if nom_input and current_time > 0:
+                        # Préparation Données
+                        form_data = {
+                            ENTRY_NOM: nom_input,
+                            ENTRY_EXO: exo_input,
+                            ENTRY_TST: str(round(current_time, 2)).replace('.', ','),
+                            ENTRY_RPE: str(rpe_input)
+                        }
 
-        else:
-            st.warning("⚠️ En attente de vidéo...")
-            
+                        try:
+                            # Envoi Google Form
+                            response = requests.post(URL_GOOGLE_FORM, data=form_data)
+                            if response.status_code == 200:
+                                st.success(f"✅ Données pour {selected_filename} envoyées !")
+                                st.session_state.processed_files.add(selected_filename)
+                                st.balloons()
+                                time.sleep(1)
+                                st.rerun() # Rafraichir pour mettre à jour le ✅ dans la liste
+                            else:
+                                st.error("Erreur Google.")
+                        except Exception as e:
+                            st.error(f"Erreur technique : {e}")
+                    else:
+                        st.warning("⚠️ Remplis le nom et chronomètre l'exercice.")
+
     elif password:
-        st.error("Mot de passe incorrect")
+        st.error("Mot de passe incorrect.")
+
+else:
+    # Message d'accueil quand rien n'est chargé
+    st.info("👋 Bienvenue sur Caliperf. Déposez vos vidéos ci-dessus pour commencer.")
