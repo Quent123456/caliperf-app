@@ -4,14 +4,14 @@ import time
 import requests
 from datetime import datetime
 
-# --- TA CONFIGURATION (Déjà remplie) ---
-URL_GOOGLE_FORM = "https://docs.google.com/forms/d/e/1FAIpQLSfVrYwDZOWr1G800WwguVdiMMYokE1ryHL_yx_5wClsWmSuyg/formResponse"
+# --- CONFIGURATION (C'est tes vrais codes, ne touche pas !) ---
+URL_GOOGLE_FORM = "https://docs.google.com/forms/d/e/1FAIpQLSe-eao7yDbe2ZT1_NfNKbkeDYKyEdRX_zchoK-Xjef7tGZGIA/formResponse"
 
-ENTRY_NOM = "entry.1696045241"
-ENTRY_EXO = "entry.957125700"
-ENTRY_TST = "entry.2108294063"
-ENTRY_RPE = "entry.1582638667"
-# ---------------------------------------
+ENTRY_NOM = "entry.1847695661"
+ENTRY_EXO = "entry.1595307876"
+ENTRY_TST = "entry.549289703"
+ENTRY_RPE = "entry.46344190"
+# --------------------------------------------------------------
 
 st.set_page_config(page_title="Caliperf - Cloud", layout="wide")
 st.title("🏋️ Caliperf : Analyse & Performance")
@@ -88,7 +88,7 @@ with tab2:
 
             st.write("---")
 
-            # --- ENVOI GOOGLE SHEETS (MODE DIAGNOSTIC) ---
+            # --- ENVOI GOOGLE SHEETS ---
             st.subheader("3️⃣ Validation Cloud")
             with st.form("google_form"):
                 nom = st.text_input("Nom de l'athlète")
@@ -105,7 +105,7 @@ with tab2:
                         ENTRY_RPE: str(rpe_value)
                     }
                     
-                    st.info("⏳ Tentative de connexion à Google...")
+                    st.info("⏳ Envoi en cours...")
 
                     try:
                         response = requests.post(URL_GOOGLE_FORM, data=form_data)
@@ -115,12 +115,9 @@ with tab2:
                             st.balloons()
                         else:
                             st.error(f"⚠️ Google refuse (Code {response.status_code}).")
-                            st.write("Ton formulaire attend peut-être des 'Choix multiples' alors qu'on envoie du texte.")
                     
                     except Exception as e:
                         st.error(f"❌ ERREUR TECHNIQUE : {e}")
-                        if "No module named" in str(e):
-                            st.warning("Il faut ajouter 'requests' dans le fichier requirements.txt sur GitHub !")
 
         else:
             st.warning("⚠️ En attente de vidéo...")
