@@ -4,16 +4,15 @@ import time
 import requests
 from datetime import datetime
 
-# --- CONFIGURATION (Corrigée avec ton lien exact) ---
-# J'ai remplacé le 'viewform' par 'formResponse' et corrigé le 'l' minuscule
-URL_GOOGLE_FORM = "https://docs.google.com/forms/d/e/1FAIpQLSe-eaoZyDbe2ZTl_NfNKbkeDYKyEdRX_zchoK-Xjef7tGZGIA/formResponse"
+# --- CONFIGURATION (C'est tes codes validés, ne touche pas !) ---
+# URL corrigée sans espace
+URL_GOOGLE_FORM = "https://docs.google.com/forms/d/e/1FAIpQLSe-eao7yDbe2ZT1_NfNKbkeDYKyEdRX_zchoK-Xjef7tGZGIA/formResponse"
 
-# Tes codes exacts extraits de ton lien :
 ENTRY_NOM = "entry.1847695661"
 ENTRY_EXO = "entry.1595307876"
 ENTRY_TST = "entry.549289703"
 ENTRY_RPE = "entry.46344190"
-# ----------------------------------------------------
+# --------------------------------------------------------------
 
 st.set_page_config(page_title="Caliperf - Cloud", layout="wide")
 st.title("🏋️ Caliperf : Analyse & Performance")
@@ -67,4 +66,64 @@ with tab2:
 
             col_btn1, col_btn2 = st.columns(2)
             with col_btn1:
-                label = "⏸️ PAUSE" if st.session_state.running else "▶️ START
+                # C'EST ICI QUE TU AVAIS L'ERREUR, J'AI CORRIGÉ LES GUILLEMETS :
+                label = "⏸️ PAUSE" if st.session_state.running else "▶️ START"
+                
+                if st.button(label, use_container_width=True):
+                    if st.session_state.running:
+                        st.session_state.accumulated_time += time.time() - st.session_state.start_time
+                        st.session_state.running = False
+                    else:
+                        st.session_state.start_time = time.time()
+                        st.session_state.running = True
+            
+            with col_btn2:
+                if st.button("🗑️ RESET", use_container_width=True):
+                    st.session_state.running = False
+                    st.session_state.accumulated_time = 0.0
+
+            if st.session_state.running:
+                t = st.session_state.accumulated_time + (time.time() - st.session_state.start_time)
+                st.warning(f"⏱️ CHRONO : {t:.2f} s")
+            else:
+                t = st.session_state.accumulated_time
+                st.info(f"⏸️ TEMPS RETENU : {t:.2f} s")
+
+            st.write("---")
+
+            # --- ENVOI GOOGLE SHEETS ---
+            st.subheader("3️⃣ Validation Cloud")
+            with st.form("google_form"):
+                nom = st.text_input("Nom de l'athlète")
+                exo = st.text_input("Exercice")
+                final_tst = st.number_input("Temps Final (s)", value=float(t), step=0.1)
+                
+                submitted = st.form_submit_button("☁️ ENVOYER SUR GOOGLE SHEETS", type="primary", use_container_width=True)
+                
+                if submitted and nom and final_tst > 0:
+                    form_data = {
+                        ENTRY_NOM: nom,
+                        ENTRY_EXO: exo,
+                        ENTRY_TST: str(final_tst).replace('.', ','),
+                        ENTRY_RPE: str(rpe_value)
+                    }
+                    
+                    st.info("⏳ Envoi en cours...")
+
+                    try:
+                        response = requests.post(URL_GOOGLE_FORM, data=form_data)
+                        
+                        if response.status_code == 200:
+                            st.success("✅ SUCCESS ! Données envoyées.")
+                            st.balloons()
+                        else:
+                            st.error(f"⚠️ Google refuse (Code {response.status_code}).")
+                    
+                    except Exception as e:
+                        st.error(f"❌ ERREUR TECHNIQUE : {e}")
+
+        else:
+            st.warning("⚠️ En attente de vidéo...")
+            
+    elif password:
+        st.error("Mot de passe incorrect")
