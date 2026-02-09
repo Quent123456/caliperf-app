@@ -4,15 +4,14 @@ import time
 import requests
 from datetime import datetime
 
-# --- CONFIGURATION (Corrigée avec ton lien valide) ---
-# J'ai remplacé viewform par formResponse et corrigé les fautes (Z et l)
+# --- CONFIGURATION (Tes infos valides) ---
 URL_GOOGLE_FORM = "https://docs.google.com/forms/d/e/1FAIpQLSe-eaoZyDbe2ZTl_NfNKbkeDYKyEdRX_zchoK-Xjef7tGZGIA/formResponse"
 
 ENTRY_NOM = "entry.1847695661"
 ENTRY_EXO = "entry.1595307876"
 ENTRY_TST = "entry.549289703"
 ENTRY_RPE = "entry.46344190"
-# -----------------------------------------------------
+# -----------------------------------------
 
 st.set_page_config(page_title="Caliperf - Cloud", layout="wide")
 st.title("🏋️ Caliperf : Analyse & Performance")
@@ -109,4 +108,19 @@ with tab2:
                     st.info("⏳ Envoi en cours...")
 
                     try:
-                        response
+                        response = requests.post(URL_GOOGLE_FORM, data=form_data)
+                        
+                        if response.status_code == 200:
+                            st.success("✅ SUCCESS ! Données envoyées.")
+                            st.balloons()
+                        else:
+                            st.error(f"⚠️ Google refuse (Code {response.status_code}).")
+                    
+                    except Exception as e:
+                        st.error(f"❌ ERREUR TECHNIQUE : {e}")
+
+        else:
+            st.warning("⚠️ En attente de vidéo...")
+            
+    elif password:
+        st.error("Mot de passe incorrect")
