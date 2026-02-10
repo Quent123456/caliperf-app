@@ -35,13 +35,46 @@ st.markdown("""
 if 'processed_files' not in st.session_state: st.session_state.processed_files = set()
 if 'timers' not in st.session_state: st.session_state.timers = {} 
 
-st.title("🏋️ Caliperf : Analyse Coach")
+st.title("🏋️ Caliperf : Espace Coaching")
 
-# === CRÉATION DES ONGLETS ===
-tab_analyse, tab_eleves = st.tabs(["🎥 Analyse Coach", "👥 Mes Élèves (Privé)"])
+# === CRÉATION DES 3 ONGLETS (INTRODUCTION EN PREMIER) ===
+tab_intro, tab_analyse, tab_eleves = st.tabs(["👋 Introduction", "🎥 Analyse Coach", "👥 Mes Élèves (Privé)"])
 
 # =========================================================
-# ONGLET 1 : ANALYSE MULTI-VIDÉOS (Inchangé)
+# ONGLET 1 : INTRODUCTION (NOUVEAU)
+# =========================================================
+with tab_intro:
+    st.header("Bienvenue dans l'accompagnement ! 🚀")
+    st.write("Merci de remplir cette fiche de renseignements pour initialiser ton suivi.")
+    
+    st.info("ℹ️ À remplir uniquement lors de ta première connexion.")
+
+    with st.form("form_intro"):
+        col1, col2 = st.columns(2)
+        with col1:
+            nom = st.text_input("Nom")
+        with col2:
+            prenom = st.text_input("Prénom")
+            
+        freq = st.selectbox(
+            "Fréquence d'entraînement souhaitée", 
+            ["2x / semaine", "3x / semaine", "4x / semaine", "5x / semaine", "6x / semaine", "Tous les jours"]
+        )
+        
+        objectif = st.text_area("Ton objectif principal (ex: Front Lever, Prise de masse...)")
+        
+        submitted = st.form_submit_button("✅ Valider mon inscription", type="primary", use_container_width=True)
+        
+        if submitted:
+            if nom and prenom:
+                st.success(f"Bienvenue {prenom} ! Tes informations ont bien été transmises au coach.")
+                st.balloons()
+                st.caption("Tu peux maintenant transmettre tes vidéos via l'onglet 'Analyse Coach' ou attendre le retour de ton coach.")
+            else:
+                st.error("Merci de renseigner au moins ton Nom et Prénom.")
+
+# =========================================================
+# ONGLET 2 : ANALYSE MULTI-VIDÉOS (ANCIENNEMENT ONGLET 1)
 # =========================================================
 with tab_analyse:
     st.header("1️⃣ Dépôt Vidéos")
@@ -117,13 +150,11 @@ with tab_analyse:
     elif password: st.error("Mot de passe incorrect")
 
 # =========================================================
-# ONGLET 2 : GESTION DES ÉLÈVES (Sécurisé maintenant)
+# ONGLET 3 : GESTION DES ÉLÈVES (ANCIENNEMENT ONGLET 2)
 # =========================================================
 with tab_eleves:
     st.header("🔐 Zone Administration")
     
-    # On demande le mot de passe spécifiquement pour cet onglet
-    # J'ai mis une clé unique "pwd_admin" pour ne pas mélanger avec l'autre mot de passe
     admin_pwd = st.text_input("🔒 Mot de passe Admin :", type="password", key="pwd_admin")
     
     if admin_pwd == "admin":
