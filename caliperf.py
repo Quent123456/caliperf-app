@@ -2,18 +2,42 @@ import streamlit as st
 import pandas as pd
 import time
 import requests
+import json
+import os
 from datetime import datetime
 
 st.set_page_config(page_title="Caliperf - Coach Pro", layout="wide", page_icon="💪")
 
 # --- 1. CONFIGURATION ---
 LINK_UNIQUE = "https://docs.google.com/forms/d/e/1FAIpQLSe-eaoZyDbe2ZTl_NfNKbkeDYKyEdRX_zchoK-Xjef7tGZGIA/formResponse"
+DB_FILE = "caliperf_db.json"  # Le fichier où seront stockés tes élèves
 
 # --- 2. CONFIGURATION DES CHAMPS ---
 ENTRY_NOM = "entry.1847695661"
 ENTRY_EXO = "entry.1595307876"
 ENTRY_TST = "entry.549289703"
 ENTRY_RPE = "entry.46344190"
+
+# --- 3. FONCTIONS DE SAUVEGARDE (LA MÉMOIRE PERMANENTE) ---
+def load_data():
+    """Charge les élèves depuis le fichier JSON s'il existe."""
+    if os.path.exists(DB_FILE):
+        with open(DB_FILE, "r") as f:
+            return json.load(f)
+    else:
+        # Données par défaut si le fichier n'existe pas encore
+        return {
+            "Élève Test": {
+                "link": LINK_UNIQUE, 
+                "freq": "Non renseigné", 
+                "goal": "Compte de démonstration"
+            }
+        }
+
+def save_data(data):
+    """Sauvegarde les élèves dans le fichier JSON."""
+    with open(DB_FILE, "w") as f:
+        json.dump(data, f)
 
 # --- CSS / STYLE ---
 st.markdown("""
@@ -29,19 +53,9 @@ st.markdown("""
 if 'processed_files' not in st.session_state: st.session_state.processed_files = set()
 if 'timers' not in st.session_state: st.session_state.timers = {} 
 
+# ICI : On charge les données depuis le fichier au lieu de créer une liste vide
 if 'students_data' not in st.session_state:
-    st.session_state.students_data = {
-        "Élève Test": {
-            "link": LINK_UNIQUE, 
-            "freq": "Non renseigné", 
-            "goal": "Compte de démonstration"
-        },
-        "Lucas": {
-            "link": LINK_UNIQUE, 
-            "freq": "4x / semaine", 
-            "goal": "Muscle Up propre"
-        }
-    }
+    st.session_state.students_data = load_data()
 
 st.title("🏋️ Caliperf : Espace Coaching")
 
@@ -71,12 +85,17 @@ with tab_intro:
             if nom and prenom:
                 full_name = f"{prenom} {nom}"
                 
+                # 1. Mise à jour de la mémoire vive
                 st.session_state.students_data[full_name] = {
                     "link": LINK_UNIQUE,
                     "freq": freq,
                     "goal": objectif
                 }
                 
+                # 2. SAUVEGARDE DANS LE FICHIER (Mémoire permanente)
+                save_data(st.session_state.students_data)
+                
+                # 3. Envoi Google Sheets
                 data_inscription = {
                     ENTRY_NOM: full_name,
                     ENTRY_EXO: "INSCRIPTION", 
@@ -87,7 +106,7 @@ with tab_intro:
                 try:
                     r = requests.post(LINK_UNIQUE, data=data_inscription)
                     if r.status_code == 200:
-                        st.success(f"Bienvenue {prenom} ! Inscription validée.")
+                        st.success(f"Bienvenue {prenom} ! Inscription validée et sauvegardée.")
                         st.balloons()
                     else:
                         st.error("Erreur technique (Google).")
@@ -145,7 +164,7 @@ with tab_analyse:
                 st.write("---")
 
                 with st.form(key=f"f_{real_name}"):
-                    # Sécurisation : On vérifie qu'il y a des élèves
+                    # On charge la liste à jour
                     student_keys = list(st.session_state.students_data.keys())
                     if student_keys:
                         selected_student = st.selectbox("👤 Sélectionner l'élève", student_keys)
@@ -178,7 +197,7 @@ with tab_analyse:
     elif password: st.error("Mot de passe incorrect")
 
 # =========================================================
-# ONGLET 3 : GESTION DES ÉLÈVES (AVEC SUPPRESSION)
+# ONGLET 3 : GESTION DES ÉLÈVES (AVEC SAUVEGARDE)
 # =========================================================
 with tab_eleves:
     st.header("🔐 Gestion Athlètes")
@@ -215,3 +234,24 @@ with tab_eleves:
                         <p style="font-size: 1.2em; color: #ffbd45;">{infos['goal']}</p>
                     </div>
                     """, unsafe_allow_html=True)
+                
+                st.write("---")
+                
+                col_del, col_void = st.columns([1, 4])
+                with col_del:
+                    if st.button("❌ Supprimer cet élève", type="primary"):
+                        # Suppression de la mémoire vive
+                        del st.session_state.students_data[choice]
+                        # Suppression définitive du fichier
+                        save_data(st.session_state.students_data)
+                        
+                        st.warning(f"L'élève {choice} a été supprimé définitivement.")
+                        time.sleep(1)
+                        st.rerun()
+        else:
+            st.info("Aucun élève enregistré pour le moment.")
+
+    elif admin_pwd:
+        st.error("⛔ Accès refusé.")
+    else:
+        st.info("Identification requise.")
