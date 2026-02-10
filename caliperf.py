@@ -7,8 +7,6 @@ from datetime import datetime
 st.set_page_config(page_title="Caliperf - Coach Pro", layout="wide", page_icon="💪")
 
 # --- 1. CONFIGURATION INTELLIGENTE ---
-# On utilise le lien UNIQUE qui fonctionne pour éviter l'erreur "Google Forms".
-# Le code enverra le nom de l'élève, ce qui te permettra de filtrer dans Excel.
 LINK_UNIQUE = "https://docs.google.com/forms/d/e/1FAIpQLSe-eaoZyDbe2ZTl_NfNKbkeDYKyEdRX_zchoK-Xjef7tGZGIA/formResponse"
 
 STUDENTS_DB = {
@@ -39,11 +37,11 @@ if 'timers' not in st.session_state: st.session_state.timers = {}
 
 st.title("🏋️ Caliperf : Analyse Coach")
 
-# === CRÉATION DES ONGLETS (PLUS QUE 2 MAINTENANT) ===
-tab_analyse, tab_eleves = st.tabs(["🎥 Analyse Coach", "👥 Mes Élèves"])
+# === CRÉATION DES ONGLETS ===
+tab_analyse, tab_eleves = st.tabs(["🎥 Analyse Coach", "👥 Mes Élèves (Privé)"])
 
 # =========================================================
-# ONGLET 1 : ANALYSE MULTI-VIDÉOS (C'est maintenant l'accueil)
+# ONGLET 1 : ANALYSE MULTI-VIDÉOS (Inchangé)
 # =========================================================
 with tab_analyse:
     st.header("1️⃣ Dépôt Vidéos")
@@ -51,25 +49,22 @@ with tab_analyse:
     st.divider()
 
     st.header("2️⃣ Analyse Coach")
-    password = st.text_input("🔒 Mot de passe :", type="password")
+    password = st.text_input("🔒 Mot de passe :", type="password", key="pwd_analyse")
 
     if password == "admin":
         if not uploaded_files:
             st.info("⚠️ En attente de fichiers...")
         else:
-            # Sélecteur de Vidéo
             files_map = {f.name: f for f in uploaded_files}
             options = [("✅ " if name in st.session_state.processed_files else "⏳ ") + name for name in files_map.keys()]
             selected_option = st.selectbox("Vidéo en cours :", options)
             real_name = selected_option.replace("✅ ", "").replace("⏳ ", "")
             current_file = files_map[real_name]
 
-            # Init Chrono
             if real_name not in st.session_state.timers:
                 st.session_state.timers[real_name] = {'start': 0, 'acc': 0.0, 'run': False}
             timer = st.session_state.timers[real_name]
 
-            # Interface
             c_vid, c_tools = st.columns([1.5, 1])
             with c_vid: st.video(current_file)
             with c_tools:
@@ -93,9 +88,7 @@ with tab_analyse:
                 
                 st.write("---")
 
-                # --- FORMULAIRE INTELLIGENT ---
                 with st.form(key=f"f_{real_name}"):
-                    # SÉLECTION DE L'ÉLÈVE
                     selected_student = st.selectbox("👤 Sélectionner l'élève", list(STUDENTS_DB.keys()))
                     target_url = STUDENTS_DB[selected_student]
                     
@@ -117,16 +110,31 @@ with tab_analyse:
                                     st.session_state.processed_files.add(real_name)
                                     time.sleep(1)
                                     st.rerun()
-                                else: st.error("Erreur Google Forms (Vérifie le lien)")
+                                else: st.error("Erreur Google Forms")
                             except: st.error("Erreur Connexion")
                         else: st.warning("Chrono à 0 !")
 
     elif password: st.error("Mot de passe incorrect")
 
 # =========================================================
-# ONGLET 2 : GESTION DES ÉLÈVES
+# ONGLET 2 : GESTION DES ÉLÈVES (Sécurisé maintenant)
 # =========================================================
 with tab_eleves:
-    st.header("👥 Répertoire")
-    df_students = pd.DataFrame(list(STUDENTS_DB.items()), columns=["Nom", "Lien Form"])
-    st.dataframe(df_students, use_container_width=True)
+    st.header("🔐 Zone Administration")
+    
+    # On demande le mot de passe spécifiquement pour cet onglet
+    # J'ai mis une clé unique "pwd_admin" pour ne pas mélanger avec l'autre mot de passe
+    admin_pwd = st.text_input("🔒 Mot de passe Admin :", type="password", key="pwd_admin")
+    
+    if admin_pwd == "admin":
+        st.success("Accès autorisé")
+        st.subheader("👥 Répertoire des Élèves")
+        st.write("Liste des élèves connectés au système :")
+        
+        df_students = pd.DataFrame(list(STUDENTS_DB.items()), columns=["Nom de l'élève", "Lien Formulaire"])
+        st.dataframe(df_students, use_container_width=True)
+        
+    elif admin_pwd:
+        st.error("⛔ Accès refusé.")
+    else:
+        st.info("Veuillez vous identifier pour voir la liste des élèves.")
