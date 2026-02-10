@@ -57,7 +57,7 @@ with tab_intro:
             prenom = st.text_input("Prénom")
             
         freq = st.selectbox(
-            "Fréquence d'entraînement souhaitée", 
+            "Fréquence d'entraînement habituelle", 
             ["2x / semaine", "3x / semaine", "4x / semaine", "5x / semaine", "6x / semaine", "Tous les jours"]
         )
         
@@ -169,3 +169,4 @@ with tab_eleves:
         st.error("⛔ Accès refusé.")
     else:
         st.info("Veuillez vous identifier pour voir la liste des élèves.")
+
