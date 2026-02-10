@@ -62,7 +62,8 @@ st.title("🏋️ Caliperf : Espace Coaching")
 # === CRÉATION DES 3 ONGLETS ===
 tab_intro, tab_analyse, tab_eleves = st.tabs(["👋 Introduction", "🎥 Analyse Coach", "👥 Mes Élèves (Privé)"])
 
-# =========================================================
+
+       # =========================================================
 # ONGLET 1 : INTRODUCTION
 # =========================================================
 with tab_intro:
@@ -85,36 +86,25 @@ with tab_intro:
             if nom and prenom:
                 full_name = f"{prenom} {nom}"
                 
-                # 1. Mise à jour de la mémoire vive
+                # 1. Mise à jour de la mémoire vive (POUR QUE LE NOM APPARAISSE DANS LES LISTES)
                 st.session_state.students_data[full_name] = {
                     "link": LINK_UNIQUE,
                     "freq": freq,
                     "goal": objectif
                 }
                 
-                # 2. SAUVEGARDE DANS LE FICHIER (Mémoire permanente)
+                # 2. SAUVEGARDE DANS LE FICHIER JSON (Mémoire permanente)
                 save_data(st.session_state.students_data)
                 
-                # 3. Envoi Google Sheets
-                data_inscription = {
-                    ENTRY_NOM: full_name,
-                    ENTRY_EXO: "INSCRIPTION", 
-                    ENTRY_TST: "0",          
-                    ENTRY_RPE: ""             
-                }
+                # --- MODIFICATION ICI ---
+                # On a supprimé toute la partie "requests.post" / envoi Google Sheets.
+                # L'élève est enregistré uniquement dans ton logiciel pour l'instant.
                 
-                try:
-                    r = requests.post(LINK_UNIQUE, data=data_inscription)
-                    if r.status_code == 200:
-                        st.success(f"Bienvenue {prenom} ! Inscription validée et sauvegardée.")
-                        st.balloons()
-                    else:
-                        st.error("Erreur technique (Google).")
-                except:
-                    st.error("Problème de connexion.")
+                st.success(f"Dossier créé pour {prenom} ! Tu peux maintenant analyser ses vidéos.")
+                st.balloons()
+                
             else:
                 st.warning("Nom et Prénom obligatoires.")
-
 # =========================================================
 # ONGLET 2 : ANALYSE COACH
 # =========================================================
@@ -255,3 +245,4 @@ with tab_eleves:
         st.error("⛔ Accès refusé.")
     else:
         st.info("Identification requise.")
+
