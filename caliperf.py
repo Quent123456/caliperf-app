@@ -29,7 +29,6 @@ st.markdown("""
 if 'processed_files' not in st.session_state: st.session_state.processed_files = set()
 if 'timers' not in st.session_state: st.session_state.timers = {} 
 
-# NOUVEAU : On stocke maintenant un DICTIONNAIRE complet d'infos pour chaque élève
 if 'students_data' not in st.session_state:
     st.session_state.students_data = {
         "Élève Test": {
@@ -50,7 +49,7 @@ st.title("🏋️ Caliperf : Espace Coaching")
 tab_intro, tab_analyse, tab_eleves = st.tabs(["👋 Introduction", "🎥 Analyse Coach", "👥 Mes Élèves (Privé)"])
 
 # =========================================================
-# ONGLET 1 : INTRODUCTION (INSCRIPTION AVEC DÉTAILS)
+# ONGLET 1 : INTRODUCTION
 # =========================================================
 with tab_intro:
     st.header("Bienvenue dans l'accompagnement ! 🚀")
@@ -72,14 +71,12 @@ with tab_intro:
             if nom and prenom:
                 full_name = f"{prenom} {nom}"
                 
-                # 1. ENREGISTREMENT COMPLET DANS LA MÉMOIRE DU COACH
                 st.session_state.students_data[full_name] = {
                     "link": LINK_UNIQUE,
                     "freq": freq,
                     "goal": objectif
                 }
                 
-                # 2. ENVOI SIMPLE VERS GOOGLE SHEETS (Pour notifier l'inscription)
                 data_inscription = {
                     ENTRY_NOM: full_name,
                     ENTRY_EXO: "INSCRIPTION", 
@@ -100,7 +97,7 @@ with tab_intro:
                 st.warning("Nom et Prénom obligatoires.")
 
 # =========================================================
-# ONGLET 2 : ANALYSE COACH (ADAPTÉ À LA NOUVELLE STRUCTURE)
+# ONGLET 2 : ANALYSE COACH
 # =========================================================
 with tab_analyse:
     st.header("1️⃣ Dépôt Vidéos")
@@ -148,39 +145,40 @@ with tab_analyse:
                 st.write("---")
 
                 with st.form(key=f"f_{real_name}"):
-                    # Liste des noms (clés du dictionnaire)
-                    student_names = list(st.session_state.students_data.keys())
-                    selected_student = st.selectbox("👤 Sélectionner l'élève", student_names)
-                    
-                    # On récupère le lien spécifique dans les infos de l'élève
-                    target_url = st.session_state.students_data[selected_student]["link"]
-                    
-                    exo = st.text_input("Exercice", value=real_name.split('.')[0])
-                    rpe = st.slider("RPE", 1, 10, 7)
-                    
-                    if st.form_submit_button("☁️ ENVOYER"):
-                        if disp_time > 0:
-                            data = {
-                                ENTRY_NOM: selected_student, 
-                                ENTRY_EXO: exo,
-                                ENTRY_TST: str(round(disp_time, 2)).replace('.', ','),
-                                ENTRY_RPE: str(rpe)
-                            }
-                            try:
-                                r = requests.post(target_url, data=data)
-                                if r.status_code == 200:
-                                    st.success(f"Données envoyées pour {selected_student} !")
-                                    st.session_state.processed_files.add(real_name)
-                                    time.sleep(1)
-                                    st.rerun()
-                                else: st.error("Erreur Google Forms")
-                            except: st.error("Erreur Connexion")
-                        else: st.warning("Chrono à 0 !")
+                    # Sécurisation : On vérifie qu'il y a des élèves
+                    student_keys = list(st.session_state.students_data.keys())
+                    if student_keys:
+                        selected_student = st.selectbox("👤 Sélectionner l'élève", student_keys)
+                        target_url = st.session_state.students_data[selected_student]["link"]
+                        
+                        exo = st.text_input("Exercice", value=real_name.split('.')[0])
+                        rpe = st.slider("RPE", 1, 10, 7)
+                        
+                        if st.form_submit_button("☁️ ENVOYER"):
+                            if disp_time > 0:
+                                data = {
+                                    ENTRY_NOM: selected_student, 
+                                    ENTRY_EXO: exo,
+                                    ENTRY_TST: str(round(disp_time, 2)).replace('.', ','),
+                                    ENTRY_RPE: str(rpe)
+                                }
+                                try:
+                                    r = requests.post(target_url, data=data)
+                                    if r.status_code == 200:
+                                        st.success(f"Données envoyées pour {selected_student} !")
+                                        st.session_state.processed_files.add(real_name)
+                                        time.sleep(1)
+                                        st.rerun()
+                                    else: st.error("Erreur Google Forms")
+                                except: st.error("Erreur Connexion")
+                            else: st.warning("Chrono à 0 !")
+                    else:
+                        st.warning("Aucun élève inscrit dans la base.")
 
     elif password: st.error("Mot de passe incorrect")
 
 # =========================================================
-# ONGLET 3 : FICHE ÉLÈVE DÉTAILLÉE (NOUVEAU)
+# ONGLET 3 : GESTION DES ÉLÈVES (AVEC SUPPRESSION)
 # =========================================================
 with tab_eleves:
     st.header("🔐 Gestion Athlètes")
@@ -189,40 +187,31 @@ with tab_eleves:
     
     if admin_pwd == "admin":
         st.success("Accès autorisé")
-        
         st.divider()
         
-        # SÉLECTEUR D'ÉLÈVE
         all_students = list(st.session_state.students_data.keys())
-        choice = st.selectbox("🔍 Rechercher une fiche élève :", all_students)
         
-        if choice:
-            # On récupère les infos de l'élève choisi
-            infos = st.session_state.students_data[choice]
+        if all_students:
+            choice = st.selectbox("🔍 Rechercher une fiche élève :", all_students)
             
-            # AFFICHAGE DE LA CARTE D'IDENTITÉ
-            st.markdown(f"### 👤 Fiche de : {choice}")
-            
-            c1, c2 = st.columns(2)
-            with c1:
-                st.markdown(f"""
-                <div class="metric-card">
-                    <h4>📅 Fréquence</h4>
-                    <p style="font-size: 1.2em; color: #4dabcf;">{infos['freq']}</p>
-                </div>
-                """, unsafe_allow_html=True)
+            if choice:
+                infos = st.session_state.students_data[choice]
                 
-            with c2:
-                st.markdown(f"""
-                <div class="metric-card">
-                    <h4>🎯 Objectif Principal</h4>
-                    <p style="font-size: 1.2em; color: #ffbd45;">{infos['goal']}</p>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            st.info(f"🔗 Lien Formulaire actif : ...{infos['link'][-20:]}")
-
-    elif admin_pwd:
-        st.error("⛔ Accès refusé.")
-    else:
-        st.info("Identification requise.")
+                st.markdown(f"### 👤 Fiche de : {choice}")
+                
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <h4>📅 Fréquence</h4>
+                        <p style="font-size: 1.2em; color: #4dabcf;">{infos['freq']}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                with c2:
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <h4>🎯 Objectif Principal</h4>
+                        <p style="font-size: 1.2em; color: #ffbd45;">{infos['goal']}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
