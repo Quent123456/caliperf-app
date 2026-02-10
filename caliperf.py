@@ -6,15 +6,8 @@ from datetime import datetime
 
 st.set_page_config(page_title="Caliperf - Coach Pro", layout="wide", page_icon="💪")
 
-# --- 1. CONFIGURATION INTELLIGENTE ---
+# --- 1. CONFIGURATION ---
 LINK_UNIQUE = "https://docs.google.com/forms/d/e/1FAIpQLSe-eaoZyDbe2ZTl_NfNKbkeDYKyEdRX_zchoK-Xjef7tGZGIA/formResponse"
-
-STUDENTS_DB = {
-    "Élève Test": LINK_UNIQUE,
-    "Lucas": LINK_UNIQUE,
-    "Sarah": LINK_UNIQUE,
-    "Nouveau": LINK_UNIQUE,
-}
 
 # --- 2. CONFIGURATION DES CHAMPS ---
 ENTRY_NOM = "entry.1847695661"
@@ -35,46 +28,73 @@ st.markdown("""
 if 'processed_files' not in st.session_state: st.session_state.processed_files = set()
 if 'timers' not in st.session_state: st.session_state.timers = {} 
 
+# Initialisation de la liste des élèves
+if 'students_list' not in st.session_state:
+    st.session_state.students_list = {
+        "Élève Test": LINK_UNIQUE,
+        "Lucas": LINK_UNIQUE,
+        "Sarah": LINK_UNIQUE,
+        "Nouveau": LINK_UNIQUE,
+    }
+
 st.title("🏋️ Caliperf : Espace Coaching")
 
-# === CRÉATION DES 3 ONGLETS (INTRODUCTION EN PREMIER) ===
+# === CRÉATION DES 3 ONGLETS ===
 tab_intro, tab_analyse, tab_eleves = st.tabs(["👋 Introduction", "🎥 Analyse Coach", "👥 Mes Élèves (Privé)"])
 
 # =========================================================
-# ONGLET 1 : INTRODUCTION (NOUVEAU)
+# ONGLET 1 : INTRODUCTION (INSCRIPTION)
 # =========================================================
 with tab_intro:
     st.header("Bienvenue dans l'accompagnement ! 🚀")
-    st.write("Merci de remplir cette fiche de renseignements pour initialiser ton suivi.")
+    st.write("Merci de remplir cette fiche pour activer ton dossier.")
     
-    st.info("ℹ️ À remplir uniquement lors de ta première connexion.")
-
     with st.form("form_intro"):
         col1, col2 = st.columns(2)
-        with col1:
-            nom = st.text_input("Nom")
-        with col2:
-            prenom = st.text_input("Prénom")
+        with col1: nom = st.text_input("Nom")
+        with col2: prenom = st.text_input("Prénom")
             
-        freq = st.selectbox(
-            "Fréquence d'entraînement habituelle", 
-            ["2x / semaine", "3x / semaine", "4x / semaine", "5x / semaine", "6x / semaine", "Tous les jours"]
-        )
+        # Ces infos sont demandées mais ne seront pas envoyées dans les colonnes Exo/RPE
+        # pour respecter ta demande de ne pas toucher à ces données.
+        freq = st.selectbox("Fréquence d'entraînement habituelle", 
+            ["2x / semaine", "3x / semaine", "4x / semaine", "5x / semaine", "6x / semaine", "Tous les jours"])
         
-        objectif = st.text_area("Ton objectif principal (ex: Front Lever, Prise de masse...)")
+        objectif = st.text_area("Ton objectif principal")
         
         submitted = st.form_submit_button("✅ Valider mon inscription", type="primary", use_container_width=True)
         
         if submitted:
             if nom and prenom:
-                st.success(f"Bienvenue {prenom} ! Tes informations ont bien été transmises au coach.")
-                st.balloons()
-                st.caption("Tu peux maintenant transmettre tes vidéos via l'onglet 'Analyse Coach' ou attendre le retour de ton coach.")
+                full_name = f"{prenom} {nom}"
+                
+                # 1. Ajout dynamique à la liste locale
+                st.session_state.students_list[full_name] = LINK_UNIQUE
+                
+                # 2. Envoi Google Sheets (RESPECT DES CONSIGNES)
+                # On envoie le NOM. On met juste "INSCRIPTION" dans exercice pour marquer le coup.
+                # On laisse TST et RPE vides ou à 0 pour ne pas fausser les stats.
+                data_inscription = {
+                    ENTRY_NOM: full_name,
+                    ENTRY_EXO: "INSCRIPTION", # Juste pour dire que c'est une ligne d'inscription
+                    ENTRY_TST: "0",           # On ne touche pas (valeur neutre)
+                    ENTRY_RPE: ""             # On ne touche pas (vide)
+                }
+                
+                try:
+                    r = requests.post(LINK_UNIQUE, data=data_inscription)
+                    if r.status_code == 200:
+                        st.success(f"Bienvenue {prenom} ! Inscription validée.")
+                        st.balloons()
+                        st.info("👉 Retrouve ton nom dans l'onglet 'Analyse Coach' !")
+                    else:
+                        st.error("Erreur technique (Google).")
+                except:
+                    st.error("Problème de connexion.")
             else:
-                st.error("Merci de renseigner au moins ton Nom et Prénom.")
+                st.warning("Nom et Prénom obligatoires.")
 
 # =========================================================
-# ONGLET 2 : ANALYSE MULTI-VIDÉOS (ANCIENNEMENT ONGLET 1)
+# ONGLET 2 : ANALYSE COACH (Inchangé)
 # =========================================================
 with tab_analyse:
     st.header("1️⃣ Dépôt Vidéos")
@@ -122,8 +142,10 @@ with tab_analyse:
                 st.write("---")
 
                 with st.form(key=f"f_{real_name}"):
-                    selected_student = st.selectbox("👤 Sélectionner l'élève", list(STUDENTS_DB.keys()))
-                    target_url = STUDENTS_DB[selected_student]
+                    # Liste dynamique mise à jour avec l'inscription
+                    student_names = list(st.session_state.students_list.keys())
+                    selected_student = st.selectbox("👤 Sélectionner l'élève", student_names)
+                    target_url = st.session_state.students_list[selected_student]
                     
                     exo = st.text_input("Exercice", value=real_name.split('.')[0])
                     rpe = st.slider("RPE", 1, 10, 7)
@@ -150,7 +172,7 @@ with tab_analyse:
     elif password: st.error("Mot de passe incorrect")
 
 # =========================================================
-# ONGLET 3 : GESTION DES ÉLÈVES (ANCIENNEMENT ONGLET 2)
+# ONGLET 3 : GESTION DES ÉLÈVES
 # =========================================================
 with tab_eleves:
     st.header("🔐 Zone Administration")
@@ -160,13 +182,11 @@ with tab_eleves:
     if admin_pwd == "admin":
         st.success("Accès autorisé")
         st.subheader("👥 Répertoire des Élèves")
-        st.write("Liste des élèves connectés au système :")
         
-        df_students = pd.DataFrame(list(STUDENTS_DB.items()), columns=["Nom de l'élève", "Lien Formulaire"])
+        df_students = pd.DataFrame(list(st.session_state.students_list.items()), columns=["Nom", "Lien"])
         st.dataframe(df_students, use_container_width=True)
         
     elif admin_pwd:
         st.error("⛔ Accès refusé.")
     else:
-        st.info("Veuillez vous identifier pour voir la liste des élèves.")
-
+        st.info("Identification requise.")
