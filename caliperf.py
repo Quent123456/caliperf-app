@@ -4,19 +4,20 @@ import time
 import requests
 from datetime import datetime
 
-# --- 1. CONFIGURATION DES ÉLÈVES ---
-# ASTUCE DE PRO : Utilise le MÊME lien pour tout le monde !
-# Le code enverra le nom (Sarah, Lucas) et tu pourras trier dans Excel.
-# Cela évite l'erreur "Google Forms" car les questions restent les mêmes.
+st.set_page_config(page_title="Caliperf - Coach Pro", layout="wide", page_icon="💪")
 
+# --- 1. CONFIGURATION INTELLIGENTE ---
+# On utilise le lien UNIQUE qui fonctionne pour éviter l'erreur "Google Forms".
+# Le code enverra le nom de l'élève, ce qui te permettra de filtrer dans Excel.
 LINK_UNIQUE = "https://docs.google.com/forms/d/e/1FAIpQLSe-eaoZyDbe2ZTl_NfNKbkeDYKyEdRX_zchoK-Xjef7tGZGIA/formResponse"
 
 STUDENTS_DB = {
-    "cali-1": LINK_UNIQUE,
-    "cali-2": LINK_UNIQUE,
-    "cali-3": LINK_UNIQUE,
-    "cali-4": LINK_UNIQUE,
+    "Élève Test": LINK_UNIQUE,
+    "Lucas": LINK_UNIQUE,
+    "Sarah": LINK_UNIQUE,
+    "Nouveau": LINK_UNIQUE,
 }
+
 # --- 2. CONFIGURATION DES CHAMPS ---
 ENTRY_NOM = "entry.1847695661"
 ENTRY_EXO = "entry.1595307876"
@@ -36,26 +37,13 @@ st.markdown("""
 if 'processed_files' not in st.session_state: st.session_state.processed_files = set()
 if 'timers' not in st.session_state: st.session_state.timers = {} 
 
-st.title("🏋️ Caliperf : Gestion & Analyse")
+st.title("🏋️ Caliperf : Analyse Coach")
 
-# === CRÉATION DES ONGLETS ===
-tab_accueil, tab_analyse, tab_eleves = st.tabs(["🏠 Calcul Rapide", "🎥 Analyse Coach", "👥 Mes Élèves"])
-
-# =========================================================
-# ONGLET 1 : CALCULATEUR
-# =========================================================
-with tab_accueil:
-    st.header("🧮 Calculateur de Charge")
-    col1, col2, col3 = st.columns(3)
-    with col1: series = st.number_input("Séries", 0, 20, 4)
-    with col2: reps = st.number_input("Répétitions", 0, 100, 10)
-    with col3: poids = st.number_input("Poids (kg)", 0.0, 200.0, 0.0, step=1.0)
-    
-    total = series * reps * (poids if poids > 0 else 1) 
-    if total > 0: st.info(f"📊 Volume Total : **{total}** kg")
+# === CRÉATION DES ONGLETS (PLUS QUE 2 MAINTENANT) ===
+tab_analyse, tab_eleves = st.tabs(["🎥 Analyse Coach", "👥 Mes Élèves"])
 
 # =========================================================
-# ONGLET 2 : ANALYSE MULTI-VIDÉOS
+# ONGLET 1 : ANALYSE MULTI-VIDÉOS (C'est maintenant l'accueil)
 # =========================================================
 with tab_analyse:
     st.header("1️⃣ Dépôt Vidéos")
@@ -129,18 +117,16 @@ with tab_analyse:
                                     st.session_state.processed_files.add(real_name)
                                     time.sleep(1)
                                     st.rerun()
-                                else: st.error("Erreur Google Forms")
+                                else: st.error("Erreur Google Forms (Vérifie le lien)")
                             except: st.error("Erreur Connexion")
                         else: st.warning("Chrono à 0 !")
 
     elif password: st.error("Mot de passe incorrect")
 
 # =========================================================
-# ONGLET 3 : GESTION DES ÉLÈVES
+# ONGLET 2 : GESTION DES ÉLÈVES
 # =========================================================
 with tab_eleves:
     st.header("👥 Répertoire")
     df_students = pd.DataFrame(list(STUDENTS_DB.items()), columns=["Nom", "Lien Form"])
     st.dataframe(df_students, use_container_width=True)
-
-
