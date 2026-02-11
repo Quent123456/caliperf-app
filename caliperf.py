@@ -10,13 +10,15 @@ from datetime import datetime
 st.set_page_config(page_title="Caliperf - Coach Pro", layout="wide", page_icon="💪")
 
 # --- 1. CHARGEMENT SÉCURISÉ DES CONFIGURATIONS ---
-# On utilise st.secrets pour récupérer les données sensibles
 try:
+    # On charge les secrets
     ADMIN_PWD = st.secrets["general"]["admin_password"]
     LINK_UNIQUE = st.secrets["general"]["google_form_url"]
+    DELETE_SCRIPT_URL = st.secrets["general"]["delete_script_url"]
     ENTRIES = st.secrets["google_entries"]
-except FileNotFoundError:
-    st.error("⚠️ Fichier .streamlit/secrets.toml introuvable. Configure tes secrets.")
+except Exception as e:
+    # Si ça plante ici, c'est que le fichier secrets.toml est mal écrit
+    st.error(f"⚠️ Erreur critique de configuration : {e}")
     st.stop()
 
 DB_FILE = "caliperf_db.json"
@@ -213,33 +215,48 @@ with tab_eleves:
     # Vérification du mot de passe pour cet onglet aussi (optionnel mais recommandé)
     pwd_eleves = st.text_input("🔒 Mot de passe accès privé", type="password", key="pwd_eleves")
     
+   # ... (ton code précédent pour l'onglet élèves) ...
+
     if pwd_eleves == ADMIN_PWD:
         if not st.session_state.students_data:
-            st.info("Aucun élève enregistré pour le moment.")
+            st.info("Aucun élève enregistré.")
         else:
-            # On peut organiser en colonnes pour faire des "cartes"
-            cols = st.columns(2) 
+            cols = st.columns(2)
             
+            # On boucle sur les élèves
             for index, (name, info) in enumerate(st.session_state.students_data.items()):
-                # On alterne entre la colonne 0 et 1
                 with cols[index % 2]:
+                    # Affichage de la carte élève
                     st.markdown(f"""
                     <div class="metric-card">
-                        <h3 style='margin-top:0; color:#ff4b4b;'>👤 {name}</h3>
-                        <p><b>📅 Fréquence :</b> {info.get('freq', 'Non définie')}</p>
-                        <p><b>⏳ Expérience :</b> {info.get('exp', 'Non renseignée')}</p>
-                        <p><b>🎯 Objectif :</b> {info.get('goal', 'Aucun objectif listé')}</p>
-                        <hr style='border-color:#4b4b4b;'>
-                        <p style='font-size:0.8em; color:gray;'>Lien Google Forms : {info.get('link')[:30]}...</p>
+                        <h3 style='color:#ff4b4b;'>👤 {name}</h3>
+                        <p>Objectif : {info.get('goal', 'N/A')}</p>
                     </div>
                     """, unsafe_allow_html=True)
-                    
-                    # Optionnel : bouton pour supprimer un élève
-                    if st.button(f"Supprimer {name}", key=f"del_{name}"):
-                        del st.session_state.students_data[name]
-                        save_data(st.session_state.students_data)
-                        st.rerun()
-    else:
-        st.warning("Veuillez entrer le mot de passe administrateur pour consulter les fiches élèves.")
-       
 
+                    # --- LOGIQUE DE SUPPRESSION PRO ---
+                    if st.button(f"🗑️ Supprimer {name}", key=f"del_{name}"):
+                        with st.spinner("Connexion au Google Sheet..."):
+                            try:
+                                # 1. Appel au script Google Apps Script
+                                response = requests.get(DELETE_SCRIPT_URL, params={"name": name})
+                                
+                                # 2. Vérification de la réponse
+                                if response.status_code == 200 and "Success" in response.text:
+                                    # Suppression locale (JSON)
+                                    del st.session_state.students_data[name]
+                                    save_data(st.session_state.students_data)
+                                    st.success(f"✅ {name} supprimé définitivement !")
+                                    time.sleep(1)
+                                    st.rerun()
+                                elif "Not Found" in response.text:
+                                    st.warning(f"L'élève a été supprimé de l'appli, mais n'a pas été trouvé dans le Google Sheet (Nom exact ?)")
+                                    # On supprime quand même en local pour nettoyer
+                                    del st.session_state.students_data[name]
+                                    save_data(st.session_state.students_data)
+                                    time.sleep(2)
+                                    st.rerun()
+                                else:
+                                    st.error(f"Erreur du script Google : {response.text}")
+                            except Exception as e:
+                                st.error(f"Erreur de connexion : {e}")
