@@ -75,28 +75,37 @@ tab_intro, tab_analyse, tab_eleves = st.tabs(["👋 Introduction", "🎥 Analyse
 # =========================================================
 with tab_intro:
     st.header("Bienvenue dans l'accompagnement ! 🚀")
+    
+    # Tout ce qui est dans le formulaire doit être aligné
     with st.form("form_intro"):
         col1, col2 = st.columns(2)
-        with col1: nom = st.text_input("Nom")
-        with col2: prenom = st.text_input("Prénom")
+        with col1: 
+            nom = st.text_input("Nom")
+        with col2: 
+            prenom = st.text_input("Prénom")
         
         col3, col4 = st.columns(2)
-        with col3: freq = st.selectbox("Fréquence", ["2x / semaine", "3x / semaine", "4x / semaine", "5x / semaine", "Tous les jours"])
-        with col4: experience = st.text_input("Temps de pratique (ex: 2 ans, débutant...)", placeholder="Depuis combien de temps pratiques-tu ?")
+        with col3: 
+            freq = st.selectbox("Fréquence", ["2x / semaine", "3x / semaine", "4x / semaine", "5x / semaine", "Tous les jours"])
+        with col4: 
+            experience = st.text_input("Temps de pratique", placeholder="Ex: 2 ans, Débutant...")
         
         objectif = st.text_area("Ton objectif principal")
         
-       if st.form_submit_button("✅ Valider mon inscription", type="primary", use_container_width=True):
+        # Le bouton doit être au même niveau d'alignement que les colonnes
+        if st.form_submit_button("✅ Valider mon inscription", type="primary", use_container_width=True):
             if nom and prenom:
                 full_name = f"{prenom} {nom}"
-                # On ajoute 'exp' dans le dictionnaire de l'élève
+                
+                # Enregistrement dans la session
                 st.session_state.students_data[full_name] = {
                     "link": LINK_UNIQUE, 
                     "freq": freq, 
                     "goal": objectif,
                     "exp": experience
                 }
-                # CORRECTION ICI : on sauvegarde bien 'students_data'
+                
+                # Sauvegarde dans le fichier JSON (La correction est incluse ici)
                 save_data(st.session_state.students_data)
                 
                 st.success(f"Dossier créé pour {prenom} !")
@@ -262,4 +271,5 @@ with tab_eleves:
                                     st.error(f"Erreur du script Google : {response.text}")
                             except Exception as e:
                                 st.error(f"Erreur de connexion : {e}")
+
 
