@@ -217,59 +217,57 @@ with tab_analyse:
                                 st.warning("Le chrono est à 0 !")
                     else:
                         st.warning("Aucun élève inscrit. Va dans l'onglet Introduction.")
-        # =========================================================
+     # =========================================================
 # ONGLET 3 : MES ÉLÈVES (PRIVÉ)
 # =========================================================
 with tab_eleves:
     st.header("👥 Gestion des Athlètes")
     
-    # Vérification du mot de passe pour cet onglet aussi (optionnel mais recommandé)
+    # Champ mot de passe pour sécuriser l'accès
     pwd_eleves = st.text_input("🔒 Mot de passe accès privé", type="password", key="pwd_eleves")
     
-   # ... (ton code précédent pour l'onglet élèves) ...
-
     if pwd_eleves == ADMIN_PWD:
         if not st.session_state.students_data:
-            st.info("Aucun élève enregistré.")
+            st.info("Aucun élève enregistré pour le moment.")
         else:
+            # On organise l'affichage sur 2 colonnes
             cols = st.columns(2)
             
-            # On boucle sur les élèves
             for index, (name, info) in enumerate(st.session_state.students_data.items()):
+                # On alterne les colonnes gauche/droite
                 with cols[index % 2]:
-                    # Affichage de la carte élève
+                    
+                    # --- C'EST ICI QUE J'AI RAJOUTÉ LES INFOS MANQUANTES ---
                     st.markdown(f"""
                     <div class="metric-card">
-                        <h3 style='color:#ff4b4b;'>👤 {name}</h3>
-                        <p>Objectif : {info.get('goal', 'N/A')}</p>
+                        <h3 style='margin-top:0; color:#ff4b4b;'>👤 {name}</h3>
+                        <p><b>📅 Fréquence :</b> {info.get('freq', 'Non définie')}</p>
+                        <p><b>⏳ Expérience :</b> {info.get('exp', 'Non renseignée')}</p>
+                        <p><b>🎯 Objectif :</b> {info.get('goal', 'Aucun objectif')}</p>
                     </div>
                     """, unsafe_allow_html=True)
 
-                    # --- LOGIQUE DE SUPPRESSION PRO ---
+                    # --- LOGIQUE DE SUPPRESSION (Ton code qui marche) ---
                     if st.button(f"🗑️ Supprimer {name}", key=f"del_{name}"):
                         with st.spinner("Connexion au Google Sheet..."):
                             try:
-                                # 1. Appel au script Google Apps Script
                                 response = requests.get(DELETE_SCRIPT_URL, params={"name": name})
                                 
-                                # 2. Vérification de la réponse
                                 if response.status_code == 200 and "Success" in response.text:
-                                    # Suppression locale (JSON)
                                     del st.session_state.students_data[name]
                                     save_data(st.session_state.students_data)
                                     st.success(f"✅ {name} supprimé définitivement !")
                                     time.sleep(1)
                                     st.rerun()
                                 elif "Not Found" in response.text:
-                                    st.warning(f"L'élève a été supprimé de l'appli, mais n'a pas été trouvé dans le Google Sheet (Nom exact ?)")
-                                    # On supprime quand même en local pour nettoyer
+                                    st.warning(f"Nettoyage local : {name} supprimé de l'appli (introuvable dans le Sheet).")
                                     del st.session_state.students_data[name]
                                     save_data(st.session_state.students_data)
-                                    time.sleep(2)
+                                    time.sleep(1)
                                     st.rerun()
                                 else:
-                                    st.error(f"Erreur du script Google : {response.text}")
+                                    st.error(f"Erreur du script : {response.text}")
                             except Exception as e:
                                 st.error(f"Erreur de connexion : {e}")
-
-
+    else:
+        st.warning("Veuillez entrer le mot de passe administrateur pour consulter les fiches.")
