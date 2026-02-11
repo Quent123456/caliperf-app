@@ -150,79 +150,49 @@ with tab_analyse:
                 # Formulaire d'envoi
                 with st.form(key=f"f_{real_name}"):
                     student_keys = list(st.session_state.students_data.keys())
+                    
                     if student_keys:
                         selected_student = st.selectbox("👤 Athlète", student_keys)
                         exo = st.text_input("Exercice", value=real_name.split('.')[0])
                         rpe = st.slider("RPE", 1, 10, 7)
                         
                         if st.form_submit_button("☁️ ENVOYER DONNÉES"):
-    # On recalcule le temps final exact
-    final_time = timer['acc']
-    if timer['run']: final_time += time.time() - timer['start']
-    
-    if final_time > 0:
-        # --- CALCUL DE LA CHARGE ---
-        # Charge = TST (secondes) * RPE
-        charge_calc = final_time * rpe
-        
-        data = {
-            ENTRIES['nom']: selected_student, 
-            ENTRIES['exo']: exo,
-            # TST formaté (remplacement du point par virgule pour Excel FR)
-            ENTRIES['tst']: str(round(final_time, 2)).replace('.', ','),
-            ENTRIES['rpe']: str(rpe),
-            
-            # --- AJOUT DE LA CHARGE ICI ---
-            # On arrondit à 2 chiffres et on formate pour le Sheets français
-            ENTRIES['charge']: str(round(charge_calc, 2)).replace('.', ',')
-        }
-        
-        try:
-            target = st.session_state.students_data[selected_student]["link"]
-            # ... le reste de ton code d'envoi ...
+                            # 1. On recalcule le temps final exact au moment du clic
+                            final_time = timer['acc']
+                            if timer['run']: 
+                                final_time += time.time() - timer['start']
+                            
+                            if final_time > 0:
+                                # 2. CALCUL DE LA CHARGE
+                                charge_calc = final_time * rpe
+                                
+                                # 3. CRÉATION DU PAQUET DE DONNÉES
+                                data = {
+                                    ENTRIES['nom']: selected_student, 
+                                    ENTRIES['exo']: exo,
+                                    ENTRIES['tst']: str(round(final_time, 2)).replace('.', ','),
+                                    ENTRIES['rpe']: str(rpe),
+                                    # C'est ici qu'on ajoute la charge calculée
+                                    ENTRIES['charge']: str(round(charge_calc, 2)).replace('.', ',')
+                                }
+                                
+                                try:
+                                    # 4. ENVOI
+                                    target = st.session_state.students_data[selected_student]["link"]
                                     r = requests.post(target, data=data)
+                                    
                                     if r.status_code == 200:
-                                        st.success("Données envoyées !")
+                                        st.success(f"✅ Envoyé ! (Charge: {charge_calc:.1f})")
                                         st.session_state.processed_files.add(real_name)
-                                        time.sleep(0.5)
+                                        time.sleep(1)
                                         st.rerun()
-                                    else: st.error("Erreur Google Forms")
-                                except Exception as e: st.error(f"Erreur envoi: {e}")
-                            else: st.warning("Chrono à 0 !")
+                                    else: 
+                                        st.error("Erreur Google Forms")
+                                except Exception as e: 
+                                    st.error(f"Erreur technique : {e}")
+                            else: 
+                                st.warning("Le chrono est à 0 !")
                     else:
-                        st.warning("Aucun élève inscrit.")
-
-                # BOUCLE VISUELLE (Tick) : Uniquement si le timer tourne
-                # Cela permet au compteur de défiler visuellement sans recharger toute la page
-                if timer['run']:
-                    time.sleep(0.1) # Petit délai pour ne pas surcharger le CPU
-                    st.rerun()      # Force le rafraichissement pour l'animation
-
-    elif password:
-        st.error("Mot de passe incorrect")
-
-# =========================================================
-# ONGLET 3 : GESTION
-# =========================================================
-with tab_eleves:
-    st.header("🔐 Gestion Athlètes")
-    admin_pwd_input = st.text_input("Mot de passe Admin", type="password", key="pwd_admin_gestion")
-    
-    if admin_pwd_input == ADMIN_PWD:
-        all_students = list(st.session_state.students_data.keys())
-        if all_students:
-            choice = st.selectbox("🔍 Fiche élève :", all_students)
-            infos = st.session_state.students_data[choice]
-            
-            st.markdown(f"### 👤 {choice}")
-            c1, c2 = st.columns(2)
-            c1.info(f"Freq: {infos['freq']}")
-            c2.warning(f"Goal: {infos['goal']}")
-            
-            if st.button("❌ Supprimer cet élève"):
-                del st.session_state.students_data[choice]
-                save_data(st.session_state.students_data)
-                st.rerun()
-        else:
-            st.info("Base de données vide.")
-
+                        st.warning("Aucun élève inscrit. Va dans l'onglet Introduction.")
+        
+       
