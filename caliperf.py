@@ -86,7 +86,7 @@ with tab_intro:
         
         objectif = st.text_area("Ton objectif principal")
         
-        if st.form_submit_button("✅ Valider mon inscription", type="primary", use_container_width=True):
+       if st.form_submit_button("✅ Valider mon inscription", type="primary", use_container_width=True):
             if nom and prenom:
                 full_name = f"{prenom} {nom}"
                 # On ajoute 'exp' dans le dictionnaire de l'élève
@@ -96,7 +96,9 @@ with tab_intro:
                     "goal": objectif,
                     "exp": experience
                 }
-                save_data(st.session_state.students_state)
+                # CORRECTION ICI : on sauvegarde bien 'students_data'
+                save_data(st.session_state.students_data)
+                
                 st.success(f"Dossier créé pour {prenom} !")
                 st.balloons()
             else:
@@ -260,3 +262,4 @@ with tab_eleves:
                                     st.error(f"Erreur du script Google : {response.text}")
                             except Exception as e:
                                 st.error(f"Erreur de connexion : {e}")
+
