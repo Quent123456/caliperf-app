@@ -35,7 +35,6 @@ def save_data(data):
         json.dump(data, f)
 
 # --- 3. GESTION DU CHRONO (CALLBACKS) ---
-# Ces fonctions s'exécutent AVANT le rechargement de la page pour garantir la précision
 def toggle_timer(video_key):
     timer = st.session_state.timers[video_key]
     if timer['run']:
@@ -105,7 +104,7 @@ with tab_intro:
                     "exp": experience
                 }
                 
-                # Sauvegarde dans le fichier JSON (La correction est incluse ici)
+                # Sauvegarde dans le fichier JSON
                 save_data(st.session_state.students_data)
                 
                 st.success(f"Dossier créé pour {prenom} !")
@@ -200,24 +199,25 @@ with tab_analyse:
                                 }
                                 
                                 try:
-                            # 4. ENVOI
+                                    # 4. ENVOI
                                     target = LINK_UNIQUE
                                     r = requests.post(target, data=data)
-                            
-                            if r.status_code == 200:
-                                st.success(f"✅ Envoyé ! (Charge: {charge_calc:.1f})")
-                                st.session_state.processed_files.add(real_name)
-                                time.sleep(1)
-                                st.rerun()
-                            else: 
-                                st.error("Erreur Google Forms")
-                        except Exception as e: 
-                            st.error(f"Erreur technique : {e}")
+                                    
+                                    if r.status_code == 200:
+                                        st.success(f"✅ Envoyé ! (Charge: {charge_calc:.1f})")
+                                        st.session_state.processed_files.add(real_name)
+                                        time.sleep(1)
+                                        st.rerun()
+                                    else: 
+                                        st.error("Erreur Google Forms")
+                                except Exception as e: 
+                                    st.error(f"Erreur technique : {e}")
                             else: 
                                 st.warning("Le chrono est à 0 !")
                     else:
                         st.warning("Aucun élève inscrit. Va dans l'onglet Introduction.")
-     # =========================================================
+
+# =========================================================
 # ONGLET 3 : MES ÉLÈVES (PRIVÉ)
 # =========================================================
 with tab_eleves:
@@ -237,7 +237,6 @@ with tab_eleves:
                 # On alterne les colonnes gauche/droite
                 with cols[index % 2]:
                     
-                    # --- C'EST ICI QUE J'AI RAJOUTÉ LES INFOS MANQUANTES ---
                     st.markdown(f"""
                     <div class="metric-card">
                         <h3 style='margin-top:0; color:#ff4b4b;'>👤 {name}</h3>
@@ -247,7 +246,6 @@ with tab_eleves:
                     </div>
                     """, unsafe_allow_html=True)
 
-                    # --- LOGIQUE DE SUPPRESSION (Ton code qui marche) ---
                     if st.button(f"🗑️ Supprimer {name}", key=f"del_{name}"):
                         with st.spinner("Connexion au Google Sheet..."):
                             try:
@@ -271,9 +269,3 @@ with tab_eleves:
                                 st.error(f"Erreur de connexion : {e}")
     else:
         st.warning("Veuillez entrer le mot de passe administrateur pour consulter les fiches.")
-
-
-
-
-
-
