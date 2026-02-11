@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 import time
 import requests
 import json
@@ -346,6 +347,7 @@ with tab_eleves:
                                 st.error(f"Impossible de contacter Google Sheets : {e}")
     else:
         st.warning("Veuillez entrer le mot de passe administrateur pour consulter les fiches.")
+
 
 
 
