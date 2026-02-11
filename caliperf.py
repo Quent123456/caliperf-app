@@ -127,3 +127,168 @@ with tab_analyse:
         password = st.text_input("🔒 Mot de passe Coach", type="password", key="pwd_analyse")
 
     st.divider()
+
+    if password == ADMIN_PWD:
+        if not uploaded_files:
+            st.info("⚠️ En attente de fichiers...")
+        else:
+            files_map = {f.name: f for f in uploaded_files}
+            options = [("✅ " if name in st.session_state.processed_files else "⏳ ") + name for name in files_map.keys()]
+            selected_option = st.selectbox("Vidéo en cours :", options)
+            real_name = selected_option.replace("✅ ", "").replace("⏳ ", "")
+            
+            if real_name not in st.session_state.timers:
+                st.session_state.timers[real_name] = {'start': 0, 'acc': 0.0, 'run': False}
+            
+            timer = st.session_state.timers[real_name]
+
+            c_vid, c_tools = st.columns([1.5, 1])
+            
+            with c_vid:
+                st.video(files_map[real_name])
+            
+            with c_tools:
+                st.subheader("⏱️ Analyse TST")
+                
+                time_display = st.empty()
+                current_time = timer['acc']
+                if timer['run']:
+                    current_time += time.time() - timer['start']
+
+                time_display.markdown(f'<div class="big-time">{current_time:.2f} s</div>', unsafe_allow_html=True)
+
+                b1, b2 = st.columns(2)
+                with b1:
+                    btn_label = "⏸️ PAUSE" if timer['run'] else "▶️ START"
+                    st.button(btn_label, key=f"btn_{real_name}", on_click=toggle_timer, args=(real_name,), use_container_width=True)
+                with b2:
+                    st.button("🗑️ RAZ", key=f"rst_{real_name}", on_click=reset_timer, args=(real_name,), use_container_width=True)
+
+                st.write("---")
+
+                with st.form(key=f"f_{real_name}"):
+                    student_keys = list(st.session_state.students_data.keys())
+                    
+                    if student_keys:
+                        selected_student = st.selectbox("👤 Athlète", student_keys)
+                        exo = st.text_input("Exercice", value=real_name.split('.')[0])
+                        rpe = st.slider("RPE", 1, 10, 7)
+                        
+                        if st.form_submit_button("☁️ ENVOYER DONNÉES"):
+                            final_time = timer['acc']
+                            if timer['run']: 
+                                final_time += time.time() - timer['start']
+                            
+                            if final_time > 0:
+                                charge_calc = final_time * rpe
+                                data = {
+                                    ENTRIES['nom']: selected_student, 
+                                    ENTRIES['exo']: exo,
+                                    ENTRIES['tst']: str(round(final_time, 2)).replace('.', ','),
+                                    ENTRIES['rpe']: str(rpe),
+                                    ENTRIES['charge']: str(round(charge_calc, 2)).replace('.', ',')
+                                }
+                                
+                                try:
+                                    target = LINK_UNIQUE
+                                    r = requests.post(target, data=data)
+                                    
+                                    if r.status_code == 200:
+                                        st.success(f"✅ Envoyé ! (Charge: {charge_calc:.1f})")
+                                        st.session_state.processed_files.add(real_name)
+                                        time.sleep(1)
+                                        st.rerun()
+                                    else: 
+                                        st.error("Erreur Google Forms")
+                                except Exception as e: 
+                                    st.error(f"Erreur technique : {e}")
+                            else: 
+                                st.warning("Le chrono est à 0 !")
+                    else:
+                        st.warning("Aucun élève inscrit. Va dans l'onglet Introduction.")
+                        st.divider()
+
+# =========================================================
+# ONGLET 3 : MES ÉLÈVES (PRIVÉ)
+# =========================================================
+with tab_eleves:
+    st.header("👥 Gestion et Progression des Athlètes")
+    
+    # ⚠️ ICI : Remplace par ton lien CSV si tu ne l'as pas mis dans secrets.toml
+    # Exemple : SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/..../pub?output=csv"
+    SHEET_CSV_URL = CSV_URL_SECRET 
+    
+    pwd_eleves = st.text_input("🔒 Mot de passe accès privé", type="password", key="pwd_eleves")
+    
+    if pwd_eleves == ADMIN_PWD:
+        # 1. On charge les données d'entraînement UNE SEULE FOIS pour tout le monde
+        if SHEET_CSV_URL:
+            df_history = fetch_training_data(SHEET_CSV_URL)
+            
+            # --- NETTOYAGE DES DONNÉES ---
+            if not df_history.empty and 'Charge' in df_history.columns:
+                # On remplace les virgules par des points et on convertit en nombres
+                df_history['Charge'] = df_history['Charge'].astype(str).str.replace(',', '.').apply(pd.to_numeric, errors='coerce')
+                # On convertit le Timestamp en date
+                df_history['Timestamp'] = pd.to_datetime(df_history['Timestamp'], errors='coerce')
+        else:
+            df_history = pd.DataFrame()
+            st.warning("⚠️ URL du CSV non configurée (dans secrets ou dans le code).")
+
+        if not st.session_state.students_data:
+            st.info("Aucun élève enregistré pour le moment.")
+        else:
+            cols = st.columns(2)
+            
+            for index, (name, info) in enumerate(st.session_state.students_data.items()):
+                with cols[index % 2]:
+                    
+                    # --- CARTE ÉLÈVE ---
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <h3 style='margin-top:0; color:#ff4b4b;'>👤 {name}</h3>
+                        <p><b>📅 Fréquence :</b> {info.get('freq', 'Non définie')}</p>
+                        <p><b>⏳ Expérience :</b> {info.get('exp', 'Non renseignée')}</p>
+                        <p><b>🎯 Objectif :</b> {info.get('goal', 'Aucun objectif')}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    # --- ZONE GRAPHIQUE ---
+                    with st.expander(f"📈 Voir la progression de {name}"):
+                        if not df_history.empty:
+                            student_df = df_history[df_history['Nom'] == name].copy()
+                            
+                            if not student_df.empty:
+                                liste_exos = student_df['Exercice'].unique()
+                                
+                                if len(liste_exos) > 0:
+                                    choix_exo = st.selectbox("Choisir l'exercice :", liste_exos, key=f"sel_{name}")
+                                    data_to_plot = student_df[student_df['Exercice'] == choix_exo].sort_values('Timestamp')
+                                    
+                                    fig = px.line(data_to_plot, x='Timestamp', y='Charge', markers=True,
+                                                  title=f"Charge : {choix_exo}")
+                                    st.plotly_chart(fig, use_container_width=True)
+                                else:
+                                    st.info("Données trouvées, mais pas d'exercice identifié.")
+                            else:
+                                st.info("Pas encore de données d'entraînement enregistrées.")
+                        else:
+                            st.info("Impossible de charger l'historique global (Vérifie le lien CSV).")
+
+                    # --- BOUTON SUPPRESSION ---
+                    if st.button(f"🗑️ Supprimer {name}", key=f"del_{name}"):
+                        with st.spinner(f"Suppression de {name} en cours..."):
+                            try:
+                                response = requests.get(DELETE_SCRIPT_URL, params={"name": name})
+                                if response.status_code == 200 and "Succès" in response.text:
+                                    del st.session_state.students_data[name]
+                                    save_data(st.session_state.students_data)
+                                    st.success(f"✅ {name} supprimé !")
+                                    time.sleep(1)
+                                    st.rerun()
+                                else:
+                                    st.error(f"Erreur du script : {response.text}")
+                            except Exception as e:
+                                st.error(f"Impossible de contacter Google Sheets : {e}")
+    else:
+        st.warning("Veuillez entrer le mot de passe administrateur pour consulter les fiches.")
