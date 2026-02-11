@@ -257,12 +257,29 @@ if not df_history.empty:
 # ONGLET 3 : MES ÉLÈVES (PRIVÉ)
 # =========================================================
 with tab_eleves:
-    st.header("👥 Gestion des Athlètes")
+    st.header("👥 Gestion et Progression des Athlètes")
     
-    # Champ mot de passe pour sécuriser l'accès
+    # URL CSV DE TON SHEET (Assure-toi de mettre la vraie URL ici ou dans secrets)
+    # Exemple: "https://docs.google.com/spreadsheets/d/e/2PACX-..../pub?output=csv"
+    SHEET_CSV_URL = st.secrets["general"].get("csv_url", "") # Ou colle ton lien en dur ici si tu n'as pas mis dans secrets
+    
     pwd_eleves = st.text_input("🔒 Mot de passe accès privé", type="password", key="pwd_eleves")
     
     if pwd_eleves == ADMIN_PWD:
+        # 1. On charge les données d'entraînement UNE SEULE FOIS pour tout le monde
+        if SHEET_CSV_URL:
+            df_history = fetch_training_data(SHEET_CSV_URL)
+            
+            # --- NETTOYAGE DES DONNÉES (Crucial pour les virgules françaises) ---
+            if not df_history.empty and 'Charge' in df_history.columns:
+                # On remplace les virgules par des points et on convertit en nombres
+                df_history['Charge'] = df_history['Charge'].astype(str).str.replace(',', '.').apply(pd.to_numeric, errors='coerce')
+                # On convertit le Timestamp en date
+                df_history['Timestamp'] = pd.to_datetime(df_history['Timestamp'], errors='coerce')
+        else:
+            df_history = pd.DataFrame()
+            st.warning("⚠️ URL du CSV manquante dans le code.")
+
         if not st.session_state.students_data:
             st.info("Aucun élève enregistré pour le moment.")
         else:
@@ -273,6 +290,7 @@ with tab_eleves:
                 # On alterne les colonnes gauche/droite
                 with cols[index % 2]:
                     
+                    # --- CARTE ÉLÈVE ---
                     st.markdown(f"""
                     <div class="metric-card">
                         <h3 style='margin-top:0; color:#ff4b4b;'>👤 {name}</h3>
@@ -282,30 +300,52 @@ with tab_eleves:
                     </div>
                     """, unsafe_allow_html=True)
 
+                    # --- ZONE GRAPHIQUE (Dans un expander pour ne pas surcharger) ---
+                    with st.expander(f"📈 Voir la progression de {name}"):
+                        if not df_history.empty:
+                            # Filtrer les données pour CET élève
+                            student_df = df_history[df_history['Nom'] == name].copy()
+                            
+                            if not student_df.empty:
+                                # Lister les exercices pratiqués par l'élève
+                                liste_exos = student_df['Exercice'].unique()
+                                
+                                if len(liste_exos) > 0:
+                                    # Sélecteur d'exercice spécifique à cet élève
+                                    # La clé (key) doit être unique, donc on utilise le nom de l'élève
+                                    choix_exo = st.selectbox("Choisir l'exercice :", liste_exos, key=f"sel_{name}")
+                                    
+                                    # Filtrer par exercice
+                                    data_to_plot = student_df[student_df['Exercice'] == choix_exo].sort_values('Timestamp')
+                                    
+                                    # Création du Graphique
+                                    fig = px.line(data_to_plot, x='Timestamp', y='Charge', markers=True,
+                                                  title=f"Charge : {choix_exo}")
+                                    st.plotly_chart(fig, use_container_width=True)
+                                else:
+                                    st.info("Données trouvées, mais pas d'exercice identifié.")
+                            else:
+                                st.info("Pas encore de données d'entraînement enregistrées.")
+                        else:
+                            st.info("Impossible de charger l'historique global.")
+
+                    # --- BOUTON SUPPRESSION ---
                     if st.button(f"🗑️ Supprimer {name}", key=f"del_{name}"):
                         with st.spinner(f"Suppression de {name} en cours..."):
                             try:
-                                # 1. On appelle le robot Google Script (le lien que tu as mis dans secrets.toml)
                                 response = requests.get(DELETE_SCRIPT_URL, params={"name": name})
-                                
-                                # 2. On vérifie si le robot a bien fait son travail
                                 if response.status_code == 200 and "Succès" in response.text:
-                                    # C'est bon côté Google, on supprime aussi de l'application
                                     del st.session_state.students_data[name]
                                     save_data(st.session_state.students_data)
-                                    
-                                    st.success(f"✅ {name} a été effacé du fichier et de l'app !")
+                                    st.success(f"✅ {name} supprimé !")
                                     time.sleep(1)
                                     st.rerun()
-                                    
                                 else:
-                                    # Le robot a répondu, mais avec une erreur
                                     st.error(f"Erreur du script : {response.text}")
-                                    
                             except Exception as e:
-                                # Le robot ne répond pas du tout (mauvais lien, pas de connexion...)
                                 st.error(f"Impossible de contacter Google Sheets : {e}")
     else:
         st.warning("Veuillez entrer le mot de passe administrateur pour consulter les fiches.")
+
 
 
