@@ -77,14 +77,24 @@ with tab_intro:
         col1, col2 = st.columns(2)
         with col1: nom = st.text_input("Nom")
         with col2: prenom = st.text_input("Prénom")
-        freq = st.selectbox("Fréquence", ["2x / semaine", "3x / semaine", "4x / semaine", "5x / semaine", "Tous les jours"])
+        
+        col3, col4 = st.columns(2)
+        with col3: freq = st.selectbox("Fréquence", ["2x / semaine", "3x / semaine", "4x / semaine", "5x / semaine", "Tous les jours"])
+        with col4: experience = st.text_input("Temps de pratique (ex: 2 ans, débutant...)", placeholder="Depuis combien de temps pratiques-tu ?")
+        
         objectif = st.text_area("Ton objectif principal")
         
         if st.form_submit_button("✅ Valider mon inscription", type="primary", use_container_width=True):
             if nom and prenom:
                 full_name = f"{prenom} {nom}"
-                st.session_state.students_data[full_name] = {"link": LINK_UNIQUE, "freq": freq, "goal": objectif}
-                save_data(st.session_state.students_data)
+                # On ajoute 'exp' dans le dictionnaire de l'élève
+                st.session_state.students_data[full_name] = {
+                    "link": LINK_UNIQUE, 
+                    "freq": freq, 
+                    "goal": objectif,
+                    "exp": experience
+                }
+                save_data(st.session_state.students_state)
                 st.success(f"Dossier créé pour {prenom} !")
                 st.balloons()
             else:
@@ -194,5 +204,42 @@ with tab_analyse:
                                 st.warning("Le chrono est à 0 !")
                     else:
                         st.warning("Aucun élève inscrit. Va dans l'onglet Introduction.")
-        
+        # =========================================================
+# ONGLET 3 : MES ÉLÈVES (PRIVÉ)
+# =========================================================
+with tab_eleves:
+    st.header("👥 Gestion des Athlètes")
+    
+    # Vérification du mot de passe pour cet onglet aussi (optionnel mais recommandé)
+    pwd_eleves = st.text_input("🔒 Mot de passe accès privé", type="password", key="pwd_eleves")
+    
+    if pwd_eleves == ADMIN_PWD:
+        if not st.session_state.students_data:
+            st.info("Aucun élève enregistré pour le moment.")
+        else:
+            # On peut organiser en colonnes pour faire des "cartes"
+            cols = st.columns(2) 
+            
+            for index, (name, info) in enumerate(st.session_state.students_data.items()):
+                # On alterne entre la colonne 0 et 1
+                with cols[index % 2]:
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <h3 style='margin-top:0; color:#ff4b4b;'>👤 {name}</h3>
+                        <p><b>📅 Fréquence :</b> {info.get('freq', 'Non définie')}</p>
+                        <p><b>⏳ Expérience :</b> {info.get('exp', 'Non renseignée')}</p>
+                        <p><b>🎯 Objectif :</b> {info.get('goal', 'Aucun objectif listé')}</p>
+                        <hr style='border-color:#4b4b4b;'>
+                        <p style='font-size:0.8em; color:gray;'>Lien Google Forms : {info.get('link')[:30]}...</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Optionnel : bouton pour supprimer un élève
+                    if st.button(f"Supprimer {name}", key=f"del_{name}"):
+                        del st.session_state.students_data[name]
+                        save_data(st.session_state.students_data)
+                        st.rerun()
+    else:
+        st.warning("Veuillez entrer le mot de passe administrateur pour consulter les fiches élèves.")
        
+
