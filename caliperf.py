@@ -156,19 +156,30 @@ with tab_analyse:
                         rpe = st.slider("RPE", 1, 10, 7)
                         
                         if st.form_submit_button("☁️ ENVOYER DONNÉES"):
-                            # On recalcule le temps final exact au moment du clic
-                            final_time = timer['acc']
-                            if timer['run']: final_time += time.time() - timer['start']
-                            
-                            if final_time > 0:
-                                data = {
-                                    ENTRIES['nom']: selected_student, 
-                                    ENTRIES['exo']: exo,
-                                    ENTRIES['tst']: str(round(final_time, 2)).replace('.', ','),
-                                    ENTRIES['rpe']: str(rpe)
-                                }
-                                try:
-                                    target = st.session_state.students_data[selected_student]["link"]
+    # On recalcule le temps final exact
+    final_time = timer['acc']
+    if timer['run']: final_time += time.time() - timer['start']
+    
+    if final_time > 0:
+        # --- CALCUL DE LA CHARGE ---
+        # Charge = TST (secondes) * RPE
+        charge_calc = final_time * rpe
+        
+        data = {
+            ENTRIES['nom']: selected_student, 
+            ENTRIES['exo']: exo,
+            # TST formaté (remplacement du point par virgule pour Excel FR)
+            ENTRIES['tst']: str(round(final_time, 2)).replace('.', ','),
+            ENTRIES['rpe']: str(rpe),
+            
+            # --- AJOUT DE LA CHARGE ICI ---
+            # On arrondit à 2 chiffres et on formate pour le Sheets français
+            ENTRIES['charge']: str(round(charge_calc, 2)).replace('.', ',')
+        }
+        
+        try:
+            target = st.session_state.students_data[selected_student]["link"]
+            # ... le reste de ton code d'envoi ...
                                     r = requests.post(target, data=data)
                                     if r.status_code == 200:
                                         st.success("Données envoyées !")
@@ -214,3 +225,4 @@ with tab_eleves:
                 st.rerun()
         else:
             st.info("Base de données vide.")
+
