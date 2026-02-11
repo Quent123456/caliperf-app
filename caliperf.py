@@ -201,7 +201,7 @@ with tab_analyse:
                                 
                                 try:
                                     # 4. ENVOI
-                                   target = LINK_UNIQUE
+                                     target = LINK_UNIQUE
                                     r = requests.post(target, data=data)
                                     
                                     if r.status_code == 200:
@@ -271,4 +271,5 @@ with tab_eleves:
                                 st.error(f"Erreur de connexion : {e}")
     else:
         st.warning("Veuillez entrer le mot de passe administrateur pour consulter les fiches.")
+
 
