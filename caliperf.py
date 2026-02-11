@@ -216,7 +216,7 @@ with tab_eleves:
     
     # ⚠️ ICI : Remplace par ton lien CSV si tu ne l'as pas mis dans secrets.toml
     # Exemple : SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/..../pub?output=csv"
-    SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/1a_X4H5GLZxuXgUFfpjuwwVCeFgcuZKtYOz9yts0Dl7I/edit?gid=124176284#gid=124176284" 
+    SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTABZd8nfqjdUzGUBjb57ntk8ACmBIPg7CM5VBMjGSdXJtiAN1ZJhwpGUb2EJvQZOrJ55s9eE2c8exn/pub?output=csv"
     
     pwd_eleves = st.text_input("🔒 Mot de passe accès privé", type="password", key="pwd_eleves")
     
@@ -292,4 +292,5 @@ with tab_eleves:
                                 st.error(f"Impossible de contacter Google Sheets : {e}")
     else:
         st.warning("Veuillez entrer le mot de passe administrateur pour consulter les fiches.")
+
 
