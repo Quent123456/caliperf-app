@@ -115,6 +115,21 @@ with tab_intro:
 # =========================================================
 # ONGLET 2 : ANALYSE COACH
 # =========================================================
+# Ajoute ceci dans tes imports
+import plotly.express as px
+
+# Ajoute ceci dans la section FONCTIONS
+@st.cache_data(ttl=60) # Garde les données en mémoire 60 secondes pour aller vite
+def fetch_training_data(csv_url):
+    try:
+        # On lit le CSV publié par Google Sheets
+        df = pd.read_csv(csv_url)
+        # On renomme les colonnes pour que ce soit propre (adapte selon tes vrais noms)
+        # Assure-toi que les noms ici correspondent aux en-têtes de ton Google Sheet
+        df.columns = ["Timestamp", "Nom", "Exercice", "TST", "RPE", "Charge"]
+        return df
+    except Exception as e:
+        return pd.DataFrame() # Retourne vide si erreur
 with tab_analyse:
     col_up, col_login = st.columns([3, 1])
     with col_up:
@@ -216,6 +231,27 @@ with tab_analyse:
                                 st.warning("Le chrono est à 0 !")
                     else:
                         st.warning("Aucun élève inscrit. Va dans l'onglet Introduction.")
+                        st.divider()
+st.subheader(f"📈 Progression de {selected_student}")
+
+# URL CSV DE TON SHEET (À trouver dans Fichier > Partager > Publier sur le Web > CSV)
+# Mets ça dans tes secrets.toml idéalement
+SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/...../pub?output=csv" 
+
+df_history = fetch_training_data(SHEET_CSV_URL)
+
+if not df_history.empty:
+    # Filtrer pour l'élève actuel et l'exercice actuel
+    mask = (df_history['Nom'] == selected_student) & (df_history['Exercice'] == exo)
+    student_data = df_history[mask]
+
+    if not student_data.empty:
+        # Créer un graphique interactif
+        fig = px.line(student_data, x='Timestamp', y='Charge', markers=True, 
+                      title=f"Evolution de la Charge - {exo}")
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("Pas encore de données pour cet exercice.")
 
 # =========================================================
 # ONGLET 3 : MES ÉLÈVES (PRIVÉ)
@@ -271,4 +307,5 @@ with tab_eleves:
                                 st.error(f"Impossible de contacter Google Sheets : {e}")
     else:
         st.warning("Veuillez entrer le mot de passe administrateur pour consulter les fiches.")
+
 
