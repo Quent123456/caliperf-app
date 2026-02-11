@@ -199,7 +199,7 @@ with tab_analyse:
                                     ENTRIES['charge']: str(round(charge_calc, 2)).replace('.', ',')
                                 }
                                 
-                               try:
+                                try:
                             # 4. ENVOI
                             target = LINK_UNIQUE
                             r = requests.post(target, data=data)
@@ -271,6 +271,7 @@ with tab_eleves:
                                 st.error(f"Erreur de connexion : {e}")
     else:
         st.warning("Veuillez entrer le mot de passe administrateur pour consulter les fiches.")
+
 
 
 
