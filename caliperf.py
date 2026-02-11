@@ -199,20 +199,20 @@ with tab_analyse:
                                     ENTRIES['charge']: str(round(charge_calc, 2)).replace('.', ',')
                                 }
                                 
-                                try:
-                                    # 4. ENVOI
-                                     target = LINK_UNIQUE
-                                    r = requests.post(target, data=data)
-                                    
-                                    if r.status_code == 200:
-                                        st.success(f"✅ Envoyé ! (Charge: {charge_calc:.1f})")
-                                        st.session_state.processed_files.add(real_name)
-                                        time.sleep(1)
-                                        st.rerun()
-                                    else: 
-                                        st.error("Erreur Google Forms")
-                                except Exception as e: 
-                                    st.error(f"Erreur technique : {e}")
+                               try:
+                            # 4. ENVOI
+                            target = LINK_UNIQUE
+                            r = requests.post(target, data=data)
+                            
+                            if r.status_code == 200:
+                                st.success(f"✅ Envoyé ! (Charge: {charge_calc:.1f})")
+                                st.session_state.processed_files.add(real_name)
+                                time.sleep(1)
+                                st.rerun()
+                            else: 
+                                st.error("Erreur Google Forms")
+                        except Exception as e: 
+                            st.error(f"Erreur technique : {e}")
                             else: 
                                 st.warning("Le chrono est à 0 !")
                     else:
@@ -271,5 +271,6 @@ with tab_eleves:
                                 st.error(f"Erreur de connexion : {e}")
     else:
         st.warning("Veuillez entrer le mot de passe administrateur pour consulter les fiches.")
+
 
 
