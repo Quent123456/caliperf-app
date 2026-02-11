@@ -247,25 +247,28 @@ with tab_eleves:
                     """, unsafe_allow_html=True)
 
                     if st.button(f"🗑️ Supprimer {name}", key=f"del_{name}"):
-                        with st.spinner("Connexion au Google Sheet..."):
+                        with st.spinner(f"Suppression de {name} en cours..."):
                             try:
+                                # 1. On appelle le robot Google Script (le lien que tu as mis dans secrets.toml)
                                 response = requests.get(DELETE_SCRIPT_URL, params={"name": name})
                                 
-                                if response.status_code == 200 and "Success" in response.text:
+                                # 2. On vérifie si le robot a bien fait son travail
+                                if response.status_code == 200 and "Succès" in response.text:
+                                    # C'est bon côté Google, on supprime aussi de l'application
                                     del st.session_state.students_data[name]
                                     save_data(st.session_state.students_data)
-                                    st.success(f"✅ {name} supprimé définitivement !")
+                                    
+                                    st.success(f"✅ {name} a été effacé du fichier et de l'app !")
                                     time.sleep(1)
                                     st.rerun()
-                                elif "Not Found" in response.text:
-                                    st.warning(f"Nettoyage local : {name} supprimé de l'appli (introuvable dans le Sheet).")
-                                    del st.session_state.students_data[name]
-                                    save_data(st.session_state.students_data)
-                                    time.sleep(1)
-                                    st.rerun()
+                                    
                                 else:
+                                    # Le robot a répondu, mais avec une erreur
                                     st.error(f"Erreur du script : {response.text}")
+                                    
                             except Exception as e:
-                                st.error(f"Erreur de connexion : {e}")
+                                # Le robot ne répond pas du tout (mauvais lien, pas de connexion...)
+                                st.error(f"Impossible de contacter Google Sheets : {e}")
     else:
         st.warning("Veuillez entrer le mot de passe administrateur pour consulter les fiches.")
+
