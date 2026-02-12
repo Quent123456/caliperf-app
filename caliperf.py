@@ -102,27 +102,35 @@ with tab_intro:
         with col4: 
             experience = st.text_input("Temps de pratique", placeholder="Ex: 2 ans, Débutant...")
         
-        # Ajout du poids de corps pour futurs calculs
-        poids = st.number_input("Poids du corps (kg)", min_value=30.0, max_value=150.0, step=0.5)
+        # --- NOUVEAU BLOC PHYSIO (Poids / Taille / Sexe) ---
+        c_poids, c_taille, c_sexe = st.columns(3)
+        with c_poids:
+            poids = st.number_input("Poids (kg)", min_value=30.0, max_value=150.0, step=0.5, value=70.0)
+        with c_taille:
+            taille = st.number_input("Taille (cm)", min_value=100, max_value=230, step=1, value=175)
+        with c_sexe:
+            sexe = st.radio("Sexe", ["Homme", "Femme"], horizontal=True)
         
         objectif = st.text_area("Ton objectif principal")
         
         if st.form_submit_button("✅ Valider mon inscription", type="primary", use_container_width=True):
             if nom and prenom:
                 full_name = f"{prenom} {nom}"
+                # On sauvegarde tout dans la base de données
                 st.session_state.students_data[full_name] = {
                     "link": LINK_UNIQUE, 
                     "freq": freq, 
                     "goal": objectif,
                     "exp": experience,
-                    "weight": poids
+                    "weight": poids,
+                    "height": taille, # Ajout de la taille
+                    "sex": sexe       # Ajout du sexe
                 }
                 save_data(st.session_state.students_data)
                 st.success(f"Dossier créé pour {prenom} !")
                 st.balloons()
             else:
                 st.warning("Nom et Prénom obligatoires.")
-
 # =========================================================
 # ONGLET 2 : ANALYSE COACH
 # =========================================================
@@ -277,16 +285,32 @@ with tab_eleves:
             for index, (name, info) in enumerate(st.session_state.students_data.items()):
                 with cols[index % 2]:
                     
-                    # --- CARTE ÉLÈVE ---
+                   # ... (Début de la boucle for index, (name, info) ...)
+                with cols[index % 2]:
+                    
+                    # Définition de l'icône et de la couleur selon le sexe
+                    icone_sexe = "mars" if info.get('sex') == "Homme" else "venus" # Noms pour icones FontAwesome si besoin, ici on utilise des emojis
+                    emoji_sexe = "♂️" if info.get('sex') == "Homme" else "♀️"
+                    
+                    # Récupération des données (avec valeurs par défaut si anciennes fiches)
+                    poids_user = info.get('weight', 'N/A')
+                    taille_user = info.get('height', 'N/A')
+
+                    # --- CARTE ÉLÈVE MISE À JOUR ---
                     st.markdown(f"""
                     <div class="metric-card">
-                        <h3 style='margin-top:0; color:#ff4b4b;'>👤 {name}</h3>
+                        <h3 style='margin-top:0; color:#ff4b4b;'>👤 {name} <span style="font-size:0.8em;">{emoji_sexe}</span></h3>
                         <p><b>📅 Fréquence :</b> {info.get('freq', 'Non définie')}</p>
-                        <p><b>⚖️ Poids :</b> {info.get('weight', 'N/A')} kg</p>
-                        <p><b>🎯 Objectif :</b> {info.get('goal', 'Aucun objectif')}</p>
+                        <p><b>📏 Physio :</b> {taille_user} cm | {poids_user} kg</p>
+                        <p><b>⏳ Expérience :</b> {info.get('exp', 'Non renseignée')}</p>
+                        <div style="margin-top:10px; padding-top:10px; border-top:1px solid #444;">
+                            <b>🎯 Objectif :</b><br>
+                            <span style="font-style:italic; color:#ccc;">{info.get('goal', 'Aucun objectif')}</span>
+                        </div>
                     </div>
                     """, unsafe_allow_html=True)
 
+                    # ... (La suite avec st.expander pour le graphique reste inchangée)
                     # --- ZONE GRAPHIQUE INTELLIGENTE (DRILL-DOWN) ---
                     with st.expander(f"📈 Voir la progression de {name}"):
                         if not df_history.empty:
@@ -477,6 +501,7 @@ with tab_eleves:
                     
     else:
         st.warning("Veuillez entrer le mot de passe administrateur.")
+
 
 
 
