@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import time
 import requests
 import json
@@ -17,7 +18,7 @@ try:
     LINK_UNIQUE = st.secrets["general"]["google_form_url"]
     DELETE_SCRIPT_URL = st.secrets["general"]["delete_script_url"]
     ENTRIES = st.secrets["google_entries"]
-    # On essaie de récupérer l'URL du CSV depuis les secrets, sinon vide
+    # On essaie de récupérer l'URL du CSV depuis les secrets
     CSV_URL_SECRET = st.secrets["general"].get("csv_url", "")
 except Exception as e:
     st.error(f"⚠️ Erreur critique de configuration : {e}")
@@ -42,6 +43,8 @@ def fetch_training_data(csv_url):
         if not csv_url: return pd.DataFrame()
         df = pd.read_csv(csv_url)
         # Renommage des colonnes (adapte si nécessaire selon ton Google Sheet)
+        # Assure-toi que l'ordre correspond à ton Google Form
+        # Timestamp, Nom, Exercice, TST(Perf), RPE, Charge
         df.columns = ["Timestamp", "Nom", "Exercice", "TST", "RPE", "Charge"]
         return df
     except Exception as e:
@@ -99,6 +102,9 @@ with tab_intro:
         with col4: 
             experience = st.text_input("Temps de pratique", placeholder="Ex: 2 ans, Débutant...")
         
+        # Ajout du poids de corps pour futurs calculs
+        poids = st.number_input("Poids du corps (kg)", min_value=30.0, max_value=150.0, step=0.5)
+        
         objectif = st.text_area("Ton objectif principal")
         
         if st.form_submit_button("✅ Valider mon inscription", type="primary", use_container_width=True):
@@ -108,7 +114,8 @@ with tab_intro:
                     "link": LINK_UNIQUE, 
                     "freq": freq, 
                     "goal": objectif,
-                    "exp": experience
+                    "exp": experience,
+                    "weight": poids
                 }
                 save_data(st.session_state.students_data)
                 st.success(f"Dossier créé pour {prenom} !")
@@ -148,7 +155,7 @@ with tab_analyse:
                 st.video(files_map[real_name])
             
             with c_tools:
-                st.subheader("⏱️ Analyse TST")
+                st.subheader("⏱️ Analyse")
                 
                 time_display = st.empty()
                 current_time = timer['acc']
@@ -166,33 +173,63 @@ with tab_analyse:
 
                 st.write("---")
 
+                # --- FORMULAIRE D'ENVOI DES DONNÉES ---
                 with st.form(key=f"f_{real_name}"):
                     student_keys = list(st.session_state.students_data.keys())
                     
                     if student_keys:
-                        selected_student = st.selectbox("👤 Athlète", student_keys)
+                        col_a, col_b = st.columns(2)
+                        with col_a:
+                            selected_student = st.selectbox("👤 Athlète", student_keys)
+                        with col_b:
+                            # CHOIX DU TYPE D'EFFORT
+                            type_effort = st.radio("Type", ["Statique ⏱️", "Dynamique 🔁"], horizontal=True)
+
                         exo = st.text_input("Exercice", value=real_name.split('.')[0])
-                        rpe = st.slider("RPE", 1, 10, 7)
                         
+                        c1, c2 = st.columns(2)
+                        with c1:
+                            rpe = st.slider("RPE (Intensité)", 1, 10, 7)
+                        
+                        reps = 0
+                        
+                        with c2:
+                            if type_effort == "Dynamique 🔁":
+                                reps = st.number_input("Répétitions", min_value=1, value=10)
+                            else:
+                                st.info(f"Temps retenu : {current_time:.2f} s")
+
                         if st.form_submit_button("☁️ ENVOYER DONNÉES"):
                             final_time = timer['acc']
                             if timer['run']: 
                                 final_time += time.time() - timer['start']
                             
-                            if final_time > 0:
-                                charge_calc = final_time * rpe
+                            # LOGIQUE DE CALCUL
+                            charge_calc = 0
+                            valeur_principale = ""
+                            
+                            if type_effort == "Statique ⏱️":
+                                if final_time > 0:
+                                    charge_calc = final_time * rpe
+                                    valeur_principale = f"{round(final_time, 2)} s"
+                                else:
+                                    st.warning("Chrono à 0 !")
+                            else:
+                                # Pour le dynamique, on utilise Reps * RPE (simplifié)
+                                charge_calc = reps * rpe
+                                valeur_principale = f"{reps} reps"
+
+                            if charge_calc > 0:
                                 data = {
                                     ENTRIES['nom']: selected_student, 
                                     ENTRIES['exo']: exo,
-                                    ENTRIES['tst']: str(round(final_time, 2)).replace('.', ','),
+                                    ENTRIES['tst']: str(valeur_principale).replace('.', ','),
                                     ENTRIES['rpe']: str(rpe),
                                     ENTRIES['charge']: str(round(charge_calc, 2)).replace('.', ',')
                                 }
                                 
                                 try:
-                                    target = LINK_UNIQUE
-                                    r = requests.post(target, data=data)
-                                    
+                                    r = requests.post(LINK_UNIQUE, data=data)
                                     if r.status_code == 200:
                                         st.success(f"✅ Envoyé ! (Charge: {charge_calc:.1f})")
                                         st.session_state.processed_files.add(real_name)
@@ -202,30 +239,32 @@ with tab_analyse:
                                         st.error("Erreur Google Forms")
                                 except Exception as e: 
                                     st.error(f"Erreur technique : {e}")
-                            else: 
-                                st.warning("Le chrono est à 0 !")
+                            else:
+                                st.warning("Données invalides (Charge = 0)")
+
                     else:
-                        st.warning("Aucun élève inscrit. Va dans l'onglet Introduction.")
-                        st.divider()
+                        st.warning("Aucun élève inscrit.")
 
 # =========================================================
-# ONGLET 3 : MES ÉLÈVES (PRIVÉ) - CORRIGÉ
+# ONGLET 3 : MES ÉLÈVES (PRIVÉ)
 # =========================================================
 with tab_eleves:
     st.header("👥 Gestion et Progression des Athlètes")
     
-    # URL de ton CSV (Récupérée des secrets ou en dur)
+    # URL CSV : À mettre dans secrets.toml de préférence, sinon ici
     SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTABZd8nfqjdUzGUBjb57ntk8ACmBIPg7CM5VBMjGSdXJtiAN1ZJhwpGUb2EJvQZOrJ55s9eE2c8exn/pub?output=csv"
     
     pwd_eleves = st.text_input("🔒 Mot de passe accès privé", type="password", key="pwd_eleves")
     
     if pwd_eleves == ADMIN_PWD:
-        # Chargement des données
+        # Chargement des données globales
         if SHEET_CSV_URL:
             df_history = fetch_training_data(SHEET_CSV_URL)
             if not df_history.empty and 'Charge' in df_history.columns:
                 df_history['Charge'] = df_history['Charge'].astype(str).str.replace(',', '.').apply(pd.to_numeric, errors='coerce')
                 df_history['Timestamp'] = pd.to_datetime(df_history['Timestamp'], errors='coerce')
+                # Création colonne Date sans heure pour le regroupement
+                df_history['Date'] = df_history['Timestamp'].dt.date
         else:
             df_history = pd.DataFrame()
             st.warning("⚠️ URL du CSV non configurée.")
@@ -235,184 +274,106 @@ with tab_eleves:
         else:
             cols = st.columns(2)
             
-            # --- BOUCLE SUR LES ÉLÈVES ---
             for index, (name, info) in enumerate(st.session_state.students_data.items()):
                 with cols[index % 2]:
                     
-                    # 1. CARTE D'IDENTITÉ
+                    # --- CARTE ÉLÈVE ---
                     st.markdown(f"""
                     <div class="metric-card">
                         <h3 style='margin-top:0; color:#ff4b4b;'>👤 {name}</h3>
                         <p><b>📅 Fréquence :</b> {info.get('freq', 'Non définie')}</p>
-                        <p><b>⏳ Expérience :</b> {info.get('exp', 'Non renseignée')}</p>
+                        <p><b>⚖️ Poids :</b> {info.get('weight', 'N/A')} kg</p>
                         <p><b>🎯 Objectif :</b> {info.get('goal', 'Aucun objectif')}</p>
                     </div>
                     """, unsafe_allow_html=True)
 
-                    # 2. GRAPHIQUE OPTIMISÉ (Dans l'expander)
-                   # ... (Dans la boucle for, à l'intérieur de st.expander)
+                    # --- ZONE GRAPHIQUE INTELLIGENTE (DRILL-DOWN) ---
+                    with st.expander(f"📈 Voir la progression de {name}"):
+                        if not df_history.empty:
+                            student_df = df_history[df_history['Nom'] == name].copy()
+                            
+                            if not student_df.empty:
+                                # 1. PRÉPARATION VUE MACRO (Par Jour)
+                                daily_stats = student_df.groupby('Date').agg({
+                                    'Charge': 'sum',
+                                    'RPE': 'mean',
+                                    'Exercice': 'count'
+                                }).reset_index().sort_values('Date')
+                                
+                                # Moyenne mobile pour la tendance
+                                daily_stats['MA_3'] = daily_stats['Charge'].rolling(window=3).mean()
 
-if not df_history.empty:
-    student_df = df_history[df_history['Nom'] == name].copy()
-    
-    if not student_df.empty:
-        # Création d'une colonne 'Date' (sans l'heure) pour le regroupement
-        student_df['Date'] = student_df['Timestamp'].dt.date
-        
-        # --- 1. PRÉPARATION DES DONNÉES AGRÉGÉES (VUE MACRO) ---
-        daily_stats = student_df.groupby('Date').agg({
-            'Charge': 'sum',        # Charge Totale de la séance
-            'RPE': 'mean',          # RPE Moyen de la séance
-            'Exercice': 'count',    # Nombre d'exos
-            'Timestamp': 'max'      # Juste pour garder un format datetime si besoin
-        }).reset_index().sort_values('Date')
+                                # 2. GRAPHIQUE GLOBAL
+                                fig_main = go.Figure()
 
-        # Calcul de la moyenne mobile sur la charge totale
-        daily_stats['MA_3'] = daily_stats['Charge'].rolling(window=3).mean()
+                                fig_main.add_trace(go.Scatter(
+                                    x=daily_stats['Date'], y=daily_stats['Charge'],
+                                    mode='lines+markers', name='Charge Séance',
+                                    line=dict(color='#00CC96', width=3),
+                                    marker=dict(size=10, color=daily_stats['RPE'], colorscale='RdYlGn_r', showscale=True, colorbar=dict(title="RPE")),
+                                    hovertemplate="<b>Date :</b> %{x}<br><b>Charge Totale :</b> %{y:.0f}<br><b>RPE :</b> %{marker.color:.1f}<extra></extra>"
+                                ))
+                                
+                                fig_main.add_trace(go.Scatter(
+                                    x=daily_stats['Date'], y=daily_stats['MA_3'],
+                                    mode='lines', name='Tendance',
+                                    line=dict(color='orange', width=2, dash='dot'), hoverinfo='skip'
+                                ))
 
-        # --- 2. GRAPHIQUE PRINCIPAL (GLOBAL) ---
-        import plotly.graph_objects as go
-        
-        fig_main = go.Figure()
+                                fig_main.update_layout(
+                                    title="📅 Charge Globale (Clique sur un point pour zoomer)",
+                                    yaxis_title="Volume Total", template="plotly_dark",
+                                    height=350, margin=dict(l=10, r=10, t=40, b=10),
+                                    clickmode='event+select'
+                                )
 
-        # Courbe de Charge Totale
-        fig_main.add_trace(go.Scatter(
-            x=daily_stats['Date'],
-            y=daily_stats['Charge'],
-            mode='lines+markers',
-            name='Charge Séance',
-            line=dict(color='#00CC96', width=3),
-            marker=dict(
-                size=10,
-                color=daily_stats['RPE'],
-                colorscale='RdYlGn_r',
-                showscale=True,
-                colorbar=dict(title="Intensité Moyenne (RPE)")
-            ),
-            # Ce qui s'affiche au survol
-            hovertemplate="<b>Date :</b> %{x}<br><b>Charge Totale :</b> %{y:.0f}<br><b>RPE Moyen :</b> %{marker.color:.1f}<extra></extra>"
-        ))
-        
-        # Courbe de Tendance
-        fig_main.add_trace(go.Scatter(
-            x=daily_stats['Date'],
-            y=daily_stats['MA_3'],
-            mode='lines',
-            name='Tendance',
-            line=dict(color='orange', width=2, dash='dot'),
-            hoverinfo='skip'
-        ))
+                                st.caption("👇 Clique sur un point ci-dessous pour voir le détail de la séance.")
+                                
+                                # INTERACTION
+                                selection = st.plotly_chart(fig_main, use_container_width=True, on_select="rerun", selection_mode="points", key=f"chart_{name}")
 
-        fig_main.update_layout(
-            title="📅 Charge par Séance (Clique sur un point pour le détail)",
-            yaxis_title="Volume Total (UA)",
-            xaxis_title="",
-            template="plotly_dark",
-            hovermode="closest",
-            height=350,
-            margin=dict(l=10, r=10, t=40, b=10),
-            clickmode='event+select' # Active la sélection
-        )
-
-        # --- 3. AFFICHAGE ET INTERACTION ---
-        st.caption("👇 Clique sur un point de la courbe ci-dessous pour voir le détail de la séance.")
-        
-        # C'est ici que la magie opère : on récupère l'événement de sélection
-        selection = st.plotly_chart(
-            fig_main, 
-            use_container_width=True, 
-            on_select="rerun",  # Recharge la page au clic
-            selection_mode="points",
-            key=f"chart_{name}"
-        )
-
-        # --- 4. ZOOM / DÉTAIL DE LA SÉANCE SÉLECTIONNÉE ---
-        selected_date = None
-        
-        # On vérifie si un point a été cliqué
-        if selection and len(selection["selection"]["points"]) > 0:
-            # Plotly renvoie la date sous forme de string, on la récupère
-            point_data = selection["selection"]["points"][0]
-            selected_date_str = point_data["x"]
-            
-            st.divider()
-            st.markdown(f"### 🔎 Zoom sur la séance du : **{selected_date_str}**")
-            
-            # On filtre les données brutes pour cette date précise
-            # Attention : conversion de string à date pour matcher
-            detail_df = student_df[student_df['Date'].astype(str) == selected_date_str].copy()
-            
-            if not detail_df.empty:
-                # Métriques résumées
-                m1, m2, m3 = st.columns(3)
-                m1.metric("Volume Total", f"{detail_df['Charge'].sum():.0f}")
-                m2.metric("Intensité Moyenne", f"{detail_df['RPE'].mean():.1f}/10")
-                m3.metric("Exercices", f"{len(detail_df)}")
-
-                # Tableau détaillé propre
-                st.markdown("#### Détail des exercices")
-                
-                # On prépare un tableau propre pour l'affichage
-                display_table = detail_df[['Timestamp', 'Exercice', 'TST', 'RPE', 'Charge']].copy()
-                display_table['Heure'] = display_table['Timestamp'].dt.strftime('%H:%M')
-                display_table = display_table[['Heure', 'Exercice', 'TST', 'RPE', 'Charge']]
-                
-                # Affichage avec style (RPE élevé en rouge)
-                st.dataframe(
-                    display_table.style.background_gradient(subset=['RPE'], cmap='RdYlGn_r', vmin=1, vmax=10),
-                    use_container_width=True,
-                    hide_index=True
-                )
-                
-                # Petit graph en barres pour comparer les exos de la séance
-                fig_bar = px.bar(
-                    detail_df, 
-                    x='Exercice', 
-                    y='Charge', 
-                    color='RPE',
-                    color_continuous_scale='RdYlGn_r',
-                    title="Répartition de la charge par exercice"
-                )
-                fig_bar.update_layout(template="plotly_dark", height=300)
-                st.plotly_chart(fig_bar, use_container_width=True)
-                
-            else:
-                st.warning("Erreur : Impossible de retrouver les détails de cette date.")
-        
-        else:
-            st.info("💡 Clique sur un point du graphique ci-dessus pour afficher le détail des exercices de ce jour-là.")
-
-    else:
-        st.info("Pas encore de données pour cet élève.")
-else:
-    st.error("Problème de connexion aux données.")
-
-                    # 3. BOUTON DE SUPPRESSION (RESTAURÉ ICI)
-                    st.write("---") # Séparateur visuel pour éviter les clics accidentels
-                    col_del_btn, col_del_txt = st.columns([1, 2])
-                    
-                    with col_del_btn:
-                        if st.button(f"🗑️ Supprimer", key=f"del_{name}", type="secondary"):
-                            with st.spinner(f"Suppression de {name}..."):
-                                try:
-                                    # Appel au script Google Apps Script
-                                    response = requests.get(DELETE_SCRIPT_URL, params={"name": name})
+                                # 3. ZOOM SUR LA SÉANCE SÉLECTIONNÉE
+                                if selection and len(selection["selection"]["points"]) > 0:
+                                    point_data = selection["selection"]["points"][0]
+                                    selected_date_str = point_data["x"] # Format string YYYY-MM-DD
                                     
-                                    if response.status_code == 200 and "Succès" in response.text:
-                                        # Suppression locale
+                                    st.divider()
+                                    st.markdown(f"#### 🔎 Détail du : **{selected_date_str}**")
+                                    
+                                    # Filtrage des données brutes
+                                    detail_df = student_df[student_df['Date'].astype(str) == selected_date_str].copy()
+                                    
+                                    if not detail_df.empty:
+                                        # Petit tableau propre
+                                        display_table = detail_df[['Timestamp', 'Exercice', 'TST', 'RPE', 'Charge']].copy()
+                                        display_table['Heure'] = display_table['Timestamp'].dt.strftime('%H:%M')
+                                        st.dataframe(
+                                            display_table[['Heure', 'Exercice', 'TST', 'RPE', 'Charge']].style.background_gradient(subset=['RPE'], cmap='RdYlGn_r', vmin=1, vmax=10),
+                                            use_container_width=True, hide_index=True
+                                        )
+                            else:
+                                st.info("Pas encore de données pour cet élève.")
+                        else:
+                            st.error("Problème de connexion aux données.")
+
+                    # --- BOUTON SUPPRESSION ---
+                    st.write("---")
+                    col_del, col_txt = st.columns([1, 3])
+                    with col_del:
+                        if st.button(f"🗑️ Supprimer", key=f"del_{name}", type="secondary"):
+                            with st.spinner("Suppression..."):
+                                try:
+                                    response = requests.get(DELETE_SCRIPT_URL, params={"name": name})
+                                    if response.status_code == 200:
                                         del st.session_state.students_data[name]
                                         save_data(st.session_state.students_data)
-                                        st.success(f"Au revoir {name} !")
+                                        st.success("Supprimé !")
                                         time.sleep(1)
                                         st.rerun()
                                     else:
-                                        st.error(f"Erreur script : {response.text}")
-                                except Exception as e:
-                                    st.error(f"Erreur connexion : {e}")
+                                        st.error("Erreur Script")
+                                except Exception:
+                                    st.error("Erreur Connexion")
                     
-                    with col_del_txt:
-                        st.caption(f"Action irréversible pour {name}")
-
     else:
         st.warning("Veuillez entrer le mot de passe administrateur.")
-
