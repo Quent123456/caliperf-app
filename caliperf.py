@@ -253,254 +253,48 @@ with tab_analyse:
                     else:
                         st.warning("Aucun élève inscrit.")
 
-# =========================================================
-# ONGLET 3 : MES ÉLÈVES (PRIVÉ)
-# =========================================================
-with tab_eleves:
-    st.header("👥 Gestion et Progression des Athlètes")
-    
-    # URL CSV : À mettre dans secrets.toml de préférence, sinon ici
-    SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTABZd8nfqjdUzGUBjb57ntk8ACmBIPg7CM5VBMjGSdXJtiAN1ZJhwpGUb2EJvQZOrJ55s9eE2c8exn/pub?output=csv"
-    
-    pwd_eleves = st.text_input("🔒 Mot de passe accès privé", type="password", key="pwd_eleves")
-    
-    if pwd_eleves == ADMIN_PWD:
-        # Chargement des données globales
-        if SHEET_CSV_URL:
-            df_history = fetch_training_data(SHEET_CSV_URL)
-            if not df_history.empty and 'Charge' in df_history.columns:
-                df_history['Charge'] = df_history['Charge'].astype(str).str.replace(',', '.').apply(pd.to_numeric, errors='coerce')
-                df_history['Timestamp'] = pd.to_datetime(df_history['Timestamp'], errors='coerce')
-                # Création colonne Date sans heure pour le regroupement
-                df_history['Date'] = df_history['Timestamp'].dt.date
-        else:
-            df_history = pd.DataFrame()
-            st.warning("⚠️ URL du CSV non configurée.")
-
-        if not st.session_state.students_data:
-            st.info("Aucun élève enregistré pour le moment.")
-        else:
-            cols = st.columns(2)
-            
-            for index, (name, info) in enumerate(st.session_state.students_data.items()):
-                with cols[index % 2]:
-                    
-                   # ... (Début de la boucle for index, (name, info) ...)
-                with cols[index % 2]:
-                    
-                    # Définition de l'icône et de la couleur selon le sexe
-                    icone_sexe = "mars" if info.get('sex') == "Homme" else "venus" # Noms pour icones FontAwesome si besoin, ici on utilise des emojis
-                    emoji_sexe = "♂️" if info.get('sex') == "Homme" else "♀️"
-                    
-                    # Récupération des données (avec valeurs par défaut si anciennes fiches)
-                    poids_user = info.get('weight', 'N/A')
-                    taille_user = info.get('height', 'N/A')
-
-                    # --- CARTE ÉLÈVE MISE À JOUR ---
-                    st.markdown(f"""
-                    <div class="metric-card">
-                        <h3 style='margin-top:0; color:#ff4b4b;'>👤 {name} <span style="font-size:0.8em;">{emoji_sexe}</span></h3>
-                        <p><b>📅 Fréquence :</b> {info.get('freq', 'Non définie')}</p>
-                        <p><b>📏 Physio :</b> {taille_user} cm | {poids_user} kg</p>
-                        <p><b>⏳ Expérience :</b> {info.get('exp', 'Non renseignée')}</p>
-                        <div style="margin-top:10px; padding-top:10px; border-top:1px solid #444;">
-                            <b>🎯 Objectif :</b><br>
-                            <span style="font-style:italic; color:#ccc;">{info.get('goal', 'Aucun objectif')}</span>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-                    # ... (La suite avec st.expander pour le graphique reste inchangée)
-                    # --- ZONE GRAPHIQUE INTELLIGENTE (DRILL-DOWN) ---
-                    with st.expander(f"📈 Voir la progression de {name}"):
-                        if not df_history.empty:
-                            student_df = df_history[df_history['Nom'] == name].copy()
-                            
-                            if not student_df.empty:
-                                # 1. PRÉPARATION VUE MACRO (Par Jour)
-                                daily_stats = student_df.groupby('Date').agg({
-                                    'Charge': 'sum',
-                                    'RPE': 'mean',
-                                    'Exercice': 'count'
-                                }).reset_index().sort_values('Date')
-                                
-                                # Moyenne mobile pour la tendance
-                                daily_stats['MA_3'] = daily_stats['Charge'].rolling(window=3).mean()
-
-                                # ... (Juste après le calcul de daily_stats) ...
-                                
-                                # --- 1. PRÉPARATION DES DONNÉES SUPPLÉMENTAIRES ---
-                                # On doit nettoyer le TST pour pouvoir l'additionner (supprimer 's', 'reps', etc.)
-                                # On extrait les chiffres et on convertit en float
-                                student_df['TST_Value'] = student_df['TST'].astype(str).str.extract(r'(\d+[.,]?\d*)')[0].str.replace(',', '.', regex=False).astype(float).fillna(0)
-                                
-                                # On recalcule daily_stats pour inclure la somme du TST
-                                daily_stats = student_df.groupby('Date').agg({
-                                    'Charge': 'sum',
-                                    'TST_Value': 'sum', # Nouveau : Somme du volume
-                                    'RPE': 'mean',
-                                    'Exercice': 'count'
-                                }).reset_index().sort_values('Date')
-                                
-                                # Moyenne mobile pour lisser les courbes
-                                daily_stats['MA_Charge'] = daily_stats['Charge'].rolling(window=3).mean()
-                                daily_stats['MA_TST'] = daily_stats['TST_Value'].rolling(window=3).mean()
-
-                                # --- 2. CRÉATION DES DEUX GRAPHIQUES ---
-                                import plotly.graph_objects as go
-                                
-                                # -- Graphique 1 : CHARGE --
-                                fig_charge = go.Figure()
-                                fig_charge.add_trace(go.Scatter(
-                                    x=daily_stats['Date'], y=daily_stats['Charge'],
-                                    mode='lines+markers', name='Charge',
-                                    line=dict(color='#00CC96', width=3),
-                                    marker=dict(size=8, color=daily_stats['RPE'], colorscale='RdYlGn_r', showscale=False), # Showscale False pour gagner de la place
-                                    hovertemplate="<b>Date :</b> %{x}<br><b>Charge :</b> %{y:.0f}<br><b>RPE :</b> %{marker.color:.1f}<extra></extra>"
-                                ))
-                                fig_charge.add_trace(go.Scatter(
-                                    x=daily_stats['Date'], y=daily_stats['MA_Charge'],
-                                    mode='lines', name='Tendance',
-                                    line=dict(color='orange', width=2, dash='dot'), hoverinfo='skip'
-                                ))
-                                fig_charge.update_layout(
-                                    title="⚡ Évolution de la Charge",
-                                    yaxis_title="Charge (UA)", template="plotly_dark",
-                                    height=350, margin=dict(l=10, r=10, t=40, b=10),
-                                    showlegend=False, # On cache la légende pour épurer
-                                    clickmode='event+select'
-                                )
-
-                                # -- Graphique 2 : TST / VOLUME --
-                                fig_tst = go.Figure()
-                                fig_tst.add_trace(go.Bar( # On utilise des BARRES pour le volume, c'est souvent plus lisible
-                                    x=daily_stats['Date'], y=daily_stats['TST_Value'],
-                                    name='Volume (Sec/Reps)',
-                                    marker=dict(color='#3366CC'), # Bleu
-                                    hovertemplate="<b>Date :</b> %{x}<br><b>Volume Total :</b> %{y:.0f}<extra></extra>"
-                                ))
-                                fig_tst.add_trace(go.Scatter(
-                                    x=daily_stats['Date'], y=daily_stats['MA_TST'],
-                                    mode='lines', name='Tendance',
-                                    line=dict(color='white', width=2, dash='dot'), hoverinfo='skip'
-                                ))
-                                fig_tst.update_layout(
-                                    title="⏱️ Volume Total (Sec + Reps)",
-                                    yaxis_title="Volume Cumulé", template="plotly_dark",
-                                    height=350, margin=dict(l=10, r=10, t=40, b=10),
-                                    showlegend=False,
-                                    clickmode='event+select'
-                                )
-
-                                # --- 3. AFFICHAGE CÔTE À CÔTE ---
-                                st.caption("👇 Clique sur un point de L'UN DES DEUX graphiques pour voir le détail.")
-                                
-                                col_g1, col_g2 = st.columns(2)
-                                
-                                with col_g1:
-                                    sel_charge = st.plotly_chart(fig_charge, use_container_width=True, on_select="rerun", selection_mode="points", key=f"c_ch_{name}")
-                                
-                                with col_g2:
-                                    sel_tst = st.plotly_chart(fig_tst, use_container_width=True, on_select="rerun", selection_mode="points", key=f"c_tst_{name}")
-
-                                # --- 4. LOGIQUE DE SÉLECTION UNIFIÉE ---
-                                # On regarde si l'utilisateur a cliqué à gauche OU à droite
-                                selection = None
-                                if sel_charge and len(sel_charge["selection"]["points"]) > 0:
-                                    selection = sel_charge
-                                elif sel_tst and len(sel_tst["selection"]["points"]) > 0:
-                                    selection = sel_tst
-
-                                # ... (La suite du code "if selection..." reste identique à ce que je t'ai donné avant)
-
-                                # 3. ZOOM SUR LA SÉANCE SÉLECTIONNÉE
-                                if selection and len(selection["selection"]["points"]) > 0:
-                                    point_data = selection["selection"]["points"][0]
-                                    selected_date_str = point_data["x"] # Format string YYYY-MM-DD
-                                    
-                                    st.divider()
-                                    st.markdown(f"#### 🔎 Détail du : **{selected_date_str}**")
-                                    
-                                    # Filtrage des données brutes
-                                    detail_df = student_df[student_df['Date'].astype(str) == selected_date_str].copy()
-                                    
-                                    if not detail_df.empty:
-                                        # --- A. NETTOYAGE ET CALCULS ---
-                                        # Conversion TST/Reps en numérique pour le total (on enlève 's', 'reps' et on remplace ',' par '.')
-                                        # On utilise une expression régulière simple pour ne garder que les chiffres et le point
-                                        detail_df['TST_Clean'] = detail_df['TST'].astype(str).str.extract(r'(\d+[.,]?\d*)')[0].str.replace(',', '.', regex=False).astype(float).fillna(0)
-                                        
-                                        charge_totale = detail_df['Charge'].sum()
-                                        tst_total = detail_df['TST_Clean'].sum()
-                                        rpe_total = detail_df['RPE'].sum()
-                                        rpe_moyen = detail_df['RPE'].mean()
-                                        nb_exos = len(detail_df)
-
-                                        # --- B. AFFICHAGE DES INDICATEURS (KPIs) ---
-                                        k1, k2, k3, k4, k5 = st.columns(5)
-                                        k1.metric("⚡ Charge Totale", f"{charge_totale:.0f}")
-                                        k2.metric("⏱️ TST/Reps Total", f"{tst_total:.0f}")
-                                        k3.metric("🥵 RPE Total", f"{rpe_total:.0f}")
-                                        k4.metric("⚖️ RPE Moyen", f"{rpe_moyen:.1f}/10")
-                                        k5.metric("🏋️ Nb Exercices", f"{nb_exos}")
-
-                                        st.write("---")
-
-                                        # --- C. TABLEAU DÉTAILLÉ (Version Stable) ---
-                                        # Préparation de l'affichage
-                                        display_table = detail_df[['Timestamp', 'Exercice', 'TST', 'RPE', 'Charge']].copy()
-                                        display_table['Heure'] = display_table['Timestamp'].dt.strftime('%H:%M')
-                                        
-                                        # On réorganise les colonnes
-                                        final_df = display_table[['Heure', 'Exercice', 'TST', 'RPE', 'Charge']]
-
-                                        # AFFICHAGE ROBUSTE AVEC COLUMN_CONFIG
-                                        # Remplacer st.dataframe(...) par ceci :
-                                        st.dataframe(
-                                            final_df,
-                                            use_container_width=True,
-                                            hide_index=True,
-                                            column_config={
-                                                "RPE": st.column_config.ProgressColumn(
-                                                    "Intensité (RPE)",
-                                                    help="Niveau d'effort ressenti",
-                                                    format="%d",
-                                                    min_value=0,
-                                                    max_value=10,
-                                                ),
-                                                "Charge": st.column_config.NumberColumn(
-                                                    "Charge (UA)",
-                                                    format="%.1f"
-                                                ),
-                                                "TST": st.column_config.TextColumn(
-                                                    "Perf (Temps/Reps)"
-                                                )
-                                            }
-                                        )
-                                    else:
-                                        st.warning("Erreur : Données introuvables pour cette date.")
-
-                    # --- BOUTON SUPPRESSION ---
-                    st.write("---")
-                    col_del, col_txt = st.columns([1, 3])
-                    with col_del:
-                        if st.button(f"🗑️ Supprimer", key=f"del_{name}", type="secondary"):
-                            with st.spinner("Suppression..."):
-                                try:
-                                    response = requests.get(DELETE_SCRIPT_URL, params={"name": name})
-                                    if response.status_code == 200:
-                                        del st.session_state.students_data[name]
-                                        save_data(st.session_state.students_data)
-                                        st.success("Supprimé !")
-                                        time.sleep(1)
-                                        st.rerun()
-                                    else:
-                                        st.error("Erreur Script")
-                                except Exception:
-                                    st.error("Erreur Connexion")
-                    
-    else:
-        st.warning("Veuillez entrer le mot de passe administrateur.")
+with st.form("form_intro"):
+        col1, col2 = st.columns(2)
+        with col1: 
+            nom = st.text_input("Nom")
+        with col2: 
+            prenom = st.text_input("Prénom")
+        
+        col3, col4 = st.columns(2)
+        with col3: 
+            freq = st.selectbox("Fréquence", ["2x / semaine", "3x / semaine", "4x / semaine", "5x / semaine", "Tous les jours"])
+        with col4: 
+            experience = st.text_input("Temps de pratique", placeholder="Ex: 2 ans, Débutant...")
+        
+        # --- NOUVEAU BLOC PHYSIO (Poids / Taille / Sexe) ---
+        c_poids, c_taille, c_sexe = st.columns(3)
+        with c_poids:
+            poids = st.number_input("Poids (kg)", min_value=30.0, max_value=150.0, step=0.5, value=70.0)
+        with c_taille:
+            taille = st.number_input("Taille (cm)", min_value=100, max_value=230, step=1, value=175)
+        with c_sexe:
+            sexe = st.radio("Sexe", ["Homme", "Femme"], horizontal=True)
+        
+        objectif = st.text_area("Ton objectif principal")
+        
+        if st.form_submit_button("✅ Valider mon inscription", type="primary", use_container_width=True):
+            if nom and prenom:
+                full_name = f"{prenom} {nom}"
+                # On sauvegarde tout dans la base de données
+                st.session_state.students_data[full_name] = {
+                    "link": LINK_UNIQUE, 
+                    "freq": freq, 
+                    "goal": objectif,
+                    "exp": experience,
+                    "weight": poids,
+                    "height": taille, # Ajout de la taille
+                    "sex": sexe       # Ajout du sexe
+                }
+                save_data(st.session_state.students_data)
+                st.success(f"Dossier créé pour {prenom} !")
+                st.balloons()
+            else:
+                st.warning("Nom et Prénom obligatoires.")
 
 
 
