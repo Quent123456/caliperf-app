@@ -303,42 +303,91 @@ with tab_eleves:
                                 # Moyenne mobile pour la tendance
                                 daily_stats['MA_3'] = daily_stats['Charge'].rolling(window=3).mean()
 
-                                # 2. GRAPHIQUE GLOBAL
-                                fig_main = go.Figure()
-
-                                fig_main.add_trace(go.Scatter(
-                                    x=daily_stats['Date'], y=daily_stats['Charge'],
-                                    mode='lines+markers', name='Charge Séance',
-                                    line=dict(color='#00CC96', width=3),
-                                    marker=dict(size=10, color=daily_stats['RPE'], colorscale='RdYlGn_r', showscale=True, colorbar=dict(title="RPE")),
-                                    hovertemplate="<b>Date :</b> %{x}<br><b>Charge Totale :</b> %{y:.0f}<br><b>RPE :</b> %{marker.color:.1f}<extra></extra>"
-                                ))
+                                # ... (Juste après le calcul de daily_stats) ...
                                 
-                                fig_main.add_trace(go.Scatter(
-                                    x=daily_stats['Date'], y=daily_stats['MA_3'],
+                                # --- 1. PRÉPARATION DES DONNÉES SUPPLÉMENTAIRES ---
+                                # On doit nettoyer le TST pour pouvoir l'additionner (supprimer 's', 'reps', etc.)
+                                # On extrait les chiffres et on convertit en float
+                                student_df['TST_Value'] = student_df['TST'].astype(str).str.extract(r'(\d+[.,]?\d*)')[0].str.replace(',', '.', regex=False).astype(float).fillna(0)
+                                
+                                # On recalcule daily_stats pour inclure la somme du TST
+                                daily_stats = student_df.groupby('Date').agg({
+                                    'Charge': 'sum',
+                                    'TST_Value': 'sum', # Nouveau : Somme du volume
+                                    'RPE': 'mean',
+                                    'Exercice': 'count'
+                                }).reset_index().sort_values('Date')
+                                
+                                # Moyenne mobile pour lisser les courbes
+                                daily_stats['MA_Charge'] = daily_stats['Charge'].rolling(window=3).mean()
+                                daily_stats['MA_TST'] = daily_stats['TST_Value'].rolling(window=3).mean()
+
+                                # --- 2. CRÉATION DES DEUX GRAPHIQUES ---
+                                import plotly.graph_objects as go
+                                
+                                # -- Graphique 1 : CHARGE --
+                                fig_charge = go.Figure()
+                                fig_charge.add_trace(go.Scatter(
+                                    x=daily_stats['Date'], y=daily_stats['Charge'],
+                                    mode='lines+markers', name='Charge',
+                                    line=dict(color='#00CC96', width=3),
+                                    marker=dict(size=8, color=daily_stats['RPE'], colorscale='RdYlGn_r', showscale=False), # Showscale False pour gagner de la place
+                                    hovertemplate="<b>Date :</b> %{x}<br><b>Charge :</b> %{y:.0f}<br><b>RPE :</b> %{marker.color:.1f}<extra></extra>"
+                                ))
+                                fig_charge.add_trace(go.Scatter(
+                                    x=daily_stats['Date'], y=daily_stats['MA_Charge'],
                                     mode='lines', name='Tendance',
                                     line=dict(color='orange', width=2, dash='dot'), hoverinfo='skip'
                                 ))
-
-                                fig_main.update_layout(
-                                    title="📅 Charge Globale (Clique sur un point pour zoomer)",
-                                    yaxis_title="Volume Total", template="plotly_dark",
+                                fig_charge.update_layout(
+                                    title="⚡ Évolution de la Charge",
+                                    yaxis_title="Charge (UA)", template="plotly_dark",
                                     height=350, margin=dict(l=10, r=10, t=40, b=10),
+                                    showlegend=False, # On cache la légende pour épurer
                                     clickmode='event+select'
                                 )
 
-                                st.caption("👇 Clique sur un point ci-dessous pour voir le détail de la séance.")
-                                
-                                # --- INTERACTION (Le graphique) ---
-                                st.caption("👇 Clique sur un point ci-dessous pour voir le détail de la séance.")
-                                
-                                selection = st.plotly_chart(
-                                    fig_main, 
-                                    use_container_width=True, 
-                                    on_select="rerun", 
-                                    selection_mode="points", 
-                                    key=f"chart_{name}"
+                                # -- Graphique 2 : TST / VOLUME --
+                                fig_tst = go.Figure()
+                                fig_tst.add_trace(go.Bar( # On utilise des BARRES pour le volume, c'est souvent plus lisible
+                                    x=daily_stats['Date'], y=daily_stats['TST_Value'],
+                                    name='Volume (Sec/Reps)',
+                                    marker=dict(color='#3366CC'), # Bleu
+                                    hovertemplate="<b>Date :</b> %{x}<br><b>Volume Total :</b> %{y:.0f}<extra></extra>"
+                                ))
+                                fig_tst.add_trace(go.Scatter(
+                                    x=daily_stats['Date'], y=daily_stats['MA_TST'],
+                                    mode='lines', name='Tendance',
+                                    line=dict(color='white', width=2, dash='dot'), hoverinfo='skip'
+                                ))
+                                fig_tst.update_layout(
+                                    title="⏱️ Volume Total (Sec + Reps)",
+                                    yaxis_title="Volume Cumulé", template="plotly_dark",
+                                    height=350, margin=dict(l=10, r=10, t=40, b=10),
+                                    showlegend=False,
+                                    clickmode='event+select'
                                 )
+
+                                # --- 3. AFFICHAGE CÔTE À CÔTE ---
+                                st.caption("👇 Clique sur un point de L'UN DES DEUX graphiques pour voir le détail.")
+                                
+                                col_g1, col_g2 = st.columns(2)
+                                
+                                with col_g1:
+                                    sel_charge = st.plotly_chart(fig_charge, use_container_width=True, on_select="rerun", selection_mode="points", key=f"c_ch_{name}")
+                                
+                                with col_g2:
+                                    sel_tst = st.plotly_chart(fig_tst, use_container_width=True, on_select="rerun", selection_mode="points", key=f"c_tst_{name}")
+
+                                # --- 4. LOGIQUE DE SÉLECTION UNIFIÉE ---
+                                # On regarde si l'utilisateur a cliqué à gauche OU à droite
+                                selection = None
+                                if sel_charge and len(sel_charge["selection"]["points"]) > 0:
+                                    selection = sel_charge
+                                elif sel_tst and len(sel_tst["selection"]["points"]) > 0:
+                                    selection = sel_tst
+
+                                # ... (La suite du code "if selection..." reste identique à ce que je t'ai donné avant)
 
                                 # 3. ZOOM SUR LA SÉANCE SÉLECTIONNÉE
                                 if selection and len(selection["selection"]["points"]) > 0:
@@ -428,5 +477,6 @@ with tab_eleves:
                     
     else:
         st.warning("Veuillez entrer le mot de passe administrateur.")
+
 
 
