@@ -250,63 +250,142 @@ with tab_eleves:
                     """, unsafe_allow_html=True)
 
                     # 2. GRAPHIQUE OPTIMISÉ (Dans l'expander)
-                    with st.expander(f"📈 Voir la progression de {name}"):
-                        if not df_history.empty:
-                            student_df = df_history[df_history['Nom'] == name].copy()
-                            
-                            if not student_df.empty:
-                                liste_exos = student_df['Exercice'].unique()
-                                
-                                if len(liste_exos) > 0:
-                                    choix_exo = st.selectbox("Choisir l'exercice :", liste_exos, key=f"sel_{name}")
-                                    
-                                    # Préparation des données
-                                    data_to_plot = student_df[student_df['Exercice'] == choix_exo].sort_values('Timestamp')
-                                    data_to_plot['MA_3'] = data_to_plot['Charge'].rolling(window=3).mean() # Moyenne mobile
+                   # ... (Dans la boucle for, à l'intérieur de st.expander)
 
-                                    # Création du Graphique Plotly
-                                    import plotly.graph_objects as go
-                                    fig = go.Figure()
+if not df_history.empty:
+    student_df = df_history[df_history['Nom'] == name].copy()
+    
+    if not student_df.empty:
+        # Création d'une colonne 'Date' (sans l'heure) pour le regroupement
+        student_df['Date'] = student_df['Timestamp'].dt.date
+        
+        # --- 1. PRÉPARATION DES DONNÉES AGRÉGÉES (VUE MACRO) ---
+        daily_stats = student_df.groupby('Date').agg({
+            'Charge': 'sum',        # Charge Totale de la séance
+            'RPE': 'mean',          # RPE Moyen de la séance
+            'Exercice': 'count',    # Nombre d'exos
+            'Timestamp': 'max'      # Juste pour garder un format datetime si besoin
+        }).reset_index().sort_values('Date')
 
-                                    # Trace 1 : Points et Lignes (Charge)
-                                    fig.add_trace(go.Scatter(
-                                        x=data_to_plot['Timestamp'], 
-                                        y=data_to_plot['Charge'],
-                                        mode='lines+markers',
-                                        name='Charge',
-                                        line=dict(color='#00CC96', width=3),
-                                        marker=dict(
-                                            size=data_to_plot['RPE'].clip(lower=1) * 2, # Taille min pour éviter erreur
-                                            color=data_to_plot['RPE'],
-                                            colorscale='RdYlGn_r',
-                                            showscale=True
-                                        ),
-                                        hovertemplate="<b>Date:</b> %{x|%d/%m}<br><b>Charge:</b> %{y:.1f}<br><b>RPE:</b> %{marker.color}<extra></extra>"
-                                    ))
+        # Calcul de la moyenne mobile sur la charge totale
+        daily_stats['MA_3'] = daily_stats['Charge'].rolling(window=3).mean()
 
-                                    # Trace 2 : Tendance (Moyenne mobile)
-                                    fig.add_trace(go.Scatter(
-                                        x=data_to_plot['Timestamp'], 
-                                        y=data_to_plot['MA_3'],
-                                        mode='lines',
-                                        name='Tendance',
-                                        line=dict(color='orange', width=2, dash='dot')
-                                    ))
+        # --- 2. GRAPHIQUE PRINCIPAL (GLOBAL) ---
+        import plotly.graph_objects as go
+        
+        fig_main = go.Figure()
 
-                                    fig.update_layout(
-                                        title=f"Analyse : {choix_exo}",
-                                        xaxis_title="", yaxis_title="Charge",
-                                        template="plotly_dark",
-                                        margin=dict(l=10, r=10, t=40, b=10),
-                                        height=350
-                                    )
-                                    st.plotly_chart(fig, use_container_width=True)
-                                else:
-                                    st.info("Pas encore d'exercice enregistré.")
-                            else:
-                                st.info("Pas de données pour cet élève.")
-                        else:
-                            st.error("Problème de connexion aux données.")
+        # Courbe de Charge Totale
+        fig_main.add_trace(go.Scatter(
+            x=daily_stats['Date'],
+            y=daily_stats['Charge'],
+            mode='lines+markers',
+            name='Charge Séance',
+            line=dict(color='#00CC96', width=3),
+            marker=dict(
+                size=10,
+                color=daily_stats['RPE'],
+                colorscale='RdYlGn_r',
+                showscale=True,
+                colorbar=dict(title="Intensité Moyenne (RPE)")
+            ),
+            # Ce qui s'affiche au survol
+            hovertemplate="<b>Date :</b> %{x}<br><b>Charge Totale :</b> %{y:.0f}<br><b>RPE Moyen :</b> %{marker.color:.1f}<extra></extra>"
+        ))
+        
+        # Courbe de Tendance
+        fig_main.add_trace(go.Scatter(
+            x=daily_stats['Date'],
+            y=daily_stats['MA_3'],
+            mode='lines',
+            name='Tendance',
+            line=dict(color='orange', width=2, dash='dot'),
+            hoverinfo='skip'
+        ))
+
+        fig_main.update_layout(
+            title="📅 Charge par Séance (Clique sur un point pour le détail)",
+            yaxis_title="Volume Total (UA)",
+            xaxis_title="",
+            template="plotly_dark",
+            hovermode="closest",
+            height=350,
+            margin=dict(l=10, r=10, t=40, b=10),
+            clickmode='event+select' # Active la sélection
+        )
+
+        # --- 3. AFFICHAGE ET INTERACTION ---
+        st.caption("👇 Clique sur un point de la courbe ci-dessous pour voir le détail de la séance.")
+        
+        # C'est ici que la magie opère : on récupère l'événement de sélection
+        selection = st.plotly_chart(
+            fig_main, 
+            use_container_width=True, 
+            on_select="rerun",  # Recharge la page au clic
+            selection_mode="points",
+            key=f"chart_{name}"
+        )
+
+        # --- 4. ZOOM / DÉTAIL DE LA SÉANCE SÉLECTIONNÉE ---
+        selected_date = None
+        
+        # On vérifie si un point a été cliqué
+        if selection and len(selection["selection"]["points"]) > 0:
+            # Plotly renvoie la date sous forme de string, on la récupère
+            point_data = selection["selection"]["points"][0]
+            selected_date_str = point_data["x"]
+            
+            st.divider()
+            st.markdown(f"### 🔎 Zoom sur la séance du : **{selected_date_str}**")
+            
+            # On filtre les données brutes pour cette date précise
+            # Attention : conversion de string à date pour matcher
+            detail_df = student_df[student_df['Date'].astype(str) == selected_date_str].copy()
+            
+            if not detail_df.empty:
+                # Métriques résumées
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Volume Total", f"{detail_df['Charge'].sum():.0f}")
+                m2.metric("Intensité Moyenne", f"{detail_df['RPE'].mean():.1f}/10")
+                m3.metric("Exercices", f"{len(detail_df)}")
+
+                # Tableau détaillé propre
+                st.markdown("#### Détail des exercices")
+                
+                # On prépare un tableau propre pour l'affichage
+                display_table = detail_df[['Timestamp', 'Exercice', 'TST', 'RPE', 'Charge']].copy()
+                display_table['Heure'] = display_table['Timestamp'].dt.strftime('%H:%M')
+                display_table = display_table[['Heure', 'Exercice', 'TST', 'RPE', 'Charge']]
+                
+                # Affichage avec style (RPE élevé en rouge)
+                st.dataframe(
+                    display_table.style.background_gradient(subset=['RPE'], cmap='RdYlGn_r', vmin=1, vmax=10),
+                    use_container_width=True,
+                    hide_index=True
+                )
+                
+                # Petit graph en barres pour comparer les exos de la séance
+                fig_bar = px.bar(
+                    detail_df, 
+                    x='Exercice', 
+                    y='Charge', 
+                    color='RPE',
+                    color_continuous_scale='RdYlGn_r',
+                    title="Répartition de la charge par exercice"
+                )
+                fig_bar.update_layout(template="plotly_dark", height=300)
+                st.plotly_chart(fig_bar, use_container_width=True)
+                
+            else:
+                st.warning("Erreur : Impossible de retrouver les détails de cette date.")
+        
+        else:
+            st.info("💡 Clique sur un point du graphique ci-dessus pour afficher le détail des exercices de ce jour-là.")
+
+    else:
+        st.info("Pas encore de données pour cet élève.")
+else:
+    st.error("Problème de connexion aux données.")
 
                     # 3. BOUTON DE SUPPRESSION (RESTAURÉ ICI)
                     st.write("---") # Séparateur visuel pour éviter les clics accidentels
@@ -336,3 +415,4 @@ with tab_eleves:
 
     else:
         st.warning("Veuillez entrer le mot de passe administrateur.")
+
