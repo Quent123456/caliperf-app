@@ -41,6 +41,7 @@ def fetch_training_data(csv_url):
     try:
         if not csv_url: return pd.DataFrame()
         df = pd.read_csv(csv_url)
+        # On s'assure d'avoir les bonnes colonnes
         df.columns = ["Timestamp", "Nom", "Exercice", "TST", "RPE", "Charge"]
         return df
     except Exception as e:
@@ -67,6 +68,8 @@ st.markdown("""
     .stTabs [aria-selected="true"] { background-color: #ff4b4b; color: white; }
     .metric-card { background-color: #262730; padding: 15px; border-radius: 10px; border: 1px solid #4b4b4b; margin-bottom: 10px; }
     .big-time { font-size: 2.5em; font-weight: bold; color: #00FF00; text-align: center; }
+    /* Style pour le bouton Repos */
+    div.stButton > button:first-child { border-radius: 8px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -128,20 +131,62 @@ with tab_intro:
                 st.warning("Nom et Prénom obligatoires.")
 
 # =========================================================
-# ONGLET 2 : ANALYSE COACH
+# ONGLET 2 : ANALYSE COACH (Modifié avec Bouton Repos)
 # =========================================================
 with tab_analyse:
     col_up, col_login = st.columns([3, 1])
     with col_up:
-        uploaded_files = st.file_uploader("Charger les vidéos", type=['mp4', 'mov', 'avi'], accept_multiple_files=True)
+        # On garde le file uploader, mais on peut s'en servir après
+        st.caption("Espace de travail")
     with col_login:
         password = st.text_input("🔒 Mot de passe Coach", type="password", key="pwd_analyse")
 
     st.divider()
 
     if password == ADMIN_PWD:
+        
+        # --- NOUVEAU : BOUTON REPOS (SANS VIDÉO) ---
+        with st.expander("🛌 Enregistrement Rapide : REPOS / ABSENCE", expanded=True):
+            cols_repos = st.columns([2, 1])
+            with cols_repos[0]:
+                student_keys = list(st.session_state.students_data.keys())
+                if student_keys:
+                    eleve_repos = st.selectbox("Sélectionner l'élève au repos :", student_keys, key="sel_repos")
+                else:
+                    eleve_repos = None
+                    st.warning("Aucun élève inscrit.")
+            
+            with cols_repos[1]:
+                st.write("") # Espace pour aligner
+                st.write("")
+                if eleve_repos:
+                    if st.button("💤 VALIDER REPOS (Journée à 0)", type="primary", use_container_width=True):
+                        # Envoi des données à 0
+                        data_repos = {
+                            ENTRIES['nom']: eleve_repos,
+                            ENTRIES['exo']: "Repos",   # Le nom de l'exercice sera "Repos"
+                            ENTRIES['tst']: "0",       # TST nul
+                            ENTRIES['rpe']: "0",       # RPE nul
+                            ENTRIES['charge']: "0"     # Charge nulle
+                        }
+                        try:
+                            r = requests.post(LINK_UNIQUE, data=data_repos)
+                            if r.status_code == 200:
+                                st.success(f"✅ Jour de repos noté pour {eleve_repos} !")
+                                time.sleep(1.5)
+                                st.rerun()
+                            else:
+                                st.error("Erreur Google Forms")
+                        except Exception as e:
+                            st.error(f"Erreur technique : {e}")
+
+        st.divider()
+
+        # --- SECTION VIDÉO CLASSIQUE ---
+        uploaded_files = st.file_uploader("Charger les vidéos pour analyse", type=['mp4', 'mov', 'avi'], accept_multiple_files=True)
+
         if not uploaded_files:
-            st.info("⚠️ En attente de fichiers...")
+            st.info("📂 Charge une vidéo pour commencer une analyse technique.")
         else:
             files_map = {f.name: f for f in uploaded_files}
             options = [("✅ " if name in st.session_state.processed_files else "⏳ ") + name for name in files_map.keys()]
@@ -177,14 +222,13 @@ with tab_analyse:
 
                 st.write("---")
 
-                # --- FORMULAIRE ENVOI ---
+                # --- FORMULAIRE ENVOI DONNÉES VIDÉO ---
                 with st.form(key=f"f_{real_name}"):
-                    student_keys = list(st.session_state.students_data.keys())
-                    
+                    # student_keys déjà récupéré plus haut
                     if student_keys:
                         col_a, col_b = st.columns(2)
                         with col_a:
-                            selected_student = st.selectbox("👤 Athlète", student_keys)
+                            selected_student = st.selectbox("👤 Athlète", student_keys, key=f"sel_std_{real_name}")
                         with col_b:
                             type_effort = st.radio("Type", ["Statique ⏱️", "Dynamique 🔁"], horizontal=True)
 
@@ -283,7 +327,7 @@ with tab_eleves:
                     <div class="metric-card">
                         <h3 style='margin-top:0; color:#ff4b4b;'>👤 {name} <span style="font-size:0.8em;">{emoji_sexe}</span></h3>
                         <p><b>📅 Fréquence :</b> {info.get('freq', 'Non définie')}</p>
-                        <p><b>📏 morpho :</b> {taille_user} cm | {poids_user} kg</p>
+                        <p><b>📏 Physio :</b> {taille_user} cm | {poids_user} kg</p>
                         <p><b>⏳ Expérience :</b> {info.get('exp', 'Non renseignée')}</p>
                         <div style="margin-top:10px; padding-top:10px; border-top:1px solid #444;">
                             <b>🎯 Objectif :</b><br>
@@ -321,7 +365,7 @@ with tab_eleves:
                                     name='Charge'
                                 ))
                                 fig_charge.add_trace(go.Scatter(x=daily_stats['Date'], y=daily_stats['MA_Charge'], mode='lines', line=dict(color='orange', dash='dot'), hoverinfo='skip'))
-                                fig_charge.update_layout(title="⚡ Charge", template="plotly_dark", height=300, margin=dict(l=10, r=10, t=30, b=10), showlegend=False, clickmode='event+select')
+                                fig_charge.update_layout(title="⚡ Charge (0 = Repos)", template="plotly_dark", height=300, margin=dict(l=10, r=10, t=30, b=10), showlegend=False, clickmode='event+select')
 
                                 fig_tst = go.Figure()
                                 fig_tst.add_trace(go.Bar(
@@ -399,4 +443,3 @@ with tab_eleves:
                                     st.error("Erreur Connexion")
     else:
         st.warning("Mot de passe requis.")
-
