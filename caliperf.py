@@ -18,7 +18,6 @@ try:
     LINK_UNIQUE = st.secrets["general"]["google_form_url"]
     DELETE_SCRIPT_URL = st.secrets["general"]["delete_script_url"]
     ENTRIES = st.secrets["google_entries"]
-    # On essaie de récupérer l'URL du CSV depuis les secrets
     CSV_URL_SECRET = st.secrets["general"].get("csv_url", "")
 except Exception as e:
     st.error(f"⚠️ Erreur critique de configuration : {e}")
@@ -42,9 +41,6 @@ def fetch_training_data(csv_url):
     try:
         if not csv_url: return pd.DataFrame()
         df = pd.read_csv(csv_url)
-        # Renommage des colonnes (adapte si nécessaire selon ton Google Sheet)
-        # Assure-toi que l'ordre correspond à ton Google Form
-        # Timestamp, Nom, Exercice, TST(Perf), RPE, Charge
         df.columns = ["Timestamp", "Nom", "Exercice", "TST", "RPE", "Charge"]
         return df
     except Exception as e:
@@ -102,7 +98,7 @@ with tab_intro:
         with col4: 
             experience = st.text_input("Temps de pratique", placeholder="Ex: 2 ans, Débutant...")
         
-        # --- NOUVEAU BLOC PHYSIO (Poids / Taille / Sexe) ---
+        # --- DONNÉES PHYSIO ---
         c_poids, c_taille, c_sexe = st.columns(3)
         with c_poids:
             poids = st.number_input("Poids (kg)", min_value=30.0, max_value=150.0, step=0.5, value=70.0)
@@ -116,21 +112,21 @@ with tab_intro:
         if st.form_submit_button("✅ Valider mon inscription", type="primary", use_container_width=True):
             if nom and prenom:
                 full_name = f"{prenom} {nom}"
-                # On sauvegarde tout dans la base de données
                 st.session_state.students_data[full_name] = {
                     "link": LINK_UNIQUE, 
                     "freq": freq, 
                     "goal": objectif,
                     "exp": experience,
                     "weight": poids,
-                    "height": taille, # Ajout de la taille
-                    "sex": sexe       # Ajout du sexe
+                    "height": taille,
+                    "sex": sexe
                 }
                 save_data(st.session_state.students_data)
                 st.success(f"Dossier créé pour {prenom} !")
                 st.balloons()
             else:
                 st.warning("Nom et Prénom obligatoires.")
+
 # =========================================================
 # ONGLET 2 : ANALYSE COACH
 # =========================================================
@@ -181,7 +177,7 @@ with tab_analyse:
 
                 st.write("---")
 
-                # --- FORMULAIRE D'ENVOI DES DONNÉES ---
+                # --- FORMULAIRE ENVOI ---
                 with st.form(key=f"f_{real_name}"):
                     student_keys = list(st.session_state.students_data.keys())
                     
@@ -190,17 +186,15 @@ with tab_analyse:
                         with col_a:
                             selected_student = st.selectbox("👤 Athlète", student_keys)
                         with col_b:
-                            # CHOIX DU TYPE D'EFFORT
                             type_effort = st.radio("Type", ["Statique ⏱️", "Dynamique 🔁"], horizontal=True)
 
                         exo = st.text_input("Exercice", value=real_name.split('.')[0])
                         
                         c1, c2 = st.columns(2)
                         with c1:
-                            rpe = st.slider("RPE (Intensité)", 1, 10, 7)
+                            rpe = st.slider("RPE", 1, 10, 7)
                         
                         reps = 0
-                        
                         with c2:
                             if type_effort == "Dynamique 🔁":
                                 reps = st.number_input("Répétitions", min_value=1, value=10)
@@ -212,7 +206,6 @@ with tab_analyse:
                             if timer['run']: 
                                 final_time += time.time() - timer['start']
                             
-                            # LOGIQUE DE CALCUL
                             charge_calc = 0
                             valeur_principale = ""
                             
@@ -223,7 +216,6 @@ with tab_analyse:
                                 else:
                                     st.warning("Chrono à 0 !")
                             else:
-                                # Pour le dynamique, on utilise Reps * RPE (simplifié)
                                 charge_calc = reps * rpe
                                 valeur_principale = f"{reps} reps"
 
@@ -235,7 +227,6 @@ with tab_analyse:
                                     ENTRIES['rpe']: str(rpe),
                                     ENTRIES['charge']: str(round(charge_calc, 2)).replace('.', ',')
                                 }
-                                
                                 try:
                                     r = requests.post(LINK_UNIQUE, data=data)
                                     if r.status_code == 200:
@@ -248,54 +239,163 @@ with tab_analyse:
                                 except Exception as e: 
                                     st.error(f"Erreur technique : {e}")
                             else:
-                                st.warning("Données invalides (Charge = 0)")
-
+                                st.warning("Données invalides.")
                     else:
                         st.warning("Aucun élève inscrit.")
 
-with st.form("form_intro"):
-        col1, col2 = st.columns(2)
-        with col1: 
-            nom = st.text_input("Nom")
-        with col2: 
-            prenom = st.text_input("Prénom")
-        
-        col3, col4 = st.columns(2)
-        with col3: 
-            freq = st.selectbox("Fréquence", ["2x / semaine", "3x / semaine", "4x / semaine", "5x / semaine", "Tous les jours"])
-        with col4: 
-            experience = st.text_input("Temps de pratique", placeholder="Ex: 2 ans, Débutant...")
-        
-        # --- NOUVEAU BLOC PHYSIO (Poids / Taille / Sexe) ---
-        c_poids, c_taille, c_sexe = st.columns(3)
-        with c_poids:
-            poids = st.number_input("Poids (kg)", min_value=30.0, max_value=150.0, step=0.5, value=70.0)
-        with c_taille:
-            taille = st.number_input("Taille (cm)", min_value=100, max_value=230, step=1, value=175)
-        with c_sexe:
-            sexe = st.radio("Sexe", ["Homme", "Femme"], horizontal=True)
-        
-        objectif = st.text_area("Ton objectif principal")
-        
-        if st.form_submit_button("✅ Valider mon inscription", type="primary", use_container_width=True):
-            if nom and prenom:
-                full_name = f"{prenom} {nom}"
-                # On sauvegarde tout dans la base de données
-                st.session_state.students_data[full_name] = {
-                    "link": LINK_UNIQUE, 
-                    "freq": freq, 
-                    "goal": objectif,
-                    "exp": experience,
-                    "weight": poids,
-                    "height": taille, # Ajout de la taille
-                    "sex": sexe       # Ajout du sexe
-                }
-                save_data(st.session_state.students_data)
-                st.success(f"Dossier créé pour {prenom} !")
-                st.balloons()
-            else:
-                st.warning("Nom et Prénom obligatoires.")
+# =========================================================
+# ONGLET 3 : MES ÉLÈVES (PRIVÉ)
+# =========================================================
+with tab_eleves:
+    st.header("👥 Gestion et Progression des Athlètes")
+    
+    # URL CSV (À mettre dans secrets si possible, sinon ici)
+    SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTABZd8nfqjdUzGUBjb57ntk8ACmBIPg7CM5VBMjGSdXJtiAN1ZJhwpGUb2EJvQZOrJ55s9eE2c8exn/pub?output=csv"
+    
+    pwd_eleves = st.text_input("🔒 Mot de passe accès privé", type="password", key="pwd_eleves")
+    
+    if pwd_eleves == ADMIN_PWD:
+        # --- CHARGEMENT DONNÉES ---
+        if SHEET_CSV_URL:
+            df_history = fetch_training_data(SHEET_CSV_URL)
+            if not df_history.empty and 'Charge' in df_history.columns:
+                df_history['Charge'] = df_history['Charge'].astype(str).str.replace(',', '.').apply(pd.to_numeric, errors='coerce')
+                df_history['Timestamp'] = pd.to_datetime(df_history['Timestamp'], errors='coerce')
+                df_history['Date'] = df_history['Timestamp'].dt.date
+        else:
+            df_history = pd.DataFrame()
+            st.warning("⚠️ URL du CSV non configurée.")
 
+        if not st.session_state.students_data:
+            st.info("Aucun élève enregistré pour le moment.")
+        else:
+            cols = st.columns(2)
+            
+            for index, (name, info) in enumerate(st.session_state.students_data.items()):
+                with cols[index % 2]:
+                    
+                    # --- 1. CARTE IDENTITÉ ---
+                    emoji_sexe = "♂️" if info.get('sex') == "Homme" else "♀️"
+                    poids_user = info.get('weight', 'N/A')
+                    taille_user = info.get('height', 'N/A')
 
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <h3 style='margin-top:0; color:#ff4b4b;'>👤 {name} <span style="font-size:0.8em;">{emoji_sexe}</span></h3>
+                        <p><b>📅 Fréquence :</b> {info.get('freq', 'Non définie')}</p>
+                        <p><b>📏 Physio :</b> {taille_user} cm | {poids_user} kg</p>
+                        <p><b>⏳ Expérience :</b> {info.get('exp', 'Non renseignée')}</p>
+                        <div style="margin-top:10px; padding-top:10px; border-top:1px solid #444;">
+                            <b>🎯 Objectif :</b><br>
+                            <span style="font-style:italic; color:#ccc;">{info.get('goal', 'Aucun objectif')}</span>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
+                    # --- 2. GRAPHIQUES ET ANALYSE ---
+                    with st.expander(f"📈 Voir la progression de {name}"):
+                        if not df_history.empty:
+                            student_df = df_history[df_history['Nom'] == name].copy()
+                            
+                            if not student_df.empty:
+                                # Nettoyage TST
+                                student_df['TST_Value'] = student_df['TST'].astype(str).str.extract(r'(\d+[.,]?\d*)')[0].str.replace(',', '.', regex=False).astype(float).fillna(0)
+                                
+                                # Regroupement par jour
+                                daily_stats = student_df.groupby('Date').agg({
+                                    'Charge': 'sum',
+                                    'TST_Value': 'sum',
+                                    'RPE': 'mean',
+                                    'Exercice': 'count'
+                                }).reset_index().sort_values('Date')
+                                
+                                daily_stats['MA_Charge'] = daily_stats['Charge'].rolling(window=3).mean()
+                                daily_stats['MA_TST'] = daily_stats['TST_Value'].rolling(window=3).mean()
 
+                                # Création des Graphs
+                                fig_charge = go.Figure()
+                                fig_charge.add_trace(go.Scatter(
+                                    x=daily_stats['Date'], y=daily_stats['Charge'],
+                                    mode='lines+markers', line=dict(color='#00CC96', width=3),
+                                    marker=dict(size=8, color=daily_stats['RPE'], colorscale='RdYlGn_r', showscale=False),
+                                    name='Charge'
+                                ))
+                                fig_charge.add_trace(go.Scatter(x=daily_stats['Date'], y=daily_stats['MA_Charge'], mode='lines', line=dict(color='orange', dash='dot'), hoverinfo='skip'))
+                                fig_charge.update_layout(title="⚡ Charge", template="plotly_dark", height=300, margin=dict(l=10, r=10, t=30, b=10), showlegend=False, clickmode='event+select')
+
+                                fig_tst = go.Figure()
+                                fig_tst.add_trace(go.Bar(
+                                    x=daily_stats['Date'], y=daily_stats['TST_Value'],
+                                    marker=dict(color='#3366CC'), name='Volume'
+                                ))
+                                fig_tst.add_trace(go.Scatter(x=daily_stats['Date'], y=daily_stats['MA_TST'], mode='lines', line=dict(color='white', dash='dot'), hoverinfo='skip'))
+                                fig_tst.update_layout(title="⏱️ Volume", template="plotly_dark", height=300, margin=dict(l=10, r=10, t=30, b=10), showlegend=False, clickmode='event+select')
+
+                                st.caption("👇 Clique sur un graphique pour voir le détail.")
+                                col_g1, col_g2 = st.columns(2)
+                                with col_g1:
+                                    sel_charge = st.plotly_chart(fig_charge, use_container_width=True, on_select="rerun", selection_mode="points", key=f"c_ch_{name}")
+                                with col_g2:
+                                    sel_tst = st.plotly_chart(fig_tst, use_container_width=True, on_select="rerun", selection_mode="points", key=f"c_tst_{name}")
+
+                                # Logique de sélection
+                                selection = None
+                                if sel_charge and len(sel_charge["selection"]["points"]) > 0: selection = sel_charge
+                                elif sel_tst and len(sel_tst["selection"]["points"]) > 0: selection = sel_tst
+
+                                if selection:
+                                    point_data = selection["selection"]["points"][0]
+                                    selected_date_str = point_data["x"]
+                                    
+                                    st.divider()
+                                    st.markdown(f"#### 🔎 Détail du : **{selected_date_str}**")
+                                    
+                                    detail_df = student_df[student_df['Date'].astype(str) == selected_date_str].copy()
+                                    
+                                    if not detail_df.empty:
+                                        detail_df['TST_Clean'] = detail_df['TST'].astype(str).str.extract(r'(\d+[.,]?\d*)')[0].str.replace(',', '.', regex=False).astype(float).fillna(0)
+                                        
+                                        k1, k2, k3, k4, k5 = st.columns(5)
+                                        k1.metric("⚡ Charge", f"{detail_df['Charge'].sum():.0f}")
+                                        k2.metric("⏱️ Volume", f"{detail_df['TST_Clean'].sum():.0f}")
+                                        k3.metric("🥵 RPE Tot", f"{detail_df['RPE'].sum():.0f}")
+                                        k4.metric("⚖️ RPE Moy", f"{detail_df['RPE'].mean():.1f}")
+                                        k5.metric("🏋️ Exos", f"{len(detail_df)}")
+
+                                        st.write("---")
+
+                                        display_table = detail_df[['Timestamp', 'Exercice', 'TST', 'RPE', 'Charge']].copy()
+                                        display_table['Heure'] = display_table['Timestamp'].dt.strftime('%H:%M')
+                                        
+                                        st.dataframe(
+                                            display_table[['Heure', 'Exercice', 'TST', 'RPE', 'Charge']],
+                                            use_container_width=True,
+                                            hide_index=True,
+                                            column_config={
+                                                "RPE": st.column_config.ProgressColumn("RPE", min_value=0, max_value=10, format="%d"),
+                                                "Charge": st.column_config.NumberColumn("Charge", format="%.1f")
+                                            }
+                                        )
+                            else:
+                                st.info("Pas encore de données.")
+                        else:
+                            st.error("Données inaccessibles.")
+
+                    # --- 3. BOUTON SUPPRESSION ---
+                    st.write("---")
+                    col_del, col_txt = st.columns([1, 3])
+                    with col_del:
+                        if st.button(f"🗑️ Supprimer", key=f"del_{name}", type="secondary"):
+                            with st.spinner("..."):
+                                try:
+                                    response = requests.get(DELETE_SCRIPT_URL, params={"name": name})
+                                    if response.status_code == 200:
+                                        del st.session_state.students_data[name]
+                                        save_data(st.session_state.students_data)
+                                        st.rerun()
+                                    else:
+                                        st.error("Erreur API")
+                                except:
+                                    st.error("Erreur Connexion")
+    else:
+        st.warning("Mot de passe requis.")
