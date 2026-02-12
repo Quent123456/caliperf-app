@@ -18,7 +18,6 @@ try:
     DELETE_SCRIPT_URL = st.secrets["general"]["delete_script_url"]
     ENTRIES = st.secrets["google_entries"]
     CSV_URL_SECRET = st.secrets["general"].get("csv_url", "")
-    # Tu pourras ajouter ce lien dans tes secrets plus tard
     UPLOAD_LINK = st.secrets["general"].get("upload_link", "https://drive.google.com/") 
 except Exception as e:
     st.error(f"⚠️ Erreur critique de configuration : {e}")
@@ -121,7 +120,6 @@ with tab_intro:
 # =========================================================
 with tab_analyse:
     
-    # En-tête visible par tout le monde
     col_titre, col_login = st.columns([3, 1])
     with col_titre:
         st.caption("Espace d'échange et d'analyse technique.")
@@ -229,14 +227,14 @@ with tab_analyse:
     # --- CAS 2 : C'EST L'ÉLÈVE (Pas de mot de passe) ---
     else:
         st.subheader("📤 Envoyer mes vidéos au Coach")
+        # ICI ETAIT L'ERREUR : Les guillemets """ ferment maintenant correctement le texte
         st.markdown("""
         Pour que ton coach puisse analyser tes mouvements, il faut lui envoyer tes vidéos.
-        
+        """)
         
         col_send1, col_send2 = st.columns([1, 2])
         with col_send1:
             st.info("👇 Clique ici pour déposer tes fichiers")
-            # C'est ici que tu mets le lien vers ton Drive, Dropbox ou TransferNow
             st.link_button("📂 Ouvrir le dossier de dépôt", UPLOAD_LINK, type="primary", use_container_width=True)
         
         with col_send2:
@@ -282,7 +280,39 @@ with tab_eleves:
                                 daily['MA_Ch'] = daily['Charge'].rolling(3).mean()
                                 daily['MA_Vol'] = daily['TST_Val'].rolling(3).mean()
 
+                                # ICI LA CORRECTION DE LA FIN DU FICHIER QUI MANQUAIT
                                 fig_c = go.Figure()
                                 fig_c.add_trace(go.Scatter(x=daily['Date'], y=daily['Charge'], mode='lines+markers', line=dict(color='#00CC96'), marker=dict(color=daily['RPE'], colorscale='RdYlGn_r'), name='Charge'))
-                                fig_
+                                fig_c.add_trace(go.Scatter(x=daily['Date'], y=daily['MA_Ch'], mode='lines', line=dict(dash='dot', color='orange'), name='Tend.'))
+                                fig_c.update_layout(title="Charge", template="plotly_dark", height=250, margin=dict(t=30,b=10,l=10,r=10), showlegend=False, clickmode='event+select')
+                                
+                                fig_v = go.Figure()
+                                fig_v.add_trace(go.Bar(x=daily['Date'], y=daily['TST_Val'], marker=dict(color='#3366CC'), name='Vol'))
+                                fig_v.add_trace(go.Scatter(x=daily['Date'], y=daily['MA_Vol'], mode='lines', line=dict(dash='dot', color='white'), name='Tend.'))
+                                fig_v.update_layout(title="Volume", template="plotly_dark", height=250, margin=dict(t=30,b=10,l=10,r=10), showlegend=False, clickmode='event+select')
 
+                                c1, c2 = st.columns(2)
+                                with c1: sc = st.plotly_chart(fig_c, use_container_width=True, on_select="rerun", key=f"c_{name}")
+                                with c2: sv = st.plotly_chart(fig_v, use_container_width=True, on_select="rerun", key=f"v_{name}")
+
+                                sel = sc if sc and sc["selection"]["points"] else sv if sv and sv["selection"]["points"] else None
+                                if sel:
+                                    dt = sel["selection"]["points"][0]["x"]
+                                    st.markdown(f"**🔎 Détail du {dt}**")
+                                    det = s_df[s_df['Date'].astype(str)==dt].copy()
+                                    st.dataframe(det[['Exercice','TST','RPE','Charge']], use_container_width=True, hide_index=True)
+                            else: st.info("Pas de données.")
+                        else: st.error("Erreur données.")
+
+                    st.write("---")
+                    cd, ct = st.columns([1,3])
+                    with cd:
+                        if st.button("🗑️", key=f"del_{name}"):
+                            try:
+                                requests.get(DELETE_SCRIPT_URL, params={"name": name})
+                                del st.session_state.students_data[name]
+                                save_data(st.session_state.students_data)
+                                st.rerun()
+                            except: st.error("Erreur")
+    else:
+        st.warning("Mot de passe requis.")
