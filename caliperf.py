@@ -232,11 +232,6 @@ with tab_analyse:
         st.markdown("""
         Pour que ton coach puisse analyser tes mouvements, il faut lui envoyer tes vidéos.
         
-        **Consignes de tournage :**
-        * 🎥 Filme de **profil** ou de **3/4**.
-        * 💡 Assure-toi d'avoir une bonne lumière.
-        * ✂️ Essaie de couper les temps morts au début et à la fin.
-        """)
         
         col_send1, col_send2 = st.columns([1, 2])
         with col_send1:
@@ -290,3 +285,4 @@ with tab_eleves:
                                 fig_c = go.Figure()
                                 fig_c.add_trace(go.Scatter(x=daily['Date'], y=daily['Charge'], mode='lines+markers', line=dict(color='#00CC96'), marker=dict(color=daily['RPE'], colorscale='RdYlGn_r'), name='Charge'))
                                 fig_
+
