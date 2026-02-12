@@ -254,26 +254,78 @@ with tab_eleves:
                     """, unsafe_allow_html=True)
 
                     # --- ZONE GRAPHIQUE ---
-                    with st.expander(f"📈 Voir la progression de {name}"):
-                        if not df_history.empty:
-                            student_df = df_history[df_history['Nom'] == name].copy()
-                            
-                            if not student_df.empty:
-                                liste_exos = student_df['Exercice'].unique()
-                                
-                                if len(liste_exos) > 0:
-                                    choix_exo = st.selectbox("Choisir l'exercice :", liste_exos, key=f"sel_{name}")
-                                    data_to_plot = student_df[student_df['Exercice'] == choix_exo].sort_values('Timestamp')
-                                    
-                                    fig = px.line(data_to_plot, x='Timestamp', y='Charge', markers=True,
-                                                  title=f"Charge : {choix_exo}")
-                                    st.plotly_chart(fig, use_container_width=True)
-                                else:
-                                    st.info("Données trouvées, mais pas d'exercice identifié.")
-                            else:
-                                st.info("Pas encore de données d'entraînement enregistrées.")
-                        else:
-                            st.info("Impossible de charger l'historique global (Vérifie le lien CSV).")
+                   import plotly.graph_objects as go
+
+# ... (Intérieur de la boucle if not student_df.empty:)
+
+if len(liste_exos) > 0:
+    choix_exo = st.selectbox("Choisir l'exercice :", liste_exos, key=f"sel_{name}")
+    
+    # Filtrage et Tri
+    data_to_plot = student_df[student_df['Exercice'] == choix_exo].sort_values('Timestamp')
+    
+    # --- CALCUL DE LA TENDANCE (Moyenne Mobile sur 3 séances) ---
+    # Cela permet de voir si l'athlète progresse malgré une mauvaise séance isolée
+    data_to_plot['MA_3'] = data_to_plot['Charge'].rolling(window=3).mean()
+
+    # --- CRÉATION DU GRAPHIQUE AVANCÉ ---
+    fig = go.Figure()
+
+    # 1. La Ligne de Charge (Performance)
+    fig.add_trace(go.Scatter(
+        x=data_to_plot['Timestamp'], 
+        y=data_to_plot['Charge'],
+        mode='lines+markers',
+        name='Charge (Perf)',
+        line=dict(color='#00CC96', width=3), # Vert Streamlit
+        marker=dict(
+            size=data_to_plot['RPE'] * 1.5, # La taille dépend de la difficulté
+            color=data_to_plot['RPE'],      # La couleur change avec l'intensité
+            colorscale='RdYlGn_r',          # Vert (facile) -> Rouge (dur)
+            showscale=True,
+            colorbar=dict(title="RPE", len=0.5)
+        ),
+        # Info-bulle personnalisée
+        hovertemplate=(
+            "<b>Date:</b> %{x|%d/%m/%Y}<br>" +
+            "<b>Charge Calculée:</b> %{y:.1f}<br>" +
+            "<b>RPE:</b> %{marker.color}<br>" +
+            "<b>Perf Brute:</b> %{customdata} <extra></extra>"
+        ),
+        customdata=data_to_plot['TST'] # On passe la donnée brute (Temps ou Reps) ici
+    ))
+
+    # 2. La Ligne de Tendance (Moyenne Mobile)
+    fig.add_trace(go.Scatter(
+        x=data_to_plot['Timestamp'], 
+        y=data_to_plot['MA_3'],
+        mode='lines',
+        name='Tendance (Moy. 3)',
+        line=dict(color='orange', width=2, dash='dot'),
+        hoverinfo='skip' # On ne veut pas d'info-bulle sur la tendance
+    ))
+
+    # --- MISE EN PAGE PRO ---
+    fig.update_layout(
+        title=f"📈 Analyse : {choix_exo}",
+        xaxis_title="Date",
+        yaxis_title="Charge d'entraînement (UA)",
+        template="plotly_dark", # Force le mode sombre
+        hovermode="x unified",  # Barre verticale de survol
+        legend=dict(orientation="h", y=1.1), # Légende en haut
+        margin=dict(l=20, r=20, t=50, b=20),
+        
+        # Ajout du Slider temporel (Zoom)
+        xaxis=dict(
+            rangeslider=dict(visible=True),
+            type="date"
+        )
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+else:
+    st.info("Données trouvées, mais pas d'exercice identifié.")
 
                     # --- BOUTON SUPPRESSION ---
                     if st.button(f"🗑️ Supprimer {name}", key=f"del_{name}"):
@@ -292,5 +344,6 @@ with tab_eleves:
                                 st.error(f"Impossible de contacter Google Sheets : {e}")
     else:
         st.warning("Veuillez entrer le mot de passe administrateur pour consulter les fiches.")
+
 
 
