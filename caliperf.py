@@ -209,41 +209,37 @@ with tab_analyse:
                         st.divider()
 
 # =========================================================
-# ONGLET 3 : MES ÉLÈVES (PRIVÉ)
+# ONGLET 3 : MES ÉLÈVES (PRIVÉ) - CORRIGÉ
 # =========================================================
 with tab_eleves:
     st.header("👥 Gestion et Progression des Athlètes")
     
-    # ⚠️ ICI : Remplace par ton lien CSV si tu ne l'as pas mis dans secrets.toml
-    # Exemple : SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/..../pub?output=csv"
+    # URL de ton CSV (Récupérée des secrets ou en dur)
     SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTABZd8nfqjdUzGUBjb57ntk8ACmBIPg7CM5VBMjGSdXJtiAN1ZJhwpGUb2EJvQZOrJ55s9eE2c8exn/pub?output=csv"
     
     pwd_eleves = st.text_input("🔒 Mot de passe accès privé", type="password", key="pwd_eleves")
     
     if pwd_eleves == ADMIN_PWD:
-        # 1. On charge les données d'entraînement UNE SEULE FOIS pour tout le monde
+        # Chargement des données
         if SHEET_CSV_URL:
             df_history = fetch_training_data(SHEET_CSV_URL)
-            
-            # --- NETTOYAGE DES DONNÉES ---
             if not df_history.empty and 'Charge' in df_history.columns:
-                # On remplace les virgules par des points et on convertit en nombres
                 df_history['Charge'] = df_history['Charge'].astype(str).str.replace(',', '.').apply(pd.to_numeric, errors='coerce')
-                # On convertit le Timestamp en date
                 df_history['Timestamp'] = pd.to_datetime(df_history['Timestamp'], errors='coerce')
         else:
             df_history = pd.DataFrame()
-            st.warning("⚠️ URL du CSV non configurée (dans secrets ou dans le code).")
+            st.warning("⚠️ URL du CSV non configurée.")
 
         if not st.session_state.students_data:
             st.info("Aucun élève enregistré pour le moment.")
         else:
             cols = st.columns(2)
             
+            # --- BOUCLE SUR LES ÉLÈVES ---
             for index, (name, info) in enumerate(st.session_state.students_data.items()):
                 with cols[index % 2]:
                     
-                    # --- CARTE ÉLÈVE ---
+                    # 1. CARTE D'IDENTITÉ
                     st.markdown(f"""
                     <div class="metric-card">
                         <h3 style='margin-top:0; color:#ff4b4b;'>👤 {name}</h3>
@@ -253,97 +249,90 @@ with tab_eleves:
                     </div>
                     """, unsafe_allow_html=True)
 
-                    # --- ZONE GRAPHIQUE ---
-                   import plotly.graph_objects as go
+                    # 2. GRAPHIQUE OPTIMISÉ (Dans l'expander)
+                    with st.expander(f"📈 Voir la progression de {name}"):
+                        if not df_history.empty:
+                            student_df = df_history[df_history['Nom'] == name].copy()
+                            
+                            if not student_df.empty:
+                                liste_exos = student_df['Exercice'].unique()
+                                
+                                if len(liste_exos) > 0:
+                                    choix_exo = st.selectbox("Choisir l'exercice :", liste_exos, key=f"sel_{name}")
+                                    
+                                    # Préparation des données
+                                    data_to_plot = student_df[student_df['Exercice'] == choix_exo].sort_values('Timestamp')
+                                    data_to_plot['MA_3'] = data_to_plot['Charge'].rolling(window=3).mean() # Moyenne mobile
 
-# ... (Intérieur de la boucle if not student_df.empty:)
+                                    # Création du Graphique Plotly
+                                    import plotly.graph_objects as go
+                                    fig = go.Figure()
 
-if len(liste_exos) > 0:
-    choix_exo = st.selectbox("Choisir l'exercice :", liste_exos, key=f"sel_{name}")
-    
-    # Filtrage et Tri
-    data_to_plot = student_df[student_df['Exercice'] == choix_exo].sort_values('Timestamp')
-    
-    # --- CALCUL DE LA TENDANCE (Moyenne Mobile sur 3 séances) ---
-    # Cela permet de voir si l'athlète progresse malgré une mauvaise séance isolée
-    data_to_plot['MA_3'] = data_to_plot['Charge'].rolling(window=3).mean()
+                                    # Trace 1 : Points et Lignes (Charge)
+                                    fig.add_trace(go.Scatter(
+                                        x=data_to_plot['Timestamp'], 
+                                        y=data_to_plot['Charge'],
+                                        mode='lines+markers',
+                                        name='Charge',
+                                        line=dict(color='#00CC96', width=3),
+                                        marker=dict(
+                                            size=data_to_plot['RPE'].clip(lower=1) * 2, # Taille min pour éviter erreur
+                                            color=data_to_plot['RPE'],
+                                            colorscale='RdYlGn_r',
+                                            showscale=True
+                                        ),
+                                        hovertemplate="<b>Date:</b> %{x|%d/%m}<br><b>Charge:</b> %{y:.1f}<br><b>RPE:</b> %{marker.color}<extra></extra>"
+                                    ))
 
-    # --- CRÉATION DU GRAPHIQUE AVANCÉ ---
-    fig = go.Figure()
+                                    # Trace 2 : Tendance (Moyenne mobile)
+                                    fig.add_trace(go.Scatter(
+                                        x=data_to_plot['Timestamp'], 
+                                        y=data_to_plot['MA_3'],
+                                        mode='lines',
+                                        name='Tendance',
+                                        line=dict(color='orange', width=2, dash='dot')
+                                    ))
 
-    # 1. La Ligne de Charge (Performance)
-    fig.add_trace(go.Scatter(
-        x=data_to_plot['Timestamp'], 
-        y=data_to_plot['Charge'],
-        mode='lines+markers',
-        name='Charge (Perf)',
-        line=dict(color='#00CC96', width=3), # Vert Streamlit
-        marker=dict(
-            size=data_to_plot['RPE'] * 1.5, # La taille dépend de la difficulté
-            color=data_to_plot['RPE'],      # La couleur change avec l'intensité
-            colorscale='RdYlGn_r',          # Vert (facile) -> Rouge (dur)
-            showscale=True,
-            colorbar=dict(title="RPE", len=0.5)
-        ),
-        # Info-bulle personnalisée
-        hovertemplate=(
-            "<b>Date:</b> %{x|%d/%m/%Y}<br>" +
-            "<b>Charge Calculée:</b> %{y:.1f}<br>" +
-            "<b>RPE:</b> %{marker.color}<br>" +
-            "<b>Perf Brute:</b> %{customdata} <extra></extra>"
-        ),
-        customdata=data_to_plot['TST'] # On passe la donnée brute (Temps ou Reps) ici
-    ))
-
-    # 2. La Ligne de Tendance (Moyenne Mobile)
-    fig.add_trace(go.Scatter(
-        x=data_to_plot['Timestamp'], 
-        y=data_to_plot['MA_3'],
-        mode='lines',
-        name='Tendance (Moy. 3)',
-        line=dict(color='orange', width=2, dash='dot'),
-        hoverinfo='skip' # On ne veut pas d'info-bulle sur la tendance
-    ))
-
-    # --- MISE EN PAGE PRO ---
-    fig.update_layout(
-        title=f"📈 Analyse : {choix_exo}",
-        xaxis_title="Date",
-        yaxis_title="Charge d'entraînement (UA)",
-        template="plotly_dark", # Force le mode sombre
-        hovermode="x unified",  # Barre verticale de survol
-        legend=dict(orientation="h", y=1.1), # Légende en haut
-        margin=dict(l=20, r=20, t=50, b=20),
-        
-        # Ajout du Slider temporel (Zoom)
-        xaxis=dict(
-            rangeslider=dict(visible=True),
-            type="date"
-        )
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
-
-else:
-    st.info("Données trouvées, mais pas d'exercice identifié.")
-
-                    # --- BOUTON SUPPRESSION ---
-                    if st.button(f"🗑️ Supprimer {name}", key=f"del_{name}"):
-                        with st.spinner(f"Suppression de {name} en cours..."):
-                            try:
-                                response = requests.get(DELETE_SCRIPT_URL, params={"name": name})
-                                if response.status_code == 200 and "Succès" in response.text:
-                                    del st.session_state.students_data[name]
-                                    save_data(st.session_state.students_data)
-                                    st.success(f"✅ {name} supprimé !")
-                                    time.sleep(1)
-                                    st.rerun()
+                                    fig.update_layout(
+                                        title=f"Analyse : {choix_exo}",
+                                        xaxis_title="", yaxis_title="Charge",
+                                        template="plotly_dark",
+                                        margin=dict(l=10, r=10, t=40, b=10),
+                                        height=350
+                                    )
+                                    st.plotly_chart(fig, use_container_width=True)
                                 else:
-                                    st.error(f"Erreur du script : {response.text}")
-                            except Exception as e:
-                                st.error(f"Impossible de contacter Google Sheets : {e}")
+                                    st.info("Pas encore d'exercice enregistré.")
+                            else:
+                                st.info("Pas de données pour cet élève.")
+                        else:
+                            st.error("Problème de connexion aux données.")
+
+                    # 3. BOUTON DE SUPPRESSION (RESTAURÉ ICI)
+                    st.write("---") # Séparateur visuel pour éviter les clics accidentels
+                    col_del_btn, col_del_txt = st.columns([1, 2])
+                    
+                    with col_del_btn:
+                        if st.button(f"🗑️ Supprimer", key=f"del_{name}", type="secondary"):
+                            with st.spinner(f"Suppression de {name}..."):
+                                try:
+                                    # Appel au script Google Apps Script
+                                    response = requests.get(DELETE_SCRIPT_URL, params={"name": name})
+                                    
+                                    if response.status_code == 200 and "Succès" in response.text:
+                                        # Suppression locale
+                                        del st.session_state.students_data[name]
+                                        save_data(st.session_state.students_data)
+                                        st.success(f"Au revoir {name} !")
+                                        time.sleep(1)
+                                        st.rerun()
+                                    else:
+                                        st.error(f"Erreur script : {response.text}")
+                                except Exception as e:
+                                    st.error(f"Erreur connexion : {e}")
+                    
+                    with col_del_txt:
+                        st.caption(f"Action irréversible pour {name}")
+
     else:
-        st.warning("Veuillez entrer le mot de passe administrateur pour consulter les fiches.")
-
-
-
+        st.warning("Veuillez entrer le mot de passe administrateur.")
