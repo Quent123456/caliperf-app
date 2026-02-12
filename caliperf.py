@@ -329,32 +329,72 @@ with tab_eleves:
 
                                 st.caption("👇 Clique sur un point ci-dessous pour voir le détail de la séance.")
                                 
-                                # INTERACTION
-                                selection = st.plotly_chart(fig_main, use_container_width=True, on_select="rerun", selection_mode="points", key=f"chart_{name}")
+                                # --- INTERACTION (Le graphique) ---
+                                st.caption("👇 Clique sur un point ci-dessous pour voir le détail de la séance.")
+                                
+                                selection = st.plotly_chart(
+                                    fig_main, 
+                                    use_container_width=True, 
+                                    on_select="rerun", 
+                                    selection_mode="points", 
+                                    key=f"chart_{name}"
+                                )
 
-                                # 3. ZOOM SUR LA SÉANCE SÉLECTIONNÉE
+                                # --- 3. ZOOM ET MÉTRIQUES DÉTAILLÉES ---
                                 if selection and len(selection["selection"]["points"]) > 0:
                                     point_data = selection["selection"]["points"][0]
                                     selected_date_str = point_data["x"] # Format string YYYY-MM-DD
                                     
                                     st.divider()
-                                    st.markdown(f"#### 🔎 Détail du : **{selected_date_str}**")
+                                    st.markdown(f"#### 🔎 Détail de la séance du : **{selected_date_str}**")
                                     
-                                    # Filtrage des données brutes
+                                    # On filtre les données pour cette date
                                     detail_df = student_df[student_df['Date'].astype(str) == selected_date_str].copy()
                                     
                                     if not detail_df.empty:
-                                        # Petit tableau propre
+                                        # -- CALCULS DES MÉTRIQUES DEMANDÉES --
+                                        
+                                        # 1. Nettoyage du TST pour pouvoir l'additionner (remplace virgule par point)
+                                        detail_df['TST_Value'] = pd.to_numeric(
+                                            detail_df['TST'].astype(str).str.replace(',', '.'), 
+                                            errors='coerce'
+                                        ).fillna(0)
+                                        
+                                        # 2. Calculs
+                                        charge_totale = detail_df['Charge'].sum()
+                                        tst_total = detail_df['TST_Value'].sum() # Somme des secondes + Reps
+                                        rpe_total = detail_df['RPE'].sum()
+                                        rpe_moyen = detail_df['RPE'].mean()
+                                        nb_exos = len(detail_df)
+
+                                        # -- AFFICHAGE DES 5 INDICATEURS --
+                                        kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
+                                        
+                                        kpi1.metric("⚡ Charge Totale", f"{charge_totale:.0f}")
+                                        kpi2.metric("⏱️ TST/Vol Total", f"{tst_total:.0f}")
+                                        kpi3.metric("🥵 RPE Total", f"{rpe_total:.0f}")
+                                        kpi4.metric("⚖️ RPE Moyen", f"{rpe_moyen:.1f}/10")
+                                        kpi5.metric("🏋️ Exercices", f"{nb_exos}")
+
+                                        st.write("---")
+
+                                        # -- TABLEAU DÉTAILLÉ (Version Stable sans bug de style) --
                                         display_table = detail_df[['Timestamp', 'Exercice', 'TST', 'RPE', 'Charge']].copy()
                                         display_table['Heure'] = display_table['Timestamp'].dt.strftime('%H:%M')
+                                        
+                                        # On renomme pour que ce soit propre
+                                        display_table = display_table.rename(columns={
+                                            "TST": "Perf (Reps/Sec)",
+                                            "Charge": "Charge (UA)"
+                                        })
+
                                         st.dataframe(
-                                            display_table[['Heure', 'Exercice', 'TST', 'RPE', 'Charge']].style.background_gradient(subset=['RPE'], cmap='RdYlGn_r', vmin=1, vmax=10),
-                                            use_container_width=True, hide_index=True
+                                            display_table[['Heure', 'Exercice', 'Perf (Reps/Sec)', 'RPE', 'Charge (UA)']],
+                                            use_container_width=True,
+                                            hide_index=True
                                         )
-                            else:
-                                st.info("Pas encore de données pour cet élève.")
-                        else:
-                            st.error("Problème de connexion aux données.")
+                                    else:
+                                        st.warning("Impossible de récupérer les données détaillées pour cette date.")
 
                     # --- BOUTON SUPPRESSION ---
                     st.write("---")
@@ -377,3 +417,4 @@ with tab_eleves:
                     
     else:
         st.warning("Veuillez entrer le mot de passe administrateur.")
+
