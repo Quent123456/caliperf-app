@@ -340,61 +340,72 @@ with tab_eleves:
                                     key=f"chart_{name}"
                                 )
 
-                                # --- 3. ZOOM ET MÉTRIQUES DÉTAILLÉES ---
+                                # 3. ZOOM SUR LA SÉANCE SÉLECTIONNÉE
                                 if selection and len(selection["selection"]["points"]) > 0:
                                     point_data = selection["selection"]["points"][0]
                                     selected_date_str = point_data["x"] # Format string YYYY-MM-DD
                                     
                                     st.divider()
-                                    st.markdown(f"#### 🔎 Détail de la séance du : **{selected_date_str}**")
+                                    st.markdown(f"#### 🔎 Détail du : **{selected_date_str}**")
                                     
-                                    # On filtre les données pour cette date
+                                    # Filtrage des données brutes
                                     detail_df = student_df[student_df['Date'].astype(str) == selected_date_str].copy()
                                     
                                     if not detail_df.empty:
-                                        # -- CALCULS DES MÉTRIQUES DEMANDÉES --
+                                        # --- A. NETTOYAGE ET CALCULS ---
+                                        # Conversion TST/Reps en numérique pour le total (on enlève 's', 'reps' et on remplace ',' par '.')
+                                        # On utilise une expression régulière simple pour ne garder que les chiffres et le point
+                                        detail_df['TST_Clean'] = detail_df['TST'].astype(str).str.extract(r'(\d+[.,]?\d*)')[0].str.replace(',', '.', regex=False).astype(float).fillna(0)
                                         
-                                        # 1. Nettoyage du TST pour pouvoir l'additionner (remplace virgule par point)
-                                        detail_df['TST_Value'] = pd.to_numeric(
-                                            detail_df['TST'].astype(str).str.replace(',', '.'), 
-                                            errors='coerce'
-                                        ).fillna(0)
-                                        
-                                        # 2. Calculs
                                         charge_totale = detail_df['Charge'].sum()
-                                        tst_total = detail_df['TST_Value'].sum() # Somme des secondes + Reps
+                                        tst_total = detail_df['TST_Clean'].sum()
                                         rpe_total = detail_df['RPE'].sum()
                                         rpe_moyen = detail_df['RPE'].mean()
                                         nb_exos = len(detail_df)
 
-                                        # -- AFFICHAGE DES 5 INDICATEURS --
-                                        kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
-                                        
-                                        kpi1.metric("⚡ Charge Totale", f"{charge_totale:.0f}")
-                                        kpi2.metric("⏱️ TST/Vol Total", f"{tst_total:.0f}")
-                                        kpi3.metric("🥵 RPE Total", f"{rpe_total:.0f}")
-                                        kpi4.metric("⚖️ RPE Moyen", f"{rpe_moyen:.1f}/10")
-                                        kpi5.metric("🏋️ Exercices", f"{nb_exos}")
+                                        # --- B. AFFICHAGE DES INDICATEURS (KPIs) ---
+                                        k1, k2, k3, k4, k5 = st.columns(5)
+                                        k1.metric("⚡ Charge Totale", f"{charge_totale:.0f}")
+                                        k2.metric("⏱️ TST/Reps Total", f"{tst_total:.0f}")
+                                        k3.metric("🥵 RPE Total", f"{rpe_total:.0f}")
+                                        k4.metric("⚖️ RPE Moyen", f"{rpe_moyen:.1f}/10")
+                                        k5.metric("🏋️ Nb Exercices", f"{nb_exos}")
 
                                         st.write("---")
 
-                                        # -- TABLEAU DÉTAILLÉ (Version Stable sans bug de style) --
+                                        # --- C. TABLEAU DÉTAILLÉ (Version Stable) ---
+                                        # Préparation de l'affichage
                                         display_table = detail_df[['Timestamp', 'Exercice', 'TST', 'RPE', 'Charge']].copy()
                                         display_table['Heure'] = display_table['Timestamp'].dt.strftime('%H:%M')
                                         
-                                        # On renomme pour que ce soit propre
-                                        display_table = display_table.rename(columns={
-                                            "TST": "Perf (Reps/Sec)",
-                                            "Charge": "Charge (UA)"
-                                        })
+                                        # On réorganise les colonnes
+                                        final_df = display_table[['Heure', 'Exercice', 'TST', 'RPE', 'Charge']]
 
+                                        # AFFICHAGE ROBUSTE AVEC COLUMN_CONFIG
+                                        # Remplacer st.dataframe(...) par ceci :
                                         st.dataframe(
-                                            display_table[['Heure', 'Exercice', 'Perf (Reps/Sec)', 'RPE', 'Charge (UA)']],
+                                            final_df,
                                             use_container_width=True,
-                                            hide_index=True
+                                            hide_index=True,
+                                            column_config={
+                                                "RPE": st.column_config.ProgressColumn(
+                                                    "Intensité (RPE)",
+                                                    help="Niveau d'effort ressenti",
+                                                    format="%d",
+                                                    min_value=0,
+                                                    max_value=10,
+                                                ),
+                                                "Charge": st.column_config.NumberColumn(
+                                                    "Charge (UA)",
+                                                    format="%.1f"
+                                                ),
+                                                "TST": st.column_config.TextColumn(
+                                                    "Perf (Temps/Reps)"
+                                                )
+                                            }
                                         )
                                     else:
-                                        st.warning("Impossible de récupérer les données détaillées pour cette date.")
+                                        st.warning("Erreur : Données introuvables pour cette date.")
 
                     # --- BOUTON SUPPRESSION ---
                     st.write("---")
@@ -417,4 +428,5 @@ with tab_eleves:
                     
     else:
         st.warning("Veuillez entrer le mot de passe administrateur.")
+
 
