@@ -283,7 +283,7 @@ with tab_eleves:
                     <div class="metric-card">
                         <h3 style='margin-top:0; color:#ff4b4b;'>👤 {name} <span style="font-size:0.8em;">{emoji_sexe}</span></h3>
                         <p><b>📅 Fréquence :</b> {info.get('freq', 'Non définie')}</p>
-                        <p><b>📏 Physio :</b> {taille_user} cm | {poids_user} kg</p>
+                        <p><b>📏 morpho :</b> {taille_user} cm | {poids_user} kg</p>
                         <p><b>⏳ Expérience :</b> {info.get('exp', 'Non renseignée')}</p>
                         <div style="margin-top:10px; padding-top:10px; border-top:1px solid #444;">
                             <b>🎯 Objectif :</b><br>
@@ -399,3 +399,4 @@ with tab_eleves:
                                     st.error("Erreur Connexion")
     else:
         st.warning("Mot de passe requis.")
+
