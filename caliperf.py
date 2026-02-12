@@ -78,19 +78,25 @@ if 'students_data' not in st.session_state: st.session_state.students_data = loa
 
 st.title("🏋️ Caliperf : Espace Coaching")
 
-tab_intro, tab_analyse, tab_eleves = st.tabs(["👋 Introduction", "🎥 Espace Vidéo", "📊 Mon Suivi (Élève/Coach)"])
+tab_intro, tab_analyse, tab_eleves = st.tabs(["👋 Création Compte / Profil", "🎥 Espace Vidéo", "📊 Mon Suivi (Connexion)"])
 
 # =========================================================
-# ONGLET 1 : INTRODUCTION (Inscription)
+# ONGLET 1 : INSCRIPTION / PROFIL
 # =========================================================
 with tab_intro:
-    st.header("Bienvenue dans l'accompagnement ! 🚀")
+    st.header("Création ou Mise à jour du Profil 🚀")
+    st.caption("Remplis ce formulaire pour créer ton compte ou mettre à jour tes informations.")
     
     with st.form("form_intro"):
         col1, col2 = st.columns(2)
         with col1: nom = st.text_input("Nom")
         with col2: prenom = st.text_input("Prénom")
         
+        # --- AJOUT DU MOT DE PASSE ÉLÈVE ---
+        st.write("---")
+        pwd_eleve = st.text_input("🔒 Crée ton mot de passe personnel (pour accéder à tes stats)", type="password")
+        st.write("---")
+
         col3, col4 = st.columns(2)
         with col3: freq = st.selectbox("Fréquence", ["2x / semaine", "3x / semaine", "4x / semaine", "5x / semaine", "Tous les jours"])
         with col4: experience = st.text_input("Temps de pratique", placeholder="Ex: 2 ans, Débutant...")
@@ -102,21 +108,22 @@ with tab_intro:
         
         objectif = st.text_area("Ton objectif principal")
         
-        if st.form_submit_button("✅ Valider mon inscription", type="primary", use_container_width=True):
-            if nom and prenom:
+        if st.form_submit_button("✅ Créer / Mettre à jour mon compte", type="primary", use_container_width=True):
+            if nom and prenom and pwd_eleve:
                 full_name = f"{prenom} {nom}"
                 st.session_state.students_data[full_name] = {
                     "link": LINK_UNIQUE, "freq": freq, "goal": objectif, "exp": experience,
-                    "weight": poids, "height": taille, "sex": sexe
+                    "weight": poids, "height": taille, "sex": sexe,
+                    "password": pwd_eleve # On sauvegarde le mot de passe
                 }
                 save_data(st.session_state.students_data)
-                st.success(f"Dossier créé pour {prenom} !")
+                st.success(f"Compte configuré pour {prenom} ! Tu peux maintenant aller dans l'onglet 'Mon Suivi'.")
                 st.balloons()
             else:
-                st.warning("Nom et Prénom obligatoires.")
+                st.warning("Nom, Prénom et Mot de passe sont obligatoires.")
 
 # =========================================================
-# ONGLET 2 : ANALYSE VIDÉO (Mixte Élève / Coach)
+# ONGLET 2 : ANALYSE VIDÉO
 # =========================================================
 with tab_analyse:
     
@@ -124,7 +131,7 @@ with tab_analyse:
     with col_titre:
         st.caption("Espace d'échange et d'analyse technique.")
     with col_login:
-        password = st.text_input("🔒 Accès Coach", type="password", key="pwd_analyse")
+        password = st.text_input("🔒 Accès Coach (Analyse)", type="password", key="pwd_analyse")
 
     st.divider()
 
@@ -237,7 +244,7 @@ with tab_analyse:
             st.image("https://cdn-icons-png.flaticon.com/512/2983/2983067.png", width=100)
 
 # =========================================================
-# ONGLET 3 : MON SUIVI (PARTAGÉ)
+# ONGLET 3 : MON SUIVI (SÉCURISÉ)
 # =========================================================
 with tab_eleves:
     st.header("📊 Suivi des Performances")
@@ -259,30 +266,31 @@ with tab_eleves:
     st.divider()
 
     # ----------------------------------------------------------------
-    # MODE 1 : LE COACH (Accès Total)
+    # MODE 1 : LE COACH (Accès Total avec Admin Password)
     # ----------------------------------------------------------------
     if mode_connexion == "🧢 Je suis le Coach":
-        pwd_input = st.text_input("Mot de passe Coach", type="password")
+        pwd_input = st.text_input("Mot de passe Coach", type="password", key="pwd_coach_suivi")
         
         if pwd_input == ADMIN_PWD:
             st.success("Accès Administrateur ✅")
             
             if st.session_state.students_data:
-                # Affichage en grille pour le coach
+                # Affichage en grille pour le coach (TOUS LES ÉLÈVES)
                 cols = st.columns(2)
                 for index, (name, info) in enumerate(st.session_state.students_data.items()):
                     with cols[index % 2]:
-                        # AFFICHE LA FICHE (Code réutilisable plus bas ?)
-                        # Pour simplifier, on duplique légèrement l'affichage carte pour garder le contrôle total admin
                         emoji_sexe = "♂️" if info.get('sex') == "Homme" else "♀️"
+                        # Affichage du mot de passe pour le coach (pratique si l'élève oublie)
+                        pwd_user = info.get('password', '⚠️ Non défini')
+                        
                         st.markdown(f"""
                         <div class="metric-card">
                             <h3 style='margin-top:0; color:#ff4b4b;'>👤 {name} {emoji_sexe}</h3>
+                            <p><b>🔑 Pwd:</b> {pwd_user}</p>
                             <p><b>📏 Physio:</b> {info.get('height','?')}cm | {info.get('weight','?')}kg</p>
-                            <p><b>🎯 Objectif:</b> {info.get('goal', 'N/A')}</p>
                         </div>""", unsafe_allow_html=True)
 
-                        with st.expander(f"📈 Voir les stats de {name}"):
+                        with st.expander(f"📈 Stats de {name}"):
                             # --- LOGIQUE GRAPHIQUE ---
                             if not df_history.empty:
                                 s_df = df_history[df_history['Nom'] == name].copy()
@@ -331,60 +339,73 @@ with tab_eleves:
             if pwd_input: st.error("Mot de passe incorrect.")
 
     # ----------------------------------------------------------------
-    # MODE 2 : L'ÉLÈVE (Accès Restreint à SA fiche)
+    # MODE 2 : L'ÉLÈVE (Accès Sécurisé par Mot de Passe)
     # ----------------------------------------------------------------
     else:
-        st.info("Sélectionne ton nom dans la liste pour voir tes progrès.")
+        st.info("Connecte-toi pour voir tes progrès.")
         
         all_students = list(st.session_state.students_data.keys())
         if all_students:
             selected_name = st.selectbox("Je m'appelle :", ["-- Choisir --"] + all_students)
             
             if selected_name != "-- Choisir --":
-                name = selected_name
-                info = st.session_state.students_data[name]
-                
-                # AFFICHE LA FICHE (Copie de la logique d'affichage sans le bouton supprimer)
-                emoji_sexe = "♂️" if info.get('sex') == "Homme" else "♀️"
-                st.markdown(f"""
-                <div class="metric-card">
-                    <h3 style='margin-top:0; color:#ff4b4b;'>Bonjour {name} ! {emoji_sexe}</h3>
-                    <p><b>📏 Tes mensurations:</b> {info.get('height','?')}cm | {info.get('weight','?')}kg</p>
-                    <p><b>🎯 Ton Objectif:</b> {info.get('goal', 'N/A')}</p>
-                </div>""", unsafe_allow_html=True)
-                
-                st.subheader("📈 Tes Graphiques")
+                # --- VÉRIFICATION MOT DE PASSE ---
+                info = st.session_state.students_data[selected_name]
+                stored_password = info.get('password')
 
-                # --- MÊME LOGIQUE GRAPHIQUE QUE LE COACH ---
-                if not df_history.empty:
-                    s_df = df_history[df_history['Nom'] == name].copy()
-                    if not s_df.empty:
-                        s_df['TST_Val'] = s_df['TST'].astype(str).str.extract(r'(\d+[.,]?\d*)')[0].str.replace(',', '.', regex=False).astype(float).fillna(0)
-                        daily = s_df.groupby('Date').agg({'Charge':'sum', 'TST_Val':'sum', 'RPE':'mean'}).reset_index().sort_values('Date')
-                        daily['MA_Ch'] = daily['Charge'].rolling(3).mean()
-                        daily['MA_Vol'] = daily['TST_Val'].rolling(3).mean()
+                if not stored_password:
+                    st.warning("⚠️ Tu n'as pas encore défini de mot de passe.")
+                    st.markdown("Va dans l'onglet **'👋 Création Compte / Profil'**, remets ton nom/prénom et crée un mot de passe pour sécuriser ton compte.")
+                else:
+                    input_pwd = st.text_input("Mon mot de passe :", type="password", key=f"pwd_{selected_name}")
+                    
+                    if st.button("Se connecter 🔓", key=f"btn_log_{selected_name}") or input_pwd == stored_password:
+                        if input_pwd == stored_password:
+                            st.success(f"Bon retour, {selected_name} !")
+                            
+                            # AFFICHE LA FICHE (Copie de la logique d'affichage sécurisée)
+                            emoji_sexe = "♂️" if info.get('sex') == "Homme" else "♀️"
+                            st.markdown(f"""
+                            <div class="metric-card">
+                                <h3 style='margin-top:0; color:#ff4b4b;'>Bonjour {selected_name} ! {emoji_sexe}</h3>
+                                <p><b>📏 Tes mensurations:</b> {info.get('height','?')}cm | {info.get('weight','?')}kg</p>
+                                <p><b>🎯 Ton Objectif:</b> {info.get('goal', 'N/A')}</p>
+                            </div>""", unsafe_allow_html=True)
+                            
+                            st.subheader("📈 Tes Graphiques")
 
-                        fig_c = go.Figure()
-                        fig_c.add_trace(go.Scatter(x=daily['Date'], y=daily['Charge'], mode='lines+markers', line=dict(color='#00CC96'), marker=dict(color=daily['RPE'], colorscale='RdYlGn_r'), name='Charge'))
-                        fig_c.add_trace(go.Scatter(x=daily['Date'], y=daily['MA_Ch'], mode='lines', line=dict(dash='dot', color='orange'), name='Tend.'))
-                        fig_c.update_layout(title="Ta Charge d'entraînement", template="plotly_dark", height=300, margin=dict(t=30,b=10,l=10,r=10), showlegend=False, clickmode='event+select')
-                        
-                        fig_v = go.Figure()
-                        fig_v.add_trace(go.Bar(x=daily['Date'], y=daily['TST_Val'], marker=dict(color='#3366CC'), name='Vol'))
-                        fig_v.add_trace(go.Scatter(x=daily['Date'], y=daily['MA_Vol'], mode='lines', line=dict(dash='dot', color='white'), name='Tend.'))
-                        fig_v.update_layout(title="Ton Volume (Temps / Reps)", template="plotly_dark", height=300, margin=dict(t=30,b=10,l=10,r=10), showlegend=False, clickmode='event+select')
+                            # --- GRAPHIQUES ÉLÈVE ---
+                            if not df_history.empty:
+                                s_df = df_history[df_history['Nom'] == selected_name].copy()
+                                if not s_df.empty:
+                                    s_df['TST_Val'] = s_df['TST'].astype(str).str.extract(r'(\d+[.,]?\d*)')[0].str.replace(',', '.', regex=False).astype(float).fillna(0)
+                                    daily = s_df.groupby('Date').agg({'Charge':'sum', 'TST_Val':'sum', 'RPE':'mean'}).reset_index().sort_values('Date')
+                                    daily['MA_Ch'] = daily['Charge'].rolling(3).mean()
+                                    daily['MA_Vol'] = daily['TST_Val'].rolling(3).mean()
 
-                        c1, c2 = st.columns(2)
-                        with c1: sc = st.plotly_chart(fig_c, use_container_width=True, on_select="rerun", key=f"c_student_{name}")
-                        with c2: sv = st.plotly_chart(fig_v, use_container_width=True, on_select="rerun", key=f"v_student_{name}")
+                                    fig_c = go.Figure()
+                                    fig_c.add_trace(go.Scatter(x=daily['Date'], y=daily['Charge'], mode='lines+markers', line=dict(color='#00CC96'), marker=dict(color=daily['RPE'], colorscale='RdYlGn_r'), name='Charge'))
+                                    fig_c.add_trace(go.Scatter(x=daily['Date'], y=daily['MA_Ch'], mode='lines', line=dict(dash='dot', color='orange'), name='Tend.'))
+                                    fig_c.update_layout(title="Ta Charge d'entraînement", template="plotly_dark", height=300, margin=dict(t=30,b=10,l=10,r=10), showlegend=False, clickmode='event+select')
+                                    
+                                    fig_v = go.Figure()
+                                    fig_v.add_trace(go.Bar(x=daily['Date'], y=daily['TST_Val'], marker=dict(color='#3366CC'), name='Vol'))
+                                    fig_v.add_trace(go.Scatter(x=daily['Date'], y=daily['MA_Vol'], mode='lines', line=dict(dash='dot', color='white'), name='Tend.'))
+                                    fig_v.update_layout(title="Ton Volume (Temps / Reps)", template="plotly_dark", height=300, margin=dict(t=30,b=10,l=10,r=10), showlegend=False, clickmode='event+select')
 
-                        sel = sc if sc and sc["selection"]["points"] else sv if sv and sv["selection"]["points"] else None
-                        if sel:
-                            dt = sel["selection"]["points"][0]["x"]
-                            st.markdown(f"**🔎 Détail de ta séance du {dt}**")
-                            det = s_df[s_df['Date'].astype(str)==dt].copy()
-                            st.dataframe(det[['Exercice','TST','RPE','Charge']], use_container_width=True, hide_index=True)
-                    else: st.info("Pas encore de données d'entraînement. Envoie tes vidéos !")
-                else: st.error("Impossible de récupérer l'historique.")
+                                    c1, c2 = st.columns(2)
+                                    with c1: sc = st.plotly_chart(fig_c, use_container_width=True, on_select="rerun", key=f"c_student_{selected_name}")
+                                    with c2: sv = st.plotly_chart(fig_v, use_container_width=True, on_select="rerun", key=f"v_student_{selected_name}")
+
+                                    sel = sc if sc and sc["selection"]["points"] else sv if sv and sv["selection"]["points"] else None
+                                    if sel:
+                                        dt = sel["selection"]["points"][0]["x"]
+                                        st.markdown(f"**🔎 Détail de ta séance du {dt}**")
+                                        det = s_df[s_df['Date'].astype(str)==dt].copy()
+                                        st.dataframe(det[['Exercice','TST','RPE','Charge']], use_container_width=True, hide_index=True)
+                                else: st.info("Pas encore de données d'entraînement. Envoie tes vidéos !")
+                            else: st.error("Impossible de récupérer l'historique.")
+                        else:
+                            st.error("Mot de passe incorrect ❌")
         else:
             st.warning("Aucun élève inscrit dans la base.")
