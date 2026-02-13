@@ -198,7 +198,7 @@ with tab_analyse:
                         with c_info:
                              st.info(f"⏱️ Temps retenu : {curr:.2f} s")
 
-                        if st.form_submit_button("☁️ ENVOYER DONNÉES (TST x RPE)"):
+                        if st.form_submit_button("☁️ ENVOYER DONNÉES "):
                             f_time = timer['acc'] + (time.time() - timer['start'] if timer['run'] else 0)
                             
                             charge = f_time * rpe
@@ -407,5 +407,6 @@ with tab_eleves:
                             st.error("Mot de passe incorrect ❌")
         else:
             st.warning("Aucun élève inscrit dans la base.")
+
 
 
