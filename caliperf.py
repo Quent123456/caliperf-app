@@ -92,7 +92,6 @@ with tab_intro:
         with col1: nom = st.text_input("Nom")
         with col2: prenom = st.text_input("Prénom")
         
-        # --- AJOUT DU MOT DE PASSE ÉLÈVE ---
         st.write("---")
         pwd_eleve = st.text_input("🔒 Crée ton mot de passe personnel (pour accéder à tes stats)", type="password")
         st.write("---")
@@ -114,7 +113,7 @@ with tab_intro:
                 st.session_state.students_data[full_name] = {
                     "link": LINK_UNIQUE, "freq": freq, "goal": objectif, "exp": experience,
                     "weight": poids, "height": taille, "sex": sexe,
-                    "password": pwd_eleve # On sauvegarde le mot de passe
+                    "password": pwd_eleve
                 }
                 save_data(st.session_state.students_data)
                 st.success(f"Compte configuré pour {prenom} ! Tu peux maintenant aller dans l'onglet 'Mon Suivi'.")
@@ -126,7 +125,6 @@ with tab_intro:
 # ONGLET 2 : ANALYSE VIDÉO
 # =========================================================
 with tab_analyse:
-    
     col_titre, col_login = st.columns([3, 1])
     with col_titre:
         st.caption("Espace d'échange et d'analyse technique.")
@@ -135,11 +133,10 @@ with tab_analyse:
 
     st.divider()
 
-    # --- CAS 1 : C'EST LE COACH (Mot de passe OK) ---
+    # --- MODE COACH ---
     if password == ADMIN_PWD:
         st.success("🔓 Mode Coach activé")
         
-        # ENREGISTREMENT RAPIDE (REPOS)
         with st.expander("🛌 Enregistrement Rapide : REPOS / ABSENCE", expanded=True):
             c_rep1, c_rep2 = st.columns([2, 1])
             with c_rep1:
@@ -162,7 +159,6 @@ with tab_analyse:
 
         st.divider()
 
-        # OUTIL D'ANALYSE
         uploaded_files = st.file_uploader("📥 Charger les vidéos reçues", type=['mp4', 'mov', 'avi'], accept_multiple_files=True)
 
         if uploaded_files:
@@ -229,7 +225,7 @@ with tab_analyse:
         else:
             st.info("📂 En attente de vidéos à analyser...")
 
-    # --- CAS 2 : C'EST L'ÉLÈVE ---
+    # --- MODE ÉLÈVE ---
     else:
         st.subheader("📤 Envoyer mes vidéos au Coach")
         st.markdown("""
@@ -249,7 +245,6 @@ with tab_analyse:
 with tab_eleves:
     st.header("📊 Suivi des Performances")
     
-    # CHARGEMENT DES DONNÉES COMMUNES
     SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTABZd8nfqjdUzGUBjb57ntk8ACmBIPg7CM5VBMjGSdXJtiAN1ZJhwpGUb2EJvQZOrJ55s9eE2c8exn/pub?output=csv"
     if SHEET_CSV_URL:
         df_history = fetch_training_data(SHEET_CSV_URL)
@@ -260,13 +255,11 @@ with tab_eleves:
     else:
         df_history = pd.DataFrame()
 
-    # SÉLECTEUR DE MODE (Coach ou Élève)
     mode_connexion = st.radio("Qui êtes-vous ?", ["👤 Je suis Élève", "🧢 Je suis le Coach"], horizontal=True)
-    
     st.divider()
 
     # ----------------------------------------------------------------
-    # MODE 1 : LE COACH (Accès Total avec Admin Password)
+    # MODE 1 : LE COACH (Accès Total)
     # ----------------------------------------------------------------
     if mode_connexion == "🧢 Je suis le Coach":
         pwd_input = st.text_input("Mot de passe Coach", type="password", key="pwd_coach_suivi")
@@ -275,12 +268,12 @@ with tab_eleves:
             st.success("Accès Administrateur ✅")
             
             if st.session_state.students_data:
-                # Affichage en grille pour le coach (TOUS LES ÉLÈVES)
                 cols = st.columns(2)
-                for index, (name, info) in enumerate(st.session_state.students_data.items()):
+                
+                # --- CORRECTION ICI : On utilise list() pour éviter l'erreur de modification pendant la boucle ---
+                for index, (name, info) in enumerate(list(st.session_state.students_data.items())):
                     with cols[index % 2]:
                         emoji_sexe = "♂️" if info.get('sex') == "Homme" else "♀️"
-                        # Affichage du mot de passe pour le coach (pratique si l'élève oublie)
                         pwd_user = info.get('password', '⚠️ Non défini')
                         
                         st.markdown(f"""
@@ -291,7 +284,6 @@ with tab_eleves:
                         </div>""", unsafe_allow_html=True)
 
                         with st.expander(f"📈 Stats de {name}"):
-                            # --- LOGIQUE GRAPHIQUE ---
                             if not df_history.empty:
                                 s_df = df_history[df_history['Nom'] == name].copy()
                                 if not s_df.empty:
@@ -322,24 +314,34 @@ with tab_eleves:
                                         st.dataframe(det[['Exercice','TST','RPE','Charge']], use_container_width=True, hide_index=True)
                                 else: st.info("Pas de données.")
                             else: st.error("Erreur données.")
-                            # --- FIN LOGIQUE GRAPHIQUE ---
 
-                        # BOUTON SUPPRESSION (Uniquement pour le Coach)
+                        # --- LOGIQUE DE SUPPRESSION CORRIGÉE ---
                         st.write("---")
                         cd, ct = st.columns([1,3])
                         with cd:
+                            # Bouton de suppression
                             if st.button("🗑️", key=f"del_{name}"):
                                 try:
-                                    requests.get(DELETE_SCRIPT_URL, params={"name": name})
-                                    del st.session_state.students_data[name]
-                                    save_data(st.session_state.students_data)
-                                    st.rerun()
-                                except: st.error("Erreur")
+                                    # 1. Envoi requête au script (optionnel, ne bloque pas si échec)
+                                    try:
+                                        requests.get(DELETE_SCRIPT_URL, params={"name": name}, timeout=3)
+                                    except:
+                                        pass # On continue même si le script répond pas
+                                    
+                                    # 2. Suppression locale et sauvegarde
+                                    if name in st.session_state.students_data:
+                                        del st.session_state.students_data[name]
+                                        save_data(st.session_state.students_data)
+                                        st.success(f"Supprimé !")
+                                        time.sleep(1)
+                                        st.rerun() # On recharge proprement
+                                except Exception as e:
+                                    st.error(f"Erreur : {e}")
         else:
             if pwd_input: st.error("Mot de passe incorrect.")
 
     # ----------------------------------------------------------------
-    # MODE 2 : L'ÉLÈVE (Accès Sécurisé par Mot de Passe)
+    # MODE 2 : L'ÉLÈVE (Accès Sécurisé)
     # ----------------------------------------------------------------
     else:
         st.info("Connecte-toi pour voir tes progrès.")
@@ -349,13 +351,12 @@ with tab_eleves:
             selected_name = st.selectbox("Je m'appelle :", ["-- Choisir --"] + all_students)
             
             if selected_name != "-- Choisir --":
-                # --- VÉRIFICATION MOT DE PASSE ---
                 info = st.session_state.students_data[selected_name]
                 stored_password = info.get('password')
 
                 if not stored_password:
                     st.warning("⚠️ Tu n'as pas encore défini de mot de passe.")
-                    st.markdown("Va dans l'onglet **'👋 Création Compte / Profil'**, remets ton nom/prénom et crée un mot de passe pour sécuriser ton compte.")
+                    st.markdown("Va dans l'onglet **'👋 Création Compte / Profil'**, remets ton nom/prénom et crée un mot de passe.")
                 else:
                     input_pwd = st.text_input("Mon mot de passe :", type="password", key=f"pwd_{selected_name}")
                     
@@ -363,7 +364,6 @@ with tab_eleves:
                         if input_pwd == stored_password:
                             st.success(f"Bon retour, {selected_name} !")
                             
-                            # AFFICHE LA FICHE (Copie de la logique d'affichage sécurisée)
                             emoji_sexe = "♂️" if info.get('sex') == "Homme" else "♀️"
                             st.markdown(f"""
                             <div class="metric-card">
@@ -374,7 +374,6 @@ with tab_eleves:
                             
                             st.subheader("📈 Tes Graphiques")
 
-                            # --- GRAPHIQUES ÉLÈVE ---
                             if not df_history.empty:
                                 s_df = df_history[df_history['Nom'] == selected_name].copy()
                                 if not s_df.empty:
