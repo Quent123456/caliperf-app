@@ -389,7 +389,7 @@ with tab_eleves:
                                     fig_v = go.Figure()
                                     fig_v.add_trace(go.Bar(x=daily['Date'], y=daily['TST_Val'], marker=dict(color='#3366CC'), name='Vol'))
                                     fig_v.add_trace(go.Scatter(x=daily['Date'], y=daily['MA_Vol'], mode='lines', line=dict(dash='dot', color='white'), name='Tend.'))
-                                    fig_v.update_layout(title="Ton Volume (Temps / Reps)", template="plotly_dark", height=300, margin=dict(t=30,b=10,l=10,r=10), showlegend=False, clickmode='event+select')
+                                    fig_v.update_layout(title="Ton Volume (TST / Reps)", template="plotly_dark", height=300, margin=dict(t=30,b=10,l=10,r=10), showlegend=False, clickmode='event+select')
 
                                     c1, c2 = st.columns(2)
                                     with c1: sc = st.plotly_chart(fig_c, use_container_width=True, on_select="rerun", key=f"c_student_{selected_name}")
@@ -407,4 +407,5 @@ with tab_eleves:
                             st.error("Mot de passe incorrect ❌")
         else:
             st.warning("Aucun élève inscrit dans la base.")
+
 
