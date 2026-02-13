@@ -280,7 +280,7 @@ with tab_eleves:
                         <div class="metric-card">
                             <h3 style='margin-top:0; color:#ff4b4b;'>👤 {name} {emoji_sexe}</h3>
                             <p><b>🔑 Pwd:</b> {pwd_user}</p>
-                            <p><b>📏 Physio:</b> {info.get('height','?')}cm | {info.get('weight','?')}kg</p>
+                            <p><b>📏 Morpho:</b> {info.get('height','?')}cm | {info.get('weight','?')}kg</p>
                         </div>""", unsafe_allow_html=True)
 
                         with st.expander(f"📈 Stats de {name}"):
@@ -408,3 +408,4 @@ with tab_eleves:
                             st.error("Mot de passe incorrect ❌")
         else:
             st.warning("Aucun élève inscrit dans la base.")
+
