@@ -230,67 +230,43 @@ with tab_analyse:
                 st.write("---")
                 
                 # --- FORMULAIRE SIMPLIFIÉ (TST UNIQUEMENT) ---
-              # --- DÉBUT DU NOUVEAU FORMULAIRE ---
                 with st.form(key=f"f_{real_name}"):
                     s_keys = list(st.session_state.students_data.keys())
-                    
                     if s_keys:
-                        # 1. Infos de base
-                        c_eleve, c_type = st.columns([1.5, 1])
-                        with c_eleve: 
-                            s_student = st.selectbox("Athlète", s_keys)
-                            exo = st.text_input("Exercice", value=real_name.split('.')[0])
-                        with c_type:
-                            # NOUVEAU : Choix du type d'effort
-                            type_effort = st.radio("Type", ["⏱️ Statique", "🔢 Dynamique"], horizontal=True)
-
-                        st.write("---")
-
-                        # 2. Saisie des Perfs (S'adapte selon le choix)
-                        c_vol, c_rpe, c_res = st.columns([1, 1, 1])
+                        s_student = st.selectbox("Athlète", s_keys)
+                        exo = st.text_input("Exercice", value=real_name.split('.')[0])
                         
-                        with c_vol:
-                            if type_effort == "⏱️ Statique":
-                                # On récupère le temps du chrono
-                                val_volume = curr 
-                                st.metric("Temps (Chrono)", f"{val_volume:.2f} s")
-                                unite = "s"
-                            else:
-                                # On demande le nombre de répétitions
-                                val_volume = st.number_input("Répétitions", min_value=1, value=5, step=1)
-                                unite = "reps"
-                                
+                        c_rpe, c_info = st.columns([2, 1])
                         with c_rpe:
                             rpe = st.slider("Intensité (RPE)", 1, 10, 7)
-                        
-                        with c_res:
-                            # Calcul de la charge (Volume x Intensité)
-                            charge_calc = val_volume * rpe
-                            st.metric("Charge Calculée", f"{charge_calc:.1f}")
+                        with c_info:
+                             st.info(f"⏱️ Temps retenu : {curr:.2f} s")
 
-                        # 3. Bouton d'envoi
-                        if st.form_submit_button("☁️ ENVOYER DONNÉES", type="primary"):
-                            # On formate la valeur (ex: "12.5 s" ou "10 reps")
-                            val_finale = f"{round(val_volume, 2)} {unite}"
+                        if st.form_submit_button("☁️ ENVOYER DONNÉES "):
+                            f_time = timer['acc'] + (time.time() - timer['start'] if timer['run'] else 0)
                             
-                            d_send = {
-                                ENTRIES['nom']: s_student, 
-                                ENTRIES['exo']: exo,
-                                ENTRIES['tst']: str(val_finale).replace('.', ','), # La colonne TST sert maintenant de "Volume"
-                                ENTRIES['rpe']: str(rpe), 
-                                ENTRIES['charge']: str(round(charge_calc, 2)).replace('.', ',')
-                            }
-                            
-                            try:
-                                if requests.post(LINK_UNIQUE, data=d_send).status_code == 200:
-                                    st.success(f"✅ Données envoyées ! ({type_effort})")
-                                    st.session_state.processed_files.add(real_name)
-                                    time.sleep(1)
-                                    st.rerun()
-                                else: st.error("Erreur Google Forms")
-                            except Exception as e: st.error(f"Erreur: {e}")
-                    else: 
-                        st.warning("Aucun élève inscrit.")
+                            charge = f_time * rpe
+                            val_princ = f"{round(f_time, 2)} s"
+
+                            if charge > 0:
+                                d_send = {
+                                    ENTRIES['nom']: s_student, 
+                                    ENTRIES['exo']: exo,
+                                    ENTRIES['tst']: str(val_princ).replace('.', ','),
+                                    ENTRIES['rpe']: str(rpe), 
+                                    ENTRIES['charge']: str(round(charge, 2)).replace('.', ',')
+                                }
+                                try:
+                                    if requests.post(LINK_UNIQUE, data=d_send).status_code == 200:
+                                        st.success(f"✅ Données envoyées ! (Charge: {charge:.1f})")
+                                        st.session_state.processed_files.add(real_name)
+                                        time.sleep(1)
+                                        st.rerun()
+                                    else: st.error("Erreur Forms")
+                                except Exception as e: st.error(f"Erreur: {e}")
+                            else:
+                                st.warning("Le chrono est à 0 !")
+                    else: st.warning("Aucun élève.")
         else:
             st.info("📂 En attente de vidéos à analyser...")
 
@@ -475,8 +451,6 @@ with tab_eleves:
                             st.error("Mot de passe incorrect ❌")
         else:
             st.warning("Aucun élève inscrit dans la base.")
-
-
 
 
 
