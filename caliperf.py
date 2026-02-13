@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from streamlit_gsheets import GSheetsConnection
 import plotly.express as px
 import plotly.graph_objects as go
 import time
@@ -25,27 +26,35 @@ except Exception as e:
 
 DB_FILE = "caliperf_db.json"
 
-# --- 2. FONCTIONS DE GESTION DES DONNÉES ---
-def load_data():
-    if os.path.exists(DB_FILE):
-        with open(DB_FILE, "r") as f:
-            return json.load(f)
-    return {}
+# --- 2. FONCTIONS DE GESTION DES DONNÉES (VERSION CLOUD) ---
+# Connexion au Sheet grâce à tes secrets
+conn = st.connection("gsheets", type=GSheetsConnection)
 
-def save_data(data):
-    with open(DB_FILE, "w") as f:
-        json.dump(data, f)
-
-@st.cache_data(ttl=60)
-def fetch_training_data(csv_url):
+def get_users_data():
+    """Récupère les données de l'onglet 'Users'"""
     try:
-        if not csv_url: return pd.DataFrame()
-        df = pd.read_csv(csv_url)
-        # On s'assure d'avoir les bonnes colonnes
-        df.columns = ["Timestamp", "Nom", "Exercice", "TST", "RPE", "Charge"]
-        return df
-    except Exception as e:
+        # ttl=0 pour toujours avoir les données fraîches
+        return conn.read(worksheet="Users", ttl=0)
+    except Exception:
         return pd.DataFrame()
+
+def add_new_user(user_dict):
+    """Ajoute un nouvel utilisateur dans le Cloud"""
+    try:
+        df_actuel = get_users_data()
+        new_row = pd.DataFrame([user_dict])
+        
+        if not df_actuel.empty:
+            df_updated = pd.concat([df_actuel, new_row], ignore_index=True)
+        else:
+            df_updated = new_row
+            
+        conn.update(worksheet="Users", data=df_updated)
+        st.cache_data.clear()
+        return True
+    except Exception as e:
+        st.error(f"Erreur de sauvegarde : {e}")
+        return False
 
 # --- 3. GESTION DU CHRONO ---
 def toggle_timer(video_key):
@@ -110,15 +119,25 @@ with tab_intro:
         
         if st.form_submit_button("✅ Créer / Mettre à jour mon compte", type="primary", use_container_width=True):
             if nom and prenom and pwd_eleve:
-                full_name = f"{prenom} {nom}"
-                st.session_state.students_data[full_name] = {
-                    "link": LINK_UNIQUE, "freq": freq, "goal": objectif, "exp": experience,
-                    "weight": poids, "height": taille, "sex": sexe,
-                    "password": pwd_eleve
+                # Préparation des données
+                new_user_data = {
+                    "Fullname": f"{prenom} {nom}",
+                    "Nom": nom,
+                    "Prenom": prenom,
+                    "Password": pwd_eleve,
+                    "Frequence": freq,
+                    "Experience": experience,
+                    "Poids": poids,
+                    "Taille": taille,
+                    "Sexe": sexe,
+                    "Objectif": objectif,
+                    "Date": datetime.now().strftime("%Y-%m-%d")
                 }
-                save_data(st.session_state.students_data)
-                st.success(f"Compte configuré pour {prenom} ! Tu peux maintenant aller dans l'onglet 'Mon Suivi'.")
-                st.balloons()
+                
+                # Envoi vers Google Sheets
+                if add_new_user(new_user_data):
+                    st.success(f"Compte créé pour {prenom} ! 🎉")
+                    st.balloons()
             else:
                 st.warning("Nom, Prénom et Mot de passe sont obligatoires.")
 
@@ -407,6 +426,7 @@ with tab_eleves:
                             st.error("Mot de passe incorrect ❌")
         else:
             st.warning("Aucun élève inscrit dans la base.")
+
 
 
 
