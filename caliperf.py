@@ -55,7 +55,20 @@ def add_new_user(user_dict):
     except Exception as e:
         st.error(f"Erreur de sauvegarde : {e}")
         return False
+# --- AJOUTER CECI À LA SUITE DE TES FONCTIONS GOOGLE SHEETS ---
 
+@st.cache_data(ttl=60)
+def fetch_training_data(csv_url):
+    try:
+        if not csv_url: return pd.DataFrame()
+        df = pd.read_csv(csv_url)
+        # On s'assure d'avoir les bonnes colonnes pour éviter les bugs
+        # Si tes colonnes dans le CSV sont différentes, adapte cette liste !
+        if len(df.columns) >= 6:
+            df.columns = ["Timestamp", "Nom", "Exercice", "TST", "RPE", "Charge"]
+        return df
+    except Exception as e:
+        return pd.DataFrame()
 # --- 3. GESTION DU CHRONO ---
 def toggle_timer(video_key):
     timer = st.session_state.timers[video_key]
@@ -438,6 +451,7 @@ with tab_eleves:
                             st.error("Mot de passe incorrect ❌")
         else:
             st.warning("Aucun élève inscrit dans la base.")
+
 
 
 
