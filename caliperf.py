@@ -84,8 +84,20 @@ st.markdown("""
 # --- INITIALISATION SESSION STATE ---
 if 'processed_files' not in st.session_state: st.session_state.processed_files = set()
 if 'timers' not in st.session_state: st.session_state.timers = {} 
-if 'students_data' not in st.session_state: st.session_state.students_data = load_data()
-
+if 'students_data' not in st.session_state:
+    # 1. On récupère les données du Cloud
+    df_users = get_users_data()
+    
+    # 2. Si on a des données, on les convertit au format que ton application connaît déjà (Dictionnaire)
+    if not df_users.empty:
+        # On vérifie si la colonne 'Fullname' existe (créée à l'inscription)
+        if "Fullname" in df_users.columns:
+            st.session_state.students_data = df_users.set_index("Fullname").to_dict(orient="index")
+        else:
+            # Si c'est vide ou pas encore formaté
+            st.session_state.students_data = {}
+    else:
+        st.session_state.students_data = {}
 st.title("🏋️ Caliperf : Espace Coaching")
 
 tab_intro, tab_analyse, tab_eleves = st.tabs(["👋 Création Compte / Profil", "🎥 Espace Vidéo", "📊 Mon Suivi (Connexion)"])
@@ -426,6 +438,7 @@ with tab_eleves:
                             st.error("Mot de passe incorrect ❌")
         else:
             st.warning("Aucun élève inscrit dans la base.")
+
 
 
 
