@@ -85,12 +85,46 @@ def reset_timer(video_key):
 # --- CSS / STYLE ---
 st.markdown("""
     <style>
-    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
-    .stTabs [data-baseweb="tab"] { height: 50px; background-color: #1f2937; border-radius: 5px; color: white; }
-    .stTabs [aria-selected="true"] { background-color: #ff4b4b; color: white; }
-    .metric-card { background-color: #262730; padding: 15px; border-radius: 10px; border: 1px solid #4b4b4b; margin-bottom: 10px; }
-    .big-time { font-size: 2.5em; font-weight: bold; color: #00FF00; text-align: center; }
-    div.stButton > button:first-child { border-radius: 8px; }
+    /* Fond global plus sombre */
+    .stApp {
+        background-color: #0e1117;
+    }
+    
+    /* Titres en majuscules et police plus impactante */
+    h1, h2, h3 {
+        font-family: 'Helvetica Neue', sans-serif;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    
+    /* Style des onglets plus moderne */
+    .stTabs [data-baseweb="tab-list"] button [data-testid="stMarkdownContainer"] p {
+        font-size: 1.1rem;
+        font-weight: 600;
+    }
+    
+    /* Cards métriques avec effet de verre (Glassmorphism) */
+    .metric-card {
+        background: rgba(255, 255, 255, 0.05);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 20px;
+        border-radius: 15px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        transition: transform 0.2s;
+    }
+    .metric-card:hover {
+        transform: translateY(-5px);
+        border-color: #ff4b4b;
+    }
+    
+    /* Boutons plus ronds */
+    div.stButton > button {
+        border-radius: 20px;
+        font-weight: bold;
+        border: none;
+        transition: all 0.3s ease;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -451,6 +485,7 @@ with tab_eleves:
                             st.error("Mot de passe incorrect ❌")
         else:
             st.warning("Aucun élève inscrit dans la base.")
+
 
 
 
