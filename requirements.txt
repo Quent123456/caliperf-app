@@ -2,4 +2,5 @@ streamlit
 pandas
 requests
 plotly
-st-gsheets_connection
+st-gsheets-connection
+
