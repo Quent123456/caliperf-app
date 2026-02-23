@@ -369,7 +369,7 @@ with tab_eleves:
                                    s_df['TST_Val'] = s_df['TST'].astype(str).str.extract(r'(\d+[.,]?\d*)')[0].str.replace(',', '.', regex=False).astype(float).fillna(0)
                                     
                                     # 1. S'assurer que la date est au bon format
-                                    s_df['Date'] = pd.to_datetime(s_df['Date'])
+                                   s_df['Date'] = pd.to_datetime(s_df['Date'])
                                     
                                     # 2. Grouper par jour et définir la date en index
                                     daily = s_df.groupby('Date').agg({'Charge':'sum', 'TST_Val':'sum', 'RPE':'mean'})
@@ -499,6 +499,7 @@ with tab_eleves:
                             st.error("Mot de passe incorrect ❌")
         else:
             st.warning("Aucun élève inscrit dans la base.")
+
 
 
 
