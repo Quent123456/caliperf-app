@@ -340,3 +340,162 @@ with tab_eleves:
         df_history = pd.DataFrame()
 
     mode_connexion = st.radio("Qui êtes-vous ?", ["👤 Je suis Élève", "🧢 Je suis le Coach"], horizontal=True)
+st.write("---")
+
+    # ----------------------------------------------------------------
+    # MODE 1 : LE COACH (Accès Total)
+    # ----------------------------------------------------------------
+    if "Coach" in mode_connexion:
+        pwd_input = st.text_input("Mot de passe Coach", type="password", key="pwd_coach_suivi")
+        
+        if pwd_input == ADMIN_PWD:
+            st.success("Accès Administrateur ✅")
+            
+            if st.session_state.students_data:
+                cols = st.columns(2)
+                
+                # --- LIST() POUR ÉVITER L'ERREUR DE SUPPRESSION ---
+                for index, (name, info) in enumerate(list(st.session_state.students_data.items())):
+                    with cols[index % 2]:
+                        emoji_sexe = "♂️" if info.get('Sexe') == "Homme" else "♀️"
+                        pwd_user = info.get('Password', '⚠️ Non défini')
+                        
+                        st.markdown(f"""
+                        <div class="metric-card">
+                            <h3 style='margin-top:0; color:#ff4b4b;'>👤 {name} {emoji_sexe}</h3>
+                            <p><b>🔑 Mot de passe:</b> {pwd_user}</p>
+                            <p><b>📏 Morpho:</b> {info.get('Taille','?')}cm | {info.get('Poids','?')}kg</p>
+                        </div>""", unsafe_allow_html=True)
+
+                        with st.expander(f"📈 Stats de {name}"):
+                            if not df_history.empty:
+                                s_df = df_history[df_history['Nom'] == name].copy()
+                                if not s_df.empty:
+                                    s_df['TST_Val'] = s_df['TST'].astype(str).str.extract(r'(\d+[.,]?\d*)')[0].str.replace(',', '.', regex=False).astype(float).fillna(0)
+                                    s_df['Date'] = pd.to_datetime(s_df['Date'])
+                                    
+                                    daily = s_df.groupby('Date').agg({'Charge':'sum', 'TST_Val':'sum', 'RPE':'mean'})
+                                    daily = daily.resample('D').asfreq().fillna({'Charge': 0, 'TST_Val': 0})
+                                    daily['MA_Ch'] = daily['Charge'].rolling(window=3, min_periods=1).mean()
+                                    daily['MA_Vol'] = daily['TST_Val'].rolling(window=3, min_periods=1).mean()
+                                    
+                                    daily = daily.reset_index()
+                                    daily_train = daily[daily['Charge'] > 0]
+
+                                    fig_c = go.Figure()
+                                    fig_c.add_trace(go.Scatter(x=daily_train['Date'], y=daily_train['Charge'], mode='markers', marker=dict(color=daily_train['RPE'], colorscale='RdYlGn_r', size=10), name='Séance'))
+                                    fig_c.add_trace(go.Scatter(x=daily['Date'], y=daily['MA_Ch'], mode='lines', line=dict(dash='dot', color='orange', width=2), name='Tendance 3J'))
+                                    fig_c.update_layout(title="Charge", template="plotly_dark", height=250, margin=dict(t=30,b=10,l=10,r=10), showlegend=False)
+                                    
+                                    fig_v = go.Figure()
+                                    fig_v.add_trace(go.Bar(x=daily_train['Date'], y=daily_train['TST_Val'], marker=dict(color='#3366CC'), name='Vol'))
+                                    fig_v.add_trace(go.Scatter(x=daily['Date'], y=daily['MA_Vol'], mode='lines', line=dict(dash='dot', color='white'), name='Tend.'))
+                                    fig_v.update_layout(title="Volume", template="plotly_dark", height=250, margin=dict(t=30,b=10,l=10,r=10), showlegend=False)
+
+                                    c1, c2 = st.columns(2)
+                                    with c1: sc = st.plotly_chart(fig_c, use_container_width=True, on_select="rerun", key=f"c_{name}")
+                                    with c2: sv = st.plotly_chart(fig_v, use_container_width=True, on_select="rerun", key=f"v_{name}")
+
+                                    sel = sc if sc and sc["selection"]["points"] else sv if sv and sv["selection"]["points"] else None
+                                    if sel:
+                                        dt = sel["selection"]["points"][0]["x"]
+                                        st.markdown(f"**🔎 Détail du {dt}**")
+                                        det = s_df[s_df['Date'].astype(str)==dt].copy()
+                                        st.dataframe(det[['Exercice','TST','RPE','Charge']], use_container_width=True, hide_index=True)
+                                else: st.info("Pas de données.")
+                            else: st.error("Erreur données.")
+
+                        # --- LOGIQUE DE SUPPRESSION SÉCURISÉE ---
+                        st.write("---")
+                        cd, ct = st.columns([1,3])
+                        with cd:
+                            if st.button("🗑️", key=f"del_{name}"):
+                                try:
+                                    try:
+                                        requests.get(DELETE_SCRIPT_URL, params={"name": name}, timeout=3)
+                                    except: pass
+                                    
+                                    if name in st.session_state.students_data:
+                                        del st.session_state.students_data[name]
+                                        st.success(f"Supprimé de la vue actuelle.")
+                                        time.sleep(1)
+                                        st.rerun()
+                                except Exception as e:
+                                    st.error(f"Erreur : {e}")
+        else:
+            if pwd_input: st.error("Mot de passe incorrect.")
+
+    # ----------------------------------------------------------------
+    # MODE 2 : L'ÉLÈVE (Accès Sécurisé)
+    # ----------------------------------------------------------------
+    elif "Élève" in mode_connexion:
+        st.info("Connecte-toi pour voir tes progrès.")
+        
+        all_students = list(st.session_state.students_data.keys())
+        if all_students:
+            selected_name = st.selectbox("Je m'appelle :", ["-- Choisir --"] + all_students)
+            
+            if selected_name != "-- Choisir --":
+                info = st.session_state.students_data[selected_name]
+                stored_password = info.get('Password')
+
+                if not stored_password:
+                    st.warning("⚠️ Tu n'as pas encore défini de mot de passe.")
+                    st.markdown("Va dans l'onglet **'👋 Création Compte / Profil'**, remets ton nom/prénom et crée un mot de passe.")
+                else:
+                    input_pwd = st.text_input("Mon mot de passe :", type="password", key=f"pwd_{selected_name}")
+                    
+                    if st.button("Se connecter 🔓", key=f"btn_log_{selected_name}") or input_pwd == stored_password:
+                        if input_pwd == stored_password:
+                            st.success(f"Bon retour, {selected_name} !")
+                            
+                            emoji_sexe = "♂️" if info.get('Sexe') == "Homme" else "♀️"
+                            st.markdown(f"""
+                            <div class="metric-card">
+                                <h3 style='margin-top:0; color:#ff4b4b;'>Bonjour {selected_name} ! {emoji_sexe}</h3>
+                                <p><b>📏 Tes mensurations:</b> {info.get('Taille','?')}cm | {info.get('Poids','?')}kg</p>
+                                <p><b>🎯 Ton Objectif:</b> {info.get('Objectif', 'N/A')}</p>
+                            </div>""", unsafe_allow_html=True)
+                            
+                            st.subheader("📈 Tes Graphiques")
+
+                            if not df_history.empty:
+                                s_df = df_history[df_history['Nom'] == selected_name].copy()
+                                if not s_df.empty:
+                                    s_df['TST_Val'] = s_df['TST'].astype(str).str.extract(r'(\d+[.,]?\d*)')[0].str.replace(',', '.', regex=False).astype(float).fillna(0)
+                                    s_df['Date'] = pd.to_datetime(s_df['Date'])
+                                    
+                                    daily = s_df.groupby('Date').agg({'Charge':'sum', 'TST_Val':'sum', 'RPE':'mean'})
+                                    daily = daily.resample('D').asfreq().fillna({'Charge': 0, 'TST_Val': 0})
+                                    daily['MA_Ch'] = daily['Charge'].rolling(window=3, min_periods=1).mean()
+                                    daily['MA_Vol'] = daily['TST_Val'].rolling(window=3, min_periods=1).mean()
+                                    
+                                    daily = daily.reset_index()
+                                    daily_train = daily[daily['Charge'] > 0]
+
+                                    fig_c = go.Figure()
+                                    fig_c.add_trace(go.Scatter(x=daily_train['Date'], y=daily_train['Charge'], mode='markers', marker=dict(color=daily_train['RPE'], colorscale='RdYlGn_r', size=10), name='Séance'))
+                                    fig_c.add_trace(go.Scatter(x=daily['Date'], y=daily['MA_Ch'], mode='lines', line=dict(dash='dot', color='orange', width=2), name='Tendance 3J'))
+                                    fig_c.update_layout(title="Ta Charge d'entraînement", template="plotly_dark", height=300, margin=dict(t=30,b=10,l=10,r=10), showlegend=False)
+                                    
+                                    fig_v = go.Figure()
+                                    fig_v.add_trace(go.Bar(x=daily_train['Date'], y=daily_train['TST_Val'], marker=dict(color='#3366CC'), name='Vol'))
+                                    fig_v.add_trace(go.Scatter(x=daily['Date'], y=daily['MA_Vol'], mode='lines', line=dict(dash='dot', color='white'), name='Tend.'))
+                                    fig_v.update_layout(title="Ton Volume (TST / Reps)", template="plotly_dark", height=300, margin=dict(t=30,b=10,l=10,r=10), showlegend=False)
+
+                                    c1, c2 = st.columns(2)
+                                    with c1: sc = st.plotly_chart(fig_c, use_container_width=True, on_select="rerun", key=f"c_student_{selected_name}")
+                                    with c2: sv = st.plotly_chart(fig_v, use_container_width=True, on_select="rerun", key=f"v_student_{selected_name}")
+
+                                    sel = sc if sc and sc["selection"]["points"] else sv if sv and sv["selection"]["points"] else None
+                                    if sel:
+                                        dt = sel["selection"]["points"][0]["x"]
+                                        st.markdown(f"**🔎 Détail de ta séance du {dt}**")
+                                        det = s_df[s_df['Date'].astype(str)==dt].copy()
+                                        st.dataframe(det[['Exercice','TST','RPE','Charge']], use_container_width=True, hide_index=True)
+                                else: st.info("Pas encore de données d'entraînement. Envoie tes vidéos !")
+                            else: st.error("Impossible de récupérer l'historique.")
+                        else:
+                            st.error("Mot de passe incorrect ❌")
+        else:
+            st.warning("Aucun élève inscrit dans la base.")
