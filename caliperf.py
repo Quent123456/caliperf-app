@@ -27,13 +27,11 @@ except Exception as e:
 DB_FILE = "caliperf_db.json"
 
 # --- 2. FONCTIONS DE GESTION DES DONNÉES (VERSION CLOUD) ---
-# Connexion au Sheet grâce à tes secrets
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def get_users_data():
     """Récupère les données de l'onglet 'Users'"""
     try:
-        # ttl=0 pour toujours avoir les données fraîches
         return conn.read(worksheet="Users", ttl=0)
     except Exception:
         return pd.DataFrame()
@@ -61,19 +59,14 @@ def save_figures_to_cloud(fullname, figures_dict):
     try:
         df = get_users_data()
         if not df.empty and "Fullname" in df.columns:
-            # Si la colonne 'Figures' n'existe pas encore, on la crée
             if "Figures" not in df.columns:
                 df["Figures"] = "{}"
             
-            # On convertit le dictionnaire Python en texte (JSON) pour le stocker
             json_str = json.dumps(figures_dict)
-            
-            # On met à jour la ligne de l'élève concerné
             df.loc[df["Fullname"] == fullname, "Figures"] = json_str
             
-            # On envoie le tableau mis à jour vers Google Sheets
             conn.update(worksheet="Users", data=df)
-            st.cache_data.clear() # On vide le cache pour forcer le rechargement
+            st.cache_data.clear()
             return True
     except Exception as e:
         st.error(f"Erreur de sauvegarde Cloud : {e}")
@@ -84,8 +77,6 @@ def fetch_training_data(csv_url):
     try:
         if not csv_url: return pd.DataFrame()
         df = pd.read_csv(csv_url)
-        # On s'assure d'avoir les bonnes colonnes pour éviter les bugs
-        # Si tes colonnes dans le CSV sont différentes, adapte cette liste !
         if len(df.columns) >= 6:
             df.columns = ["Timestamp", "Nom", "Exercice", "TST", "RPE", "Charge"]
         return df
@@ -108,46 +99,12 @@ def reset_timer(video_key):
 # --- CSS / STYLE ---
 st.markdown("""
     <style>
-    /* Fond global plus sombre */
-    .stApp {
-        background-color: #0e1117;
-    }
-    
-    /* Titres en majuscules et police plus impactante */
-    h1, h2, h3 {
-        font-family: 'Helvetica Neue', sans-serif;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-    }
-    
-    /* Style des onglets plus moderne */
-    .stTabs [data-baseweb="tab-list"] button [data-testid="stMarkdownContainer"] p {
-        font-size: 1.1rem;
-        font-weight: 600;
-    }
-    
-    /* Cards métriques avec effet de verre (Glassmorphism) */
-    .metric-card {
-        background: rgba(255, 255, 255, 0.05);
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        padding: 20px;
-        border-radius: 15px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-        transition: transform 0.2s;
-    }
-    .metric-card:hover {
-        transform: translateY(-5px);
-        border-color: #ff4b4b;
-    }
-    
-    /* Boutons plus ronds */
-    div.stButton > button {
-        border-radius: 20px;
-        font-weight: bold;
-        border: none;
-        transition: all 0.3s ease;
-    }
+    .stApp { background-color: #0e1117; }
+    h1, h2, h3 { font-family: 'Helvetica Neue', sans-serif; text-transform: uppercase; letter-spacing: 1px; }
+    .stTabs [data-baseweb="tab-list"] button [data-testid="stMarkdownContainer"] p { font-size: 1.1rem; font-weight: 600; }
+    .metric-card { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3); transition: transform 0.2s; }
+    .metric-card:hover { transform: translateY(-5px); border-color: #ff4b4b; }
+    div.stButton > button { border-radius: 20px; font-weight: bold; border: none; transition: all 0.3s ease; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -162,7 +119,7 @@ if 'students_data' not in st.session_state:
         for _, row in df_users.iterrows():
             user_dict = row.to_dict()
             
-            # --- NOUVEAU : Lecture du dictionnaire de figures ---
+            # Lecture du dictionnaire de figures
             if "Figures" in user_dict and pd.notna(user_dict["Figures"]) and str(user_dict["Figures"]).strip() != "":
                 try:
                     user_dict["Figures"] = json.loads(str(user_dict["Figures"]))
@@ -172,9 +129,6 @@ if 'students_data' not in st.session_state:
                 user_dict["Figures"] = {"Mouvement basique": 1}
                 
             st.session_state.students_data[row["Fullname"]] = user_dict
-        else:
-            # Si c'est vide ou pas encore formaté
-            st.session_state.students_data = {}
     else:
         st.session_state.students_data = {}
 
@@ -183,7 +137,7 @@ st.title("🏋️ Caliperf : Espace Coaching")
 tab_intro, tab_analyse, tab_eleves = st.tabs(["👋 Création Compte / Profil", "🎥 Espace Vidéo", "📊 Mon Suivi (Connexion)"])
 
 # =========================================================
-# ONGLET 1 : INSCRIPTION / PROFIL
+# COMPOSANT PARTAGÉ : BIBLIOTHÈQUE DE FIGURES
 # =========================================================
 def render_figure_manager(athlete_name):
     """Affiche l'interface de gestion de la bibliothèque de mouvements pour un élève"""
@@ -202,20 +156,19 @@ def render_figure_manager(athlete_name):
         st.write("")
         if st.button("➕ Enregistrer", key=f"btn_add_{athlete_name}"):
             if new_fig_name:
-                # 1. Mise à jour de la mémoire locale
                 st.session_state.students_data[athlete_name]['Figures'][new_fig_name] = new_fig_diff
-                
-                # 2. Envoi vers Google Sheets de manière permanente
                 if save_figures_to_cloud(athlete_name, st.session_state.students_data[athlete_name]['Figures']):
                     st.success(f"✅ {new_fig_name} (Niveau {new_fig_diff}) sauvegardé dans le Cloud !")
                     time.sleep(1)
                     st.rerun()
 
-    # Affichage du dictionnaire sous forme de tableau
     if dict_figures:
         df_figs = pd.DataFrame(list(dict_figures.items()), columns=["Figure", "Niveau de Difficulté"])
         st.dataframe(df_figs, hide_index=True, use_container_width=True)
 
+# =========================================================
+# ONGLET 1 : INSCRIPTION / PROFIL
+# =========================================================
 with tab_intro:
     st.header("Création ou Mise à jour du Profil 🚀")
     st.caption("Remplis ce formulaire pour créer ton compte ou mettre à jour tes informations.")
@@ -242,7 +195,6 @@ with tab_intro:
         
         if st.form_submit_button("✅ Créer / Mettre à jour mon compte", type="primary", use_container_width=True):
             if nom and prenom and pwd_eleve:
-                # Préparation des données
                 new_user_data = {
                     "Fullname": f"{prenom} {nom}",
                     "Nom": nom,
@@ -256,8 +208,6 @@ with tab_intro:
                     "Objectif": objectif,
                     "Date": datetime.now().strftime("%Y-%m-%d")
                 }
-                
-                # Envoi vers Google Sheets
                 if add_new_user(new_user_data):
                     st.success(f"Compte créé pour {prenom} ! 🎉")
                     st.balloons()
@@ -302,13 +252,10 @@ with tab_analyse:
 
         st.divider()
         
-        # accept_multiple_files=False empêche la surcharge de la RAM
         uploaded_file = st.file_uploader("📥 Charger la vidéo à analyser (1 à la fois)", type=['mp4', 'mov', 'avi'], accept_multiple_files=False)
 
         if uploaded_file:
             real_name = uploaded_file.name
-            
-            # Affichage du statut
             if real_name in st.session_state.processed_files:
                 st.success(f"✅ {real_name} déjà traitée !")
             else:
@@ -331,7 +278,6 @@ with tab_analyse:
 
                 st.write("---")
                 
-                # --- FORMULAIRE AVANCÉ : CONSTRUCTEUR DE COMBO ---
                 with st.form(key=f"f_{real_name}"):
                     s_keys = list(st.session_state.students_data.keys())
                     if s_keys:
@@ -347,31 +293,22 @@ with tab_analyse:
                         st.write("🔥 **Détail du Combo**")
                         st.caption("Ajoute les figures réalisées et le nombre de répétitions. Tu peux ajouter autant de lignes que tu veux !")
 
-                        # Récupérer les figures enregistrées par l'athlète
                         athlete_figures = st.session_state.students_data[s_student].get('Figures', {"Mouvement basique": 1})
                         liste_noms_figures = list(athlete_figures.keys())
 
-                        # Tableau dynamique (Le Combo Builder)
                         df_combo_init = pd.DataFrame([{"Figure": liste_noms_figures[0], "Répétitions": 1}])
                         
                         edited_combo = st.data_editor(
                             df_combo_init,
                             column_config={
                                 "Figure": st.column_config.SelectboxColumn(
-                                    "Figure réalisée",
-                                    help="Sélectionne la figure dans ton dictionnaire",
-                                    width="large",
-                                    options=liste_noms_figures,
-                                    required=True,
+                                    "Figure réalisée", width="large", options=liste_noms_figures, required=True,
                                 ),
                                 "Répétitions": st.column_config.NumberColumn(
-                                    "Répétitions",
-                                    min_value=1,
-                                    step=1,
-                                    required=True,
+                                    "Répétitions", min_value=1, step=1, required=True,
                                 )
                             },
-                            num_rows="dynamic", # C'est CA qui permet d'ajouter plusieurs figures !
+                            num_rows="dynamic",
                             use_container_width=True,
                             key=f"editor_{real_name}"
                         )
@@ -379,27 +316,18 @@ with tab_analyse:
                         if st.form_submit_button("☁️ ENVOYER DONNÉES"):
                             f_time = timer['acc'] + (time.time() - timer['start'] if timer['run'] else 0)
                             
-                            # --- CALCUL AUTOMATIQUE DU COEFFICIENT DU COMBO ---
                             total_coeff = 0
                             noms_figures_realisees = []
 
                             for index, row in edited_combo.iterrows():
                                 fig_name = row["Figure"]
                                 reps = row["Répétitions"]
-                                
-                                # On récupère la difficulté de 1 à 5, on la traduit en multiplicateur
                                 diff = athlete_figures.get(fig_name, 1)
                                 multiplicateur_unitaire = 1.0 + (diff - 1) * 0.25
-                                
-                                # On multiplie par le nombre de répétitions réalisées
                                 total_coeff += (multiplicateur_unitaire * reps)
-                                
-                                # On construit le nom de l'exercice pour le suivi graphique
                                 noms_figures_realisees.append(f"{reps}x {fig_name}")
 
-                            nom_exo_final = " + ".join(noms_figures_realisees) # Ex: "5x Planche Push Up + 1x Front Lever"
-
-                            # Nouvelle formule de charge finale !
+                            nom_exo_final = " + ".join(noms_figures_realisees)
                             charge = f_time * rpe * total_coeff
                             val_princ = f"{round(f_time, 2)} s"
 
@@ -413,7 +341,7 @@ with tab_analyse:
                                 }
                                 try:
                                     if requests.post(LINK_UNIQUE, data=d_send).status_code == 200:
-                                        st.toast(f"✅ Combo enregistré ! (Charge: {charge:.1f} | Coeff Total: x{total_coeff:.2f})")
+                                        st.toast(f"✅ Combo enregistré ! (Charge: {charge:.1f} | Coeff: x{total_coeff:.2f})")
                                         st.session_state.processed_files.add(real_name)
                                         time.sleep(1)
                                         st.rerun()
@@ -430,16 +358,13 @@ with tab_analyse:
     # --- MODE ÉLÈVE ---
     else:
         st.subheader("📤 Envoyer mes vidéos au Coach")
-        st.markdown("""
-        Pour que ton coach puisse analyser tes mouvements, il faut lui envoyer tes vidéos.
-        """)
+        st.markdown("Pour que ton coach puisse analyser tes mouvements, il faut lui envoyer tes vidéos.")
         col_send1, col_send2 = st.columns([1, 2])
         with col_send1:
             st.info("👇 Clique ici pour déposer tes fichiers")
             st.link_button("📂 Ouvrir le dossier de dépôt", UPLOAD_LINK, type="primary", use_container_width=True)
         with col_send2:
             st.caption("Une fois tes vidéos déposées, préviens ton coach ! Il les récupérera pour les analyser ici même.")
-            st.image("https://cdn-icons-png.flaticon.com/512/2983/2983067.png", width=100)
 
 # =========================================================
 # ONGLET 3 : MON SUIVI (SÉCURISÉ)
@@ -460,7 +385,7 @@ with tab_eleves:
     mode_connexion = st.radio("Qui êtes-vous ?", ["👤 Je suis Élève", "🧢 Je suis le Coach"], horizontal=True)
     st.write("---")
 
-   # ----------------------------------------------------------------
+    # ----------------------------------------------------------------
     # MODE 1 : LE COACH (Accès Total)
     # ----------------------------------------------------------------
     if "Coach" in mode_connexion:
@@ -472,7 +397,6 @@ with tab_eleves:
             if st.session_state.students_data:
                 cols = st.columns(2)
                 
-                # --- LIST() POUR ÉVITER L'ERREUR DE SUPPRESSION ---
                 for index, (name, info) in enumerate(list(st.session_state.students_data.items())):
                     with cols[index % 2]:
                         emoji_sexe = "♂️" if info.get('Sexe') == "Homme" else "♀️"
@@ -485,7 +409,6 @@ with tab_eleves:
                             <p><b>📏 Morpho:</b> {info.get('Taille','?')}cm | {info.get('Poids','?')}kg</p>
                         </div>""", unsafe_allow_html=True)
 
-                        # --- EXPANDER 1 : GRAPHIQUES ---
                         with st.expander(f"📈 Stats de {name}"):
                             if not df_history.empty:
                                 s_df = df_history[df_history['Nom'] == name].copy()
@@ -524,16 +447,16 @@ with tab_eleves:
                                 else: st.info("Pas de données.")
                             else: st.error("Erreur données.")
 
-                        # --- EXPANDER 2 : BIBLIOTHÈQUE ---
                         with st.expander(f"📚 Gérer les figures de {name}"):
                             render_figure_manager(name)
 
-                # --- LOGIQUE DE SUPPRESSION SÉCURISÉE ---
                 st.write("---")
                 cd, ct = st.columns([1,3])
                 with cd:
                     if st.button("🗑️ Supprimer un élève", key="del_student_btn"):
                         st.warning("La suppression nécessite l'ID exact. Fonction en maintenance.")
+            else:
+                st.warning("La base de données des élèves est vide. Si tu viens d'ajouter un élève, rafraîchis la page.")
         else:
             if pwd_input: st.error("Mot de passe incorrect.")
 
@@ -609,8 +532,6 @@ with tab_eleves:
                             else: st.error("Impossible de récupérer l'historique.")
                             
                             st.write("---")
-                            
-                            # --- APPEL DE LA GESTION DE BIBLIOTHÈQUE POUR L'ÉLÈVE ---
                             render_figure_manager(selected_name)
                             
                         else:
