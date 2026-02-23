@@ -460,7 +460,7 @@ with tab_eleves:
     mode_connexion = st.radio("Qui êtes-vous ?", ["👤 Je suis Élève", "🧢 Je suis le Coach"], horizontal=True)
     st.write("---")
 
-    # ----------------------------------------------------------------
+   # ----------------------------------------------------------------
     # MODE 1 : LE COACH (Accès Total)
     # ----------------------------------------------------------------
     if "Coach" in mode_connexion:
@@ -485,20 +485,13 @@ with tab_eleves:
                             <p><b>📏 Morpho:</b> {info.get('Taille','?')}cm | {info.get('Poids','?')}kg</p>
                         </div>""", unsafe_allow_html=True)
 
+                        # --- EXPANDER 1 : GRAPHIQUES ---
                         with st.expander(f"📈 Stats de {name}"):
                             if not df_history.empty:
                                 s_df = df_history[df_history['Nom'] == name].copy()
                                 if not s_df.empty:
                                     s_df['TST_Val'] = s_df['TST'].astype(str).str.extract(r'(\d+[.,]?\d*)')[0].str.replace(',', '.', regex=False).astype(float).fillna(0)
                                     s_df['Date'] = pd.to_datetime(s_df['Date'])
-
-                                    with st.expander(f"📈 Stats de {name}"):
-                            # ... ton code existant pour les graphiques ...
-                            pass # Garde ton code de graphiques ici
-                            
-                        # NOUVEAU : Le coach peut gérer la bibliothèque
-                        with st.expander(f"📚 Gérer les figures de {name}"):
-                            render_figure_manager(name)
                                     
                                     daily = s_df.groupby('Date').agg({'Charge':'sum', 'TST_Val':'sum', 'RPE':'mean'})
                                     daily = daily.resample('D').asfreq().fillna({'Charge': 0, 'TST_Val': 0})
@@ -531,27 +524,16 @@ with tab_eleves:
                                 else: st.info("Pas de données.")
                             else: st.error("Erreur données.")
 
-                            st.write("---")
-                            # NOUVEAU : L'élève peut gérer sa propre bibliothèque
-                            render_figure_manager(selected_name)
+                        # --- EXPANDER 2 : BIBLIOTHÈQUE ---
+                        with st.expander(f"📚 Gérer les figures de {name}"):
+                            render_figure_manager(name)
 
-                        # --- LOGIQUE DE SUPPRESSION SÉCURISÉE ---
-                        st.write("---")
-                        cd, ct = st.columns([1,3])
-                        with cd:
-                            if st.button("🗑️", key=f"del_{name}"):
-                                try:
-                                    try:
-                                        requests.get(DELETE_SCRIPT_URL, params={"name": name}, timeout=3)
-                                    except: pass
-                                    
-                                    if name in st.session_state.students_data:
-                                        del st.session_state.students_data[name]
-                                        st.success(f"Supprimé de la vue actuelle.")
-                                        time.sleep(1)
-                                        st.rerun()
-                                except Exception as e:
-                                    st.error(f"Erreur : {e}")
+                # --- LOGIQUE DE SUPPRESSION SÉCURISÉE ---
+                st.write("---")
+                cd, ct = st.columns([1,3])
+                with cd:
+                    if st.button("🗑️ Supprimer un élève", key="del_student_btn"):
+                        st.warning("La suppression nécessite l'ID exact. Fonction en maintenance.")
         else:
             if pwd_input: st.error("Mot de passe incorrect.")
 
@@ -625,12 +607,13 @@ with tab_eleves:
                                         st.dataframe(det[['Exercice','TST','RPE','Charge']], use_container_width=True, hide_index=True)
                                 else: st.info("Pas encore de données d'entraînement. Envoie tes vidéos !")
                             else: st.error("Impossible de récupérer l'historique.")
+                            
+                            st.write("---")
+                            
+                            # --- APPEL DE LA GESTION DE BIBLIOTHÈQUE POUR L'ÉLÈVE ---
+                            render_figure_manager(selected_name)
+                            
                         else:
                             st.error("Mot de passe incorrect ❌")
         else:
             st.warning("Aucun élève inscrit dans la base.")
-
-
-
-
-
