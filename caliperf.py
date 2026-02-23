@@ -269,69 +269,61 @@ with tab_analyse:
                 st.write("---")
                 
                 # --- FORMULAIRE SIMPLIFIÉ (TST + COMBO) ---
-with st.form(key=f"f_{real_name}"):
-    s_keys = list(st.session_state.students_data.keys())
-    if s_keys:
-        s_student = st.selectbox("Athlète", s_keys)
-        exo = st.text_input("Exercice", value=real_name.split('.')[0])
-        
-        # --- Ligne 1 : TST et RPE ---
-        c_rpe, c_info = st.columns([2, 1])
-        with c_rpe:
-            rpe = st.slider("Intensité (RPE)", 1, 10, 7)
-        with c_info:
-            st.info(f"⏱️ Temps retenu : {curr:.2f} s")
+                with st.form(key=f"f_{real_name}"):
+                    s_keys = list(st.session_state.students_data.keys())
+                    if s_keys:
+                        s_student = st.selectbox("Athlète", s_keys)
+                        exo = st.text_input("Exercice", value=real_name.split('.')[0])
+                        
+                        c_rpe, c_info = st.columns([2, 1])
+                        with c_rpe:
+                            rpe = st.slider("Intensité (RPE)", 1, 10, 7)
+                        with c_info:
+                            st.info(f"⏱️ Temps retenu : {curr:.2f} s")
 
-        # --- Ligne 2 : Gestion du Combo ---
-        st.write("---")
-        is_combo = st.checkbox("🔥 S'agit-il d'un Combo ?")
-        
-        # Le slider est désactivé si ce n'est pas un combo (par défaut sur 1)
-        diff_combo = st.slider(
-            "Perception de l'effort du Combo (1 = Simple, 5 = Extrême)", 
-            min_value=1, 
-            max_value=5, 
-            value=1, 
-            disabled=not is_combo,
-            help="1=x1.0 | 2=x1.25 | 3=x1.5 | 4=x1.75 | 5=x2.0"
-        )
+                        st.write("---")
+                        is_combo = st.checkbox("🔥 S'agit-il d'un Combo ?")
+                        
+                        diff_combo = st.slider(
+                            "Perception de l'effort du Combo (1 = Simple, 5 = Extrême)", 
+                            min_value=1, max_value=5, value=1, 
+                            disabled=not is_combo,
+                            help="1=x1.0 | 2=x1.25 | 3=x1.5 | 4=x1.75 | 5=x2.0"
+                        )
 
-        if st.form_submit_button("☁️ ENVOYER DONNÉES"):
-            f_time = timer['acc'] + (time.time() - timer['start'] if timer['run'] else 0)
-            
-            # --- 🧠 CALCUL DU COEFFICIENT ET DE LA CHARGE ---
-            # Mathématiquement : 1 + (valeur - 1) * 0.25 donne exactement ton échelle
-            coeff_multiplicateur = 1.0 + (diff_combo - 1) * 0.25 if is_combo else 1.0
-            
-            # Nouvelle formule de charge
-            charge = f_time * rpe * coeff_multiplicateur
-            val_princ = f"{round(f_time, 2)} s"
+                        if st.form_submit_button("☁️ ENVOYER DONNÉES"):
+                            f_time = timer['acc'] + (time.time() - timer['start'] if timer['run'] else 0)
+                            
+                            # Calcul dynamique du coefficient
+                            coeff_multiplicateur = 1.0 + (diff_combo - 1) * 0.25 if is_combo else 1.0
+                            
+                            charge = f_time * rpe * coeff_multiplicateur
+                            val_princ = f"{round(f_time, 2)} s"
 
-            if charge > 0:
-                d_send = {
-                    ENTRIES['nom']: s_student, 
-                    ENTRIES['exo']: exo + (" (Combo)" if is_combo else ""), # Ajoute un tag visuel
-                    ENTRIES['tst']: str(val_princ).replace('.', ','),
-                    ENTRIES['rpe']: str(rpe), 
-                    ENTRIES['charge']: str(round(charge, 2)).replace('.', ',')
-                }
-                try:
-                    if requests.post(LINK_UNIQUE, data=d_send).status_code == 200:
-                        st.toast(f"✅ Combo x{coeff_multiplicateur} appliqué ! (Charge totale: {charge:.1f})")
-                        st.session_state.processed_files.add(real_name)
-                        time.sleep(1)
-                        st.rerun()
-                    else: 
-                        st.error("Erreur d'envoi vers Google Forms")
-                except Exception as e: 
-                    st.error(f"Erreur: {e}")
-            else:
-                st.warning("Le chrono est à 0 !")
-    else: 
-        st.warning("Aucun élève enregistré.")
+                            if charge > 0:
+                                d_send = {
+                                    ENTRIES['nom']: s_student, 
+                                    ENTRIES['exo']: exo + (" (Combo)" if is_combo else ""),
+                                    ENTRIES['tst']: str(val_princ).replace('.', ','),
+                                    ENTRIES['rpe']: str(rpe), 
+                                    ENTRIES['charge']: str(round(charge, 2)).replace('.', ',')
+                                }
+                                try:
+                                    if requests.post(LINK_UNIQUE, data=d_send).status_code == 200:
+                                        st.toast(f"✅ Combo x{coeff_multiplicateur} appliqué ! (Charge totale: {charge:.1f})")
+                                        st.session_state.processed_files.add(real_name)
+                                        time.sleep(1)
+                                        st.rerun()
+                                    else: 
+                                        st.error("Erreur d'envoi vers Google Forms")
+                                except Exception as e: 
+                                    st.error(f"Erreur: {e}")
+                            else:
+                                st.warning("Le chrono est à 0 !")
+                    else:
+                        st.warning("Aucun élève enregistré.")
         else:
             st.info("📂 En attente de vidéos à analyser...")
-
     # --- MODE ÉLÈVE ---
     else:
         st.subheader("📤 Envoyer mes vidéos au Coach")
@@ -522,4 +514,5 @@ with tab_eleves:
                             st.error("Mot de passe incorrect ❌")
         else:
             st.warning("Aucun élève inscrit dans la base.")
+
 
