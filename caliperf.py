@@ -238,7 +238,45 @@ with tab_analyse:
                     except: st.error("Erreur envoi")
 
         st.divider()
+        
+# --- 📚 DICTIONNAIRE DE FIGURES DE L'ATHLÈTE ---
+        with st.expander("📚 Gérer le dictionnaire de figures (Création de mouvements)", expanded=False):
+            s_keys_dict = list(st.session_state.students_data.keys())
+            if s_keys_dict:
+                selected_athlete = st.selectbox("Modifier le dico de :", s_keys_dict, key="dict_athlete")
+                
+                # Initialiser le dico si l'élève n'en a pas encore
+                if 'Figures' not in st.session_state.students_data[selected_athlete]:
+                    st.session_state.students_data[selected_athlete]['Figures'] = {"Mouvement basique": 1}
+                
+                dict_figures = st.session_state.students_data[selected_athlete]['Figures']
 
+                # Formulaire pour ajouter une nouvelle figure
+                c_nom, c_diff, c_btn = st.columns([2, 1, 1])
+                with c_nom:
+                    new_fig_name = st.text_input("Nom de la figure (ex: Planche Push Up)")
+                with c_diff:
+                    new_fig_diff = st.number_input("Difficulté (1 à 5)", min_value=1, max_value=5, value=3)
+                with c_btn:
+                    st.write("")
+                    st.write("")
+                    if st.button("➕ Ajouter"):
+                        if new_fig_name:
+                            st.session_state.students_data[selected_athlete]['Figures'][new_fig_name] = new_fig_diff
+                            st.success(f"Ajouté : {new_fig_name} (Niv. {new_fig_diff})")
+                            time.sleep(1)
+                            st.rerun()
+
+                # Afficher le dictionnaire existant
+                if dict_figures:
+                    st.write("**Figures actuellement enregistrées :**")
+                    df_figs = pd.DataFrame(list(dict_figures.items()), columns=["Figure", "Niveau de Difficulté"])
+                    st.dataframe(df_figs, hide_index=True, use_container_width=True)
+            else:
+                st.warning("Aucun élève enregistré.")
+                
+        st.divider()
+        
         # accept_multiple_files=False empêche la surcharge de la RAM
         uploaded_file = st.file_uploader("📥 Charger la vidéo à analyser (1 à la fois)", type=['mp4', 'mov', 'avi'], accept_multiple_files=False)
 
@@ -513,5 +551,6 @@ with tab_eleves:
                             st.error("Mot de passe incorrect ❌")
         else:
             st.warning("Aucun élève inscrit dans la base.")
+
 
 
