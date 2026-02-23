@@ -284,22 +284,21 @@ with tab_analyse:
                         st.write("---")
                         is_combo = st.checkbox("🔥 S'agit-il d'un Combo ?")
                         
+                        # On retire le paramètre 'disabled' qui bloquait l'interaction
                         diff_combo = st.slider(
-                            "Perception de l'effort du Combo (1 = Simple, 5 = Extrême)", 
+                            "Perception de l'effort du Combo (Appliqué uniquement si coché)", 
                             min_value=1, max_value=5, value=1, 
-                            disabled=not is_combo,
                             help="1=x1.0 | 2=x1.25 | 3=x1.5 | 4=x1.75 | 5=x2.0"
                         )
 
                         if st.form_submit_button("☁️ ENVOYER DONNÉES"):
                             f_time = timer['acc'] + (time.time() - timer['start'] if timer['run'] else 0)
                             
-                            # Calcul dynamique du coefficient
+                            # Le calcul reste sécurisé : le slider n'est pris en compte QUE si is_combo est True
                             coeff_multiplicateur = 1.0 + (diff_combo - 1) * 0.25 if is_combo else 1.0
                             
                             charge = f_time * rpe * coeff_multiplicateur
                             val_princ = f"{round(f_time, 2)} s"
-
                             if charge > 0:
                                 d_send = {
                                     ENTRIES['nom']: s_student, 
