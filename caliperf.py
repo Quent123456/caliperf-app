@@ -339,4 +339,4 @@ with tab_eleves:
     else:
         df_history = pd.DataFrame()
 
-    mode_connexion = st.radio("
+    mode_connexion = st.radio("Qui êtes-vous ?", ["👤 Je suis Élève", "🧢 Je suis le Coach"], horizontal=True)
