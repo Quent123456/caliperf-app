@@ -306,48 +306,89 @@ with tab_analyse:
 
                 st.write("---")
                 
-                # --- FORMULAIRE SIMPLIFIÉ (TST + COMBO) ---
+                # --- FORMULAIRE AVANCÉ : CONSTRUCTEUR DE COMBO ---
                 with st.form(key=f"f_{real_name}"):
                     s_keys = list(st.session_state.students_data.keys())
                     if s_keys:
                         s_student = st.selectbox("Athlète", s_keys)
-                        exo = st.text_input("Exercice", value=real_name.split('.')[0])
                         
                         c_rpe, c_info = st.columns([2, 1])
                         with c_rpe:
-                            rpe = st.slider("Intensité (RPE)", 1, 10, 7)
+                            rpe = st.slider("Intensité globale (RPE)", 1, 10, 7)
                         with c_info:
-                            st.info(f"⏱️ Temps retenu : {curr:.2f} s")
+                            st.info(f"⏱️ Temps total : {curr:.2f} s")
 
                         st.write("---")
-                        is_combo = st.checkbox("🔥 S'agit-il d'un Combo ?")
+                        st.write("🔥 **Détail du Combo**")
+                        st.caption("Ajoute les figures réalisées et le nombre de répétitions. Tu peux ajouter autant de lignes que tu veux !")
+
+                        # Récupérer les figures enregistrées par l'athlète
+                        athlete_figures = st.session_state.students_data[s_student].get('Figures', {"Mouvement basique": 1})
+                        liste_noms_figures = list(athlete_figures.keys())
+
+                        # Tableau dynamique (Le Combo Builder)
+                        df_combo_init = pd.DataFrame([{"Figure": liste_noms_figures[0], "Répétitions": 1}])
                         
-                        # On retire le paramètre 'disabled' qui bloquait l'interaction
-                        diff_combo = st.slider(
-                            "Perception de l'effort du Combo (Appliqué uniquement si coché)", 
-                            min_value=1, max_value=5, value=1, 
-                            help="1=x1.0 | 2=x1.25 | 3=x1.5 | 4=x1.75 | 5=x2.0"
+                        edited_combo = st.data_editor(
+                            df_combo_init,
+                            column_config={
+                                "Figure": st.column_config.SelectboxColumn(
+                                    "Figure réalisée",
+                                    help="Sélectionne la figure dans ton dictionnaire",
+                                    width="large",
+                                    options=liste_noms_figures,
+                                    required=True,
+                                ),
+                                "Répétitions": st.column_config.NumberColumn(
+                                    "Répétitions",
+                                    min_value=1,
+                                    step=1,
+                                    required=True,
+                                )
+                            },
+                            num_rows="dynamic", # C'est CA qui permet d'ajouter plusieurs figures !
+                            use_container_width=True,
+                            key=f"editor_{real_name}"
                         )
 
                         if st.form_submit_button("☁️ ENVOYER DONNÉES"):
                             f_time = timer['acc'] + (time.time() - timer['start'] if timer['run'] else 0)
                             
-                            # Le calcul reste sécurisé : le slider n'est pris en compte QUE si is_combo est True
-                            coeff_multiplicateur = 1.0 + (diff_combo - 1) * 0.25 if is_combo else 1.0
-                            
-                            charge = f_time * rpe * coeff_multiplicateur
+                            # --- CALCUL AUTOMATIQUE DU COEFFICIENT DU COMBO ---
+                            total_coeff = 0
+                            noms_figures_realisees = []
+
+                            for index, row in edited_combo.iterrows():
+                                fig_name = row["Figure"]
+                                reps = row["Répétitions"]
+                                
+                                # On récupère la difficulté de 1 à 5, on la traduit en multiplicateur
+                                diff = athlete_figures.get(fig_name, 1)
+                                multiplicateur_unitaire = 1.0 + (diff - 1) * 0.25
+                                
+                                # On multiplie par le nombre de répétitions réalisées
+                                total_coeff += (multiplicateur_unitaire * reps)
+                                
+                                # On construit le nom de l'exercice pour le suivi graphique
+                                noms_figures_realisees.append(f"{reps}x {fig_name}")
+
+                            nom_exo_final = " + ".join(noms_figures_realisees) # Ex: "5x Planche Push Up + 1x Front Lever"
+
+                            # Nouvelle formule de charge finale !
+                            charge = f_time * rpe * total_coeff
                             val_princ = f"{round(f_time, 2)} s"
+
                             if charge > 0:
                                 d_send = {
                                     ENTRIES['nom']: s_student, 
-                                    ENTRIES['exo']: exo + (" (Combo)" if is_combo else ""),
+                                    ENTRIES['exo']: nom_exo_final,
                                     ENTRIES['tst']: str(val_princ).replace('.', ','),
                                     ENTRIES['rpe']: str(rpe), 
                                     ENTRIES['charge']: str(round(charge, 2)).replace('.', ',')
                                 }
                                 try:
                                     if requests.post(LINK_UNIQUE, data=d_send).status_code == 200:
-                                        st.toast(f"✅ Combo x{coeff_multiplicateur} appliqué ! (Charge totale: {charge:.1f})")
+                                        st.toast(f"✅ Combo enregistré ! (Charge: {charge:.1f} | Coeff Total: x{total_coeff:.2f})")
                                         st.session_state.processed_files.add(real_name)
                                         time.sleep(1)
                                         st.rerun()
@@ -551,6 +592,7 @@ with tab_eleves:
                             st.error("Mot de passe incorrect ❌")
         else:
             st.warning("Aucun élève inscrit dans la base.")
+
 
 
 
