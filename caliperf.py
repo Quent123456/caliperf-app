@@ -56,6 +56,29 @@ def add_new_user(user_dict):
         st.error(f"Erreur de sauvegarde : {e}")
         return False
 
+def save_figures_to_cloud(fullname, figures_dict):
+    """Sauvegarde le dictionnaire de figures d'un élève dans le Google Sheet"""
+    try:
+        df = get_users_data()
+        if not df.empty and "Fullname" in df.columns:
+            # Si la colonne 'Figures' n'existe pas encore, on la crée
+            if "Figures" not in df.columns:
+                df["Figures"] = "{}"
+            
+            # On convertit le dictionnaire Python en texte (JSON) pour le stocker
+            json_str = json.dumps(figures_dict)
+            
+            # On met à jour la ligne de l'élève concerné
+            df.loc[df["Fullname"] == fullname, "Figures"] = json_str
+            
+            # On envoie le tableau mis à jour vers Google Sheets
+            conn.update(worksheet="Users", data=df)
+            st.cache_data.clear() # On vide le cache pour forcer le rechargement
+            return True
+    except Exception as e:
+        st.error(f"Erreur de sauvegarde Cloud : {e}")
+        return False
+
 @st.cache_data(ttl=60)
 def fetch_training_data(csv_url):
     try:
@@ -132,14 +155,23 @@ st.markdown("""
 if 'processed_files' not in st.session_state: st.session_state.processed_files = set()
 if 'timers' not in st.session_state: st.session_state.timers = {} 
 if 'students_data' not in st.session_state:
-    # 1. On récupère les données du Cloud
     df_users = get_users_data()
+    st.session_state.students_data = {}
     
-    # 2. Si on a des données, on les convertit au format que ton application connaît déjà (Dictionnaire)
-    if not df_users.empty:
-        # On vérifie si la colonne 'Fullname' existe (créée à l'inscription)
-        if "Fullname" in df_users.columns:
-            st.session_state.students_data = df_users.set_index("Fullname").to_dict(orient="index")
+    if not df_users.empty and "Fullname" in df_users.columns:
+        for _, row in df_users.iterrows():
+            user_dict = row.to_dict()
+            
+            # --- NOUVEAU : Lecture du dictionnaire de figures ---
+            if "Figures" in user_dict and pd.notna(user_dict["Figures"]) and str(user_dict["Figures"]).strip() != "":
+                try:
+                    user_dict["Figures"] = json.loads(str(user_dict["Figures"]))
+                except:
+                    user_dict["Figures"] = {"Mouvement basique": 1}
+            else:
+                user_dict["Figures"] = {"Mouvement basique": 1}
+                
+            st.session_state.students_data[row["Fullname"]] = user_dict
         else:
             # Si c'est vide ou pas encore formaté
             st.session_state.students_data = {}
@@ -153,6 +185,37 @@ tab_intro, tab_analyse, tab_eleves = st.tabs(["👋 Création Compte / Profil", 
 # =========================================================
 # ONGLET 1 : INSCRIPTION / PROFIL
 # =========================================================
+def render_figure_manager(athlete_name):
+    """Affiche l'interface de gestion de la bibliothèque de mouvements pour un élève"""
+    st.markdown("### 📚 Ma Bibliothèque de Mouvements")
+    st.caption("Ajoute tes figures et détermine leur difficulté (1 = Simple, 5 = Extrême) pour calculer ton combo.")
+    
+    dict_figures = st.session_state.students_data[athlete_name].get('Figures', {"Mouvement basique": 1})
+
+    c_nom, c_diff, c_btn = st.columns([2, 1, 1])
+    with c_nom:
+        new_fig_name = st.text_input("Nom de la figure", key=f"fig_name_{athlete_name}")
+    with c_diff:
+        new_fig_diff = st.number_input("Difficulté", min_value=1, max_value=5, value=3, key=f"fig_diff_{athlete_name}")
+    with c_btn:
+        st.write("")
+        st.write("")
+        if st.button("➕ Enregistrer", key=f"btn_add_{athlete_name}"):
+            if new_fig_name:
+                # 1. Mise à jour de la mémoire locale
+                st.session_state.students_data[athlete_name]['Figures'][new_fig_name] = new_fig_diff
+                
+                # 2. Envoi vers Google Sheets de manière permanente
+                if save_figures_to_cloud(athlete_name, st.session_state.students_data[athlete_name]['Figures']):
+                    st.success(f"✅ {new_fig_name} (Niveau {new_fig_diff}) sauvegardé dans le Cloud !")
+                    time.sleep(1)
+                    st.rerun()
+
+    # Affichage du dictionnaire sous forme de tableau
+    if dict_figures:
+        df_figs = pd.DataFrame(list(dict_figures.items()), columns=["Figure", "Niveau de Difficulté"])
+        st.dataframe(df_figs, hide_index=True, use_container_width=True)
+
 with tab_intro:
     st.header("Création ou Mise à jour du Profil 🚀")
     st.caption("Remplis ce formulaire pour créer ton compte ou mettre à jour tes informations.")
@@ -237,44 +300,6 @@ with tab_analyse:
                         st.rerun()
                     except: st.error("Erreur envoi")
 
-        st.divider()
-        
-# --- 📚 DICTIONNAIRE DE FIGURES DE L'ATHLÈTE ---
-        with st.expander("📚 Gérer le dictionnaire de figures (Création de mouvements)", expanded=False):
-            s_keys_dict = list(st.session_state.students_data.keys())
-            if s_keys_dict:
-                selected_athlete = st.selectbox("Modifier le dico de :", s_keys_dict, key="dict_athlete")
-                
-                # Initialiser le dico si l'élève n'en a pas encore
-                if 'Figures' not in st.session_state.students_data[selected_athlete]:
-                    st.session_state.students_data[selected_athlete]['Figures'] = {"Mouvement basique": 1}
-                
-                dict_figures = st.session_state.students_data[selected_athlete]['Figures']
-
-                # Formulaire pour ajouter une nouvelle figure
-                c_nom, c_diff, c_btn = st.columns([2, 1, 1])
-                with c_nom:
-                    new_fig_name = st.text_input("Nom de la figure (ex: Planche Push Up)")
-                with c_diff:
-                    new_fig_diff = st.number_input("Difficulté (1 à 5)", min_value=1, max_value=5, value=3)
-                with c_btn:
-                    st.write("")
-                    st.write("")
-                    if st.button("➕ Ajouter"):
-                        if new_fig_name:
-                            st.session_state.students_data[selected_athlete]['Figures'][new_fig_name] = new_fig_diff
-                            st.success(f"Ajouté : {new_fig_name} (Niv. {new_fig_diff})")
-                            time.sleep(1)
-                            st.rerun()
-
-                # Afficher le dictionnaire existant
-                if dict_figures:
-                    st.write("**Figures actuellement enregistrées :**")
-                    df_figs = pd.DataFrame(list(dict_figures.items()), columns=["Figure", "Niveau de Difficulté"])
-                    st.dataframe(df_figs, hide_index=True, use_container_width=True)
-            else:
-                st.warning("Aucun élève enregistré.")
-                
         st.divider()
         
         # accept_multiple_files=False empêche la surcharge de la RAM
@@ -466,6 +491,14 @@ with tab_eleves:
                                 if not s_df.empty:
                                     s_df['TST_Val'] = s_df['TST'].astype(str).str.extract(r'(\d+[.,]?\d*)')[0].str.replace(',', '.', regex=False).astype(float).fillna(0)
                                     s_df['Date'] = pd.to_datetime(s_df['Date'])
+
+                                    with st.expander(f"📈 Stats de {name}"):
+                            # ... ton code existant pour les graphiques ...
+                            pass # Garde ton code de graphiques ici
+                            
+                        # NOUVEAU : Le coach peut gérer la bibliothèque
+                        with st.expander(f"📚 Gérer les figures de {name}"):
+                            render_figure_manager(name)
                                     
                                     daily = s_df.groupby('Date').agg({'Charge':'sum', 'TST_Val':'sum', 'RPE':'mean'})
                                     daily = daily.resample('D').asfreq().fillna({'Charge': 0, 'TST_Val': 0})
@@ -497,6 +530,10 @@ with tab_eleves:
                                         st.dataframe(det[['Exercice','TST','RPE','Charge']], use_container_width=True, hide_index=True)
                                 else: st.info("Pas de données.")
                             else: st.error("Erreur données.")
+
+                            st.write("---")
+                            # NOUVEAU : L'élève peut gérer sa propre bibliothèque
+                            render_figure_manager(selected_name)
 
                         # --- LOGIQUE DE SUPPRESSION SÉCURISÉE ---
                         st.write("---")
@@ -592,6 +629,7 @@ with tab_eleves:
                             st.error("Mot de passe incorrect ❌")
         else:
             st.warning("Aucun élève inscrit dans la base.")
+
 
 
 
