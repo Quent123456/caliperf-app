@@ -366,11 +366,25 @@ with tab_eleves:
                             if not df_history.empty:
                                 s_df = df_history[df_history['Nom'] == name].copy()
                                 if not s_df.empty:
-                                    s_df['TST_Val'] = s_df['TST'].astype(str).str.extract(r'(\d+[.,]?\d*)')[0].str.replace(',', '.', regex=False).astype(float).fillna(0)
-                                    daily = s_df.groupby('Date').agg({'Charge':'sum', 'TST_Val':'sum', 'RPE':'mean'}).reset_index().sort_values('Date')
-                                    daily['MA_Ch'] = daily['Charge'].rolling(3).mean()
-                                    daily['MA_Vol'] = daily['TST_Val'].rolling(3).mean()
-
+                                   s_df['TST_Val'] = s_df['TST'].astype(str).str.extract(r'(\d+[.,]?\d*)')[0].str.replace(',', '.', regex=False).astype(float).fillna(0)
+                                    
+                                    # 1. S'assurer que la date est au bon format
+                                    s_df['Date'] = pd.to_datetime(s_df['Date'])
+                                    
+                                    # 2. Grouper par jour et définir la date en index
+                                    daily = s_df.groupby('Date').agg({'Charge':'sum', 'TST_Val':'sum', 'RPE':'mean'})
+                                    
+                                    # 3. Rééchantillonner (Resample) pour inclure TOUS les jours calendaires
+                                    # On remplit les jours sans entraînement par 0 pour ne pas fausser la moyenne
+                                    daily = daily.resample('D').asfreq().fillna({'Charge': 0, 'TST_Val': 0})
+                                    
+                                    # 4. Calculer la moyenne mobile vraie sur une fenêtre glissante de 3 jours
+                                    daily['MA_Ch'] = daily['Charge'].rolling(window=3, min_periods=1).mean()
+                                    daily['MA_Vol'] = daily['TST_Val'].rolling(window=3, min_periods=1).mean()
+                                    
+                                    # 5. Réinitialiser l'index pour Plotly et créer un sous-groupe pour les points réels
+                                    daily = daily.reset_index()
+                                    daily_train = daily[daily['Charge'] > 0] # Uniquement les jours avec entraînement
                                     fig_c = go.Figure()
                                     fig_c.add_trace(go.Scatter(x=daily['Date'], y=daily['Charge'], mode='lines+markers', line=dict(color='#00CC96'), marker=dict(color=daily['RPE'], colorscale='RdYlGn_r'), name='Charge'))
                                     fig_c.add_trace(go.Scatter(x=daily['Date'], y=daily['MA_Ch'], mode='lines', line=dict(dash='dot', color='orange'), name='Tend.'))
@@ -485,6 +499,7 @@ with tab_eleves:
                             st.error("Mot de passe incorrect ❌")
         else:
             st.warning("Aucun élève inscrit dans la base.")
+
 
 
 
