@@ -575,6 +575,14 @@ import pandas as pd
 import plotly.express as px
 from streamlit_image_coordinates import streamlit_image_coordinates
 
+from PIL import Image
+import cv2
+import numpy as np
+import tempfile
+import pandas as pd
+import plotly.express as px
+from streamlit_image_coordinates import streamlit_image_coordinates
+
 with tab_vbt:
     st.header("⚡ Analyse Cinématique (VBT)")
     st.markdown("Mesure la vitesse entre deux points de ton choix (ex: Bassin/Barre, Main/Épaule).")
@@ -582,13 +590,12 @@ with tab_vbt:
     vbt_file = st.file_uploader("📥 Charger la vidéo", type=['mp4', 'mov'], key="vbt_uploader")
 
     if vbt_file:
-        # --- CORRECTION : Sauvegarder la vidéo une seule fois en mémoire ---
+        # --- Sauvegarder la vidéo une seule fois en mémoire ---
         if 'vbt_path' not in st.session_state or st.session_state.get('vbt_name') != vbt_file.name:
             tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
             tfile.write(vbt_file.read())
             st.session_state.vbt_path = tfile.name
             st.session_state.vbt_name = vbt_file.name
-            # Si on change de vidéo, on réinitialise les réglages
             st.session_state.gommettes = []
             st.session_state.last_frame = 0
             
@@ -606,7 +613,8 @@ with tab_vbt:
         if 'last_frame' not in st.session_state:
             st.session_state.last_frame = 0
 
-        selected_frame = st.slider("Avancer dans la vidéo", 0, total_frames - 1, st.session_state.last_frame, label_visibility="collapsed")
+        # Curseur pour avancer dans la vidéo
+        selected_frame = st.slider("Avancer dans la vidéo", 0, max(0, total_frames - 1), st.session_state.last_frame, label_visibility="collapsed")
         
         # Si on bouge le curseur, on efface les anciennes gommettes
         if selected_frame != st.session_state.last_frame:
@@ -625,37 +633,14 @@ with tab_vbt:
             
             frame_resized = cv2.resize(frame, (max_width, new_h))
             frame_rgb = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB)
-            
-            # --- CORRECTION AFFICHAGE : Utilisation de PIL ---
             pil_image = Image.fromarray(frame_rgb)
             
             st.write("---")
             st.subheader("🎯 Étape 2 : Place tes gommettes")
-            st.info("Clique sur l'image pour placer tes 2 gommettes (ex: Bassin, Barre).")
-
-            # Affichage de l'image dynamique
-            value = streamlit_image_coordinates(pil_image, key=f"points_{selected_frame}_{vbt_file.name}")
-            
-            if value is not None:
-                point = (value["x"], value["y"])
-                if point not in st.session_state.gommettes and len(st.session_state.gommettes) < 2:
-                    st.session_state.gommettes.append(point)
-                    st.rerun()
-
-            if len(st.session_state.gommettes) > 0:
-                st.write(f"📍 Point 1 : {st.session_state.gommettes[0]}")
-            if len(st.session_state.gommettes) == 2:
-                st.write(f"📍 Point 2 : {st.session_state.gommettes[1]}")
-            
-            st.write("---")
-            st.subheader("🎯 Étape 2 : Place tes gommettes")
             st.info("Clique sur l'image pour placer tes 2 gommettes de départ (ex: Bassin, Barre).")
-            
-            if 'gommettes' not in st.session_state:
-                st.session_state.gommettes = []
 
-            # On lie la clé du composant à l'image sélectionnée
-            value = streamlit_image_coordinates(frame_rgb, key=f"points_{selected_frame}_{vbt_file.name}")
+            # Affichage de l'image dynamique (un seul appel à la fonction !)
+            value = streamlit_image_coordinates(pil_image, key=f"points_{selected_frame}_{vbt_file.name}")
             
             if value is not None:
                 point = (value["x"], value["y"])
@@ -700,7 +685,6 @@ with tab_vbt:
                         if not ret:
                             break
                         
-                        # À la toute première boucle, on initialise les trackers sur la bonne image
                         if frames_processed == 0:
                             tracker1.init(current_frame, bbox1)
                             tracker2.init(current_frame, bbox2)
@@ -736,16 +720,16 @@ with tab_vbt:
                         video_bytes = video_file.read()
                         st.video(video_bytes, format="video/webm")
                     
-                    # Le graphique commence maintenant pile au bon moment
+                    # Graphique
                     df_vbt = pd.DataFrame({"Temps (s)": times, "Distance (px)": distances})
-                    df_vbt["Vitesse (px/s)"] = abs(df_vbt["Distance (px)"].diff() / df_vbt["Temps (s)"].diff())
-                    df_vbt["Vitesse_lisse"] = df_vbt["Vitesse (px/s)"].rolling(window=4).mean()
-                    
-                    fig = px.line(df_vbt, x="Temps (s)", y="Vitesse_lisse", title="Évolution de la vitesse")
-                    fig.update_layout(template="plotly_dark")
-                    st.plotly_chart(fig, use_container_width=True)
+                    if len(df_vbt) > 1:
+                        df_vbt["Vitesse (px/s)"] = abs(df_vbt["Distance (px)"].diff() / df_vbt["Temps (s)"].diff())
+                        df_vbt["Vitesse_lisse"] = df_vbt["Vitesse (px/s)"].rolling(window=4).mean()
+                        
+                        fig = px.line(df_vbt, x="Temps (s)", y="Vitesse_lisse", title="Évolution de la vitesse")
+                        fig.update_layout(template="plotly_dark")
+                        st.plotly_chart(fig, use_container_width=True)
 
             if st.button("🗑️ Recommencer"):
                 st.session_state.gommettes = []
                 st.rerun()
-
