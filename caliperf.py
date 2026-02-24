@@ -4,6 +4,7 @@ from streamlit_gsheets import GSheetsConnection
 import plotly.express as px
 import plotly.graph_objects as go
 import time
+from PIL import Image
 import requests
 import json
 import os
@@ -581,9 +582,17 @@ with tab_vbt:
     vbt_file = st.file_uploader("📥 Charger la vidéo", type=['mp4', 'mov'], key="vbt_uploader")
 
     if vbt_file:
-        tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
-        tfile.write(vbt_file.read())
-        video_path = tfile.name
+        # --- CORRECTION : Sauvegarder la vidéo une seule fois en mémoire ---
+        if 'vbt_path' not in st.session_state or st.session_state.get('vbt_name') != vbt_file.name:
+            tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+            tfile.write(vbt_file.read())
+            st.session_state.vbt_path = tfile.name
+            st.session_state.vbt_name = vbt_file.name
+            # Si on change de vidéo, on réinitialise les réglages
+            st.session_state.gommettes = []
+            st.session_state.last_frame = 0
+            
+        video_path = st.session_state.vbt_path
 
         cap = cv2.VideoCapture(video_path)
         fps = cap.get(cv2.CAP_PROP_FPS)
@@ -591,21 +600,20 @@ with tab_vbt:
         orig_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         orig_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         
-        # --- NOUVEAUTÉ : CURSEUR DE RECHERCHE ---
         st.subheader("⏱️ Étape 1 : Trouve le début du mouvement")
         st.markdown("Fais glisser le curseur pour trouver le moment exact où le mouvement commence.")
         
-        # Sécurité : Si on change d'image, on efface les anciennes gommettes
         if 'last_frame' not in st.session_state:
             st.session_state.last_frame = 0
 
-        selected_frame = st.slider("Avancer dans la vidéo", 0, total_frames - 1, 0, label_visibility="collapsed")
+        selected_frame = st.slider("Avancer dans la vidéo", 0, total_frames - 1, st.session_state.last_frame, label_visibility="collapsed")
         
+        # Si on bouge le curseur, on efface les anciennes gommettes
         if selected_frame != st.session_state.last_frame:
             st.session_state.gommettes = []
             st.session_state.last_frame = selected_frame
 
-        # On se place sur l'image choisie par le curseur
+        # On se place sur l'image choisie
         cap.set(cv2.CAP_PROP_POS_FRAMES, selected_frame)
         ret, frame = cap.read()
         
@@ -617,6 +625,27 @@ with tab_vbt:
             
             frame_resized = cv2.resize(frame, (max_width, new_h))
             frame_rgb = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB)
+            
+            # --- CORRECTION AFFICHAGE : Utilisation de PIL ---
+            pil_image = Image.fromarray(frame_rgb)
+            
+            st.write("---")
+            st.subheader("🎯 Étape 2 : Place tes gommettes")
+            st.info("Clique sur l'image pour placer tes 2 gommettes (ex: Bassin, Barre).")
+
+            # Affichage de l'image dynamique
+            value = streamlit_image_coordinates(pil_image, key=f"points_{selected_frame}_{vbt_file.name}")
+            
+            if value is not None:
+                point = (value["x"], value["y"])
+                if point not in st.session_state.gommettes and len(st.session_state.gommettes) < 2:
+                    st.session_state.gommettes.append(point)
+                    st.rerun()
+
+            if len(st.session_state.gommettes) > 0:
+                st.write(f"📍 Point 1 : {st.session_state.gommettes[0]}")
+            if len(st.session_state.gommettes) == 2:
+                st.write(f"📍 Point 2 : {st.session_state.gommettes[1]}")
             
             st.write("---")
             st.subheader("🎯 Étape 2 : Place tes gommettes")
@@ -719,3 +748,4 @@ with tab_vbt:
             if st.button("🗑️ Recommencer"):
                 st.session_state.gommettes = []
                 st.rerun()
+
