@@ -3,4 +3,6 @@ pandas
 requests
 plotly
 st-gsheets-connection
+opencv-python-headless
+streamlit-image-coordinates
 
