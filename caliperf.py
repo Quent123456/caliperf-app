@@ -277,12 +277,12 @@ with tab_analyse:
 
                 st.write("---")
                 
+                # --- NOUVELLE STRUCTURE ---
                 s_keys = list(st.session_state.students_data.keys())
+                
                 if s_keys:
-                    # 1. On sort le selectbox du form pour actualiser les figures dynamiquement
                     s_student = st.selectbox("Athlète", s_keys, key=f"sel_athlete_{real_name}")
                     
-                    # 2. On ouvre le formulaire ENSUITE
                     with st.form(key=f"f_{real_name}"):
                         c_rpe, c_info = st.columns([2, 1])
                         with c_rpe:
@@ -294,39 +294,6 @@ with tab_analyse:
                         st.write("🔥 **Détail du Combo**")
                         st.caption("Ajoute les figures réalisées et le nombre de répétitions. Tu peux ajouter autant de lignes que tu veux !")
 
-                        # La récupération des figures se fera maintenant avec le bon élève mis à jour
-                        athlete_figures = st.session_state.students_data[s_student].get('Figures', {})
-                        if not athlete_figures:
-                            athlete_figures = {"Mouvement basique": 1}
-                            
-                        liste_noms_figures = list(athlete_figures.keys())
-
-                        df_combo_init = pd.DataFrame([{"Figure": liste_noms_figures[0], "Répétitions": 1}])
-                        
-                        edited_combo = st.data_editor(
-                            df_combo_init,
-                            column_config={
-                                "Figure": st.column_config.SelectboxColumn(
-                                    "Figure réalisée", width="large", options=liste_noms_figures, required=True,
-                                ),
-                                "Répétitions": st.column_config.NumberColumn(
-                                    "Répétitions", min_value=1, step=1, required=True,
-                                )
-                            },
-                            num_rows="dynamic",
-                            use_container_width=True,
-                            key=f"editor_{real_name}"
-                        )
-                        with c_rpe:
-                            rpe = st.slider("Intensité globale (RPE)", 1, 10, 7)
-                        with c_info:
-                            st.info(f"⏱️ Temps total : {curr:.2f} s")
-
-                        st.write("---")
-                        st.write("🔥 **Détail du Combo**")
-                        st.caption("Ajoute les figures réalisées et le nombre de répétitions. Tu peux ajouter autant de lignes que tu veux !")
-
-                        # --- CORRECTION DU DICTIONNAIRE VIDE ICI ---
                         athlete_figures = st.session_state.students_data[s_student].get('Figures', {})
                         if not athlete_figures:
                             athlete_figures = {"Mouvement basique": 1}
@@ -388,8 +355,8 @@ with tab_analyse:
                                     st.error(f"Erreur: {e}")
                             else:
                                 st.warning("Le chrono est à 0 !")
-                    else:
-                        st.warning("Aucun élève enregistré.")
+                else:
+                    st.warning("Aucun élève enregistré.")
         else:
             st.info("📂 En attente de vidéos à analyser...")
     # --- MODE ÉLÈVE ---
@@ -575,4 +542,5 @@ with tab_eleves:
                             st.error("Mot de passe incorrect ❌")
         else:
             st.warning("Aucun élève inscrit dans la base.")
+
 
