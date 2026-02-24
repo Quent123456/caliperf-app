@@ -581,19 +581,36 @@ with tab_vbt:
     vbt_file = st.file_uploader("📥 Charger la vidéo", type=['mp4', 'mov'], key="vbt_uploader")
 
     if vbt_file:
-        # Sauvegarde temporaire de la vidéo d'origine
         tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
         tfile.write(vbt_file.read())
         video_path = tfile.name
 
         cap = cv2.VideoCapture(video_path)
         fps = cap.get(cv2.CAP_PROP_FPS)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         orig_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         orig_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        
+        # --- NOUVEAUTÉ : CURSEUR DE RECHERCHE ---
+        st.subheader("⏱️ Étape 1 : Trouve le début du mouvement")
+        st.markdown("Fais glisser le curseur pour trouver le moment exact où le mouvement commence.")
+        
+        # Sécurité : Si on change d'image, on efface les anciennes gommettes
+        if 'last_frame' not in st.session_state:
+            st.session_state.last_frame = 0
+
+        selected_frame = st.slider("Avancer dans la vidéo", 0, total_frames - 1, 0, label_visibility="collapsed")
+        
+        if selected_frame != st.session_state.last_frame:
+            st.session_state.gommettes = []
+            st.session_state.last_frame = selected_frame
+
+        # On se place sur l'image choisie par le curseur
+        cap.set(cv2.CAP_PROP_POS_FRAMES, selected_frame)
         ret, frame = cap.read()
         
         if ret:
-            # --- 1. SÉLECTION DES POINTS SUR MOBILE ---
+            # --- REDIMENSIONNEMENT MOBILE ---
             max_width = 350
             ratio = max_width / orig_w if orig_w > max_width else 1.0
             new_h = int(orig_h * ratio)
@@ -601,13 +618,15 @@ with tab_vbt:
             frame_resized = cv2.resize(frame, (max_width, new_h))
             frame_rgb = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB)
             
-            st.subheader("🎯 Étape 1 : Initialiser le Tracker")
-            st.info("Clique sur l'image pour placer tes 2 gommettes de départ.")
+            st.write("---")
+            st.subheader("🎯 Étape 2 : Place tes gommettes")
+            st.info("Clique sur l'image pour placer tes 2 gommettes de départ (ex: Bassin, Barre).")
             
             if 'gommettes' not in st.session_state:
                 st.session_state.gommettes = []
 
-            value = streamlit_image_coordinates(frame_rgb, key=f"points_{vbt_file.name}")
+            # On lie la clé du composant à l'image sélectionnée
+            value = streamlit_image_coordinates(frame_rgb, key=f"points_{selected_frame}_{vbt_file.name}")
             
             if value is not None:
                 point = (value["x"], value["y"])
@@ -620,80 +639,75 @@ with tab_vbt:
             if len(st.session_state.gommettes) == 2:
                 st.write(f"📍 Point 2 : {st.session_state.gommettes[1]}")
                 
-                # --- 2. TRAITEMENT VIDÉO DYNAMIQUE ---
+                # --- TRAITEMENT VIDÉO DYNAMIQUE ---
                 if st.button("🚀 Lancer l'analyse vidéo", type="primary", use_container_width=True):
-                    st.info("Analyse en cours... L'IA suit tes mouvements, patiente un instant.")
+                    st.info("Analyse en cours... L'IA suit tes mouvements !")
                     progress_bar = st.progress(0)
                     
-                    # Recalibrer les points cliqués à l'échelle de la vidéo d'origine
                     p1_orig = (int(st.session_state.gommettes[0][0] / ratio), int(st.session_state.gommettes[0][1] / ratio))
                     p2_orig = (int(st.session_state.gommettes[1][0] / ratio), int(st.session_state.gommettes[1][1] / ratio))
 
-                    # Initialiser les trackers d'OpenCV
                     tracker1 = cv2.TrackerCSRT_create()
                     tracker2 = cv2.TrackerCSRT_create()
 
-                    # Créer des zones de suivi (boîtes de 40x40 pixels autour du clic)
                     box = 40
                     bbox1 = (p1_orig[0] - box//2, p1_orig[1] - box//2, box, box)
                     bbox2 = (p2_orig[0] - box//2, p2_orig[1] - box//2, box, box)
 
-                    tracker1.init(frame, bbox1)
-                    tracker2.init(frame, bbox2)
-
-                    # Préparer la vidéo de sortie (Format WebM ultra-compatible pour le Web/Mobile)
                     out_path = tempfile.NamedTemporaryFile(delete=False, suffix='.webm').name
-                    fourcc = cv2.VideoWriter_fourcc(*'vp80') 
+                    fourcc = cv2.VideoWriter_fourcc(*'vp80')
                     out = cv2.VideoWriter(out_path, fourcc, fps, (orig_w, orig_h))
 
                     distances = []
                     times = []
-                    frame_count = 0
-                    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                    
+                    # On relance la vidéo à partir du moment sélectionné par le curseur !
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, selected_frame)
+                    frames_processed = 0
+                    frames_to_process = total_frames - selected_frame
 
-                    # Boucle frame par frame
                     while True:
                         ret, current_frame = cap.read()
                         if not ret:
                             break
                         
-                        # Mettre à jour la position des gommettes
+                        # À la toute première boucle, on initialise les trackers sur la bonne image
+                        if frames_processed == 0:
+                            tracker1.init(current_frame, bbox1)
+                            tracker2.init(current_frame, bbox2)
+                        
                         succ1, b1 = tracker1.update(current_frame)
                         succ2, b2 = tracker2.update(current_frame)
 
                         if succ1 and succ2:
-                            # Calculer le centre des nouvelles gommettes
                             c1 = (int(b1[0] + b1[2]/2), int(b1[1] + b1[3]/2))
                             c2 = (int(b2[0] + b2[2]/2), int(b2[1] + b2[3]/2))
 
-                            # Dessiner sur la vidéo
-                            cv2.circle(current_frame, c1, 15, (0, 0, 255), -1) # Point Rouge
-                            cv2.circle(current_frame, c2, 15, (0, 255, 0), -1) # Point Vert
-                            cv2.line(current_frame, c1, c2, (255, 255, 255), 3) # Ligne Blanche
+                            cv2.circle(current_frame, c1, 15, (0, 0, 255), -1) 
+                            cv2.circle(current_frame, c2, 15, (0, 255, 0), -1) 
+                            cv2.line(current_frame, c1, c2, (255, 255, 255), 3) 
 
-                            # Calcul de la distance
                             dist = np.linalg.norm(np.array(c1) - np.array(c2))
                             distances.append(dist)
-                            times.append(frame_count / fps)
+                            times.append(frames_processed / fps)
 
                         out.write(current_frame)
-                        frame_count += 1
-                        if total_frames > 0:
-                            progress_bar.progress(min(frame_count / total_frames, 1.0))
+                        frames_processed += 1
+                        
+                        if frames_to_process > 0:
+                            progress_bar.progress(min(frames_processed / frames_to_process, 1.0))
 
                     cap.release()
                     out.release()
                     
                     st.success("✅ Vidéo analysée avec succès !")
 
-                    # --- 3. AFFICHAGE DES RÉSULTATS ---
                     st.subheader("🎥 Replay du mouvement tracké")
-                    # On affiche la vidéo avec les points qui bougent !
                     with open(out_path, 'rb') as video_file:
                         video_bytes = video_file.read()
                         st.video(video_bytes, format="video/webm")
                     
-                    # Calcul de la vitesse: v = Δd / Δt
+                    # Le graphique commence maintenant pile au bon moment
                     df_vbt = pd.DataFrame({"Temps (s)": times, "Distance (px)": distances})
                     df_vbt["Vitesse (px/s)"] = abs(df_vbt["Distance (px)"].diff() / df_vbt["Temps (s)"].diff())
                     df_vbt["Vitesse_lisse"] = df_vbt["Vitesse (px/s)"].rolling(window=4).mean()
@@ -705,9 +719,3 @@ with tab_vbt:
             if st.button("🗑️ Recommencer"):
                 st.session_state.gommettes = []
                 st.rerun()
-
-
-
-
-
-
