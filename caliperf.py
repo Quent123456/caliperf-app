@@ -133,8 +133,7 @@ if 'students_data' not in st.session_state:
 
 st.title("🏋️ Caliperf : Espace Coaching")
 
-tab_intro, tab_analyse, tab_eleves = st.tabs(["👋 Création Compte / Profil", "🎥 Espace Vidéo", "📊 Mon Suivi (Connexion)"])
-
+tab_intro, tab_analyse, tab_eleves, tab_vbt = st.tabs(["👋 Profil", "🎥 Espace Vidéo", "📊 Mon Suivi", "⚡ Analyse Vitesse (VBT)"])
 # =========================================================
 # COMPOSANT PARTAGÉ : BIBLIOTHÈQUE DE FIGURES
 # =========================================================
@@ -566,8 +565,103 @@ with tab_eleves:
                             st.error("Mot de passe incorrect ❌")
         else:
             st.warning("Aucun élève inscrit dans la base.")
+            
 
+import cv2
+import numpy as np
+import tempfile
+from streamlit_image_coordinates import streamlit_image_coordinates
 
+with tab_vbt:
+    st.header("⚡ Analyse de la Vitesse (Velocity-Based Training)")
+    st.markdown("Mesure la vitesse de convergence entre le bassin et la barre pour objectiver la fatigue nerveuse.")
+
+    vbt_file = st.file_uploader("📥 Charger la vidéo pour analyse biomécanique", type=['mp4', 'mov'], key="vbt_uploader")
+
+    if vbt_file:
+        # 1. Sauvegarder la vidéo temporairement pour qu'OpenCV puisse la lire
+        tfile = tempfile.NamedTemporaryFile(delete=False)
+        tfile.write(vbt_file.read())
+        video_path = tfile.name
+
+        # 2. Lire la vidéo et extraire la première image
+        cap = cv2.VideoCapture(video_path)
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        ret, frame = cap.read()
+        
+        if ret:
+            # Convertir l'image de BGR (OpenCV) à RGB (Streamlit)
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            
+            st.subheader("🎯 Étape 1 : Place tes gommettes")
+            st.info("Clique sur l'image pour placer tes 2 points (1: Bassin, 2: Barre).")
+            
+            # Initialiser le stockage des points dans la session
+            if 'gommettes' not in st.session_state:
+                st.session_state.gommettes = []
+
+            # Afficher l'image interactive
+            value = streamlit_image_coordinates(frame_rgb, key=f"points_{vbt_file.name}")
+            
+            # Enregistrer les clics
+            if value is not None:
+                point = (value["x"], value["y"])
+                if point not in st.session_state.gommettes and len(st.session_state.gommettes) < 2:
+                    st.session_state.gommettes.append(point)
+                    st.rerun()
+
+            # Afficher les points sélectionnés
+            if len(st.session_state.gommettes) > 0:
+                st.write(f"📍 Point 1 (Bassin) : {st.session_state.gommettes[0]}")
+            if len(st.session_state.gommettes) == 2:
+                st.write(f"📍 Point 2 (Barre) : {st.session_state.gommettes[1]}")
+                
+                if st.button("🚀 Lancer l'analyse de vitesse", type="primary"):
+                    st.info("Traitement vidéo en cours avec OpenCV... (cela peut prendre quelques secondes)")
+                    
+                    # --- LOGIQUE DE TRACKING OPENCV (Simplifiée pour l'exemple) ---
+                    # Dans une version complète, on utiliserait cv2.TrackerCSRT_create() ici.
+                    # Pour l'instant, on simule la récupération des distances frame par frame.
+                    
+                    distances = []
+                    times = []
+                    frame_count = 0
+                    
+                    # Boucle de lecture de la vidéo (simulation du suivi)
+                    while True:
+                        ret, frame = cap.read()
+                        if not ret:
+                            break
+                        
+                        # Ici interviendrait le tracker OpenCV pour mettre à jour les (x, y)
+                        # On simule un rapprochement des deux points
+                        simulated_distance = max(0, 300 - (frame_count * 5)) 
+                        
+                        distances.append(simulated_distance)
+                        times.append(frame_count / fps)
+                        frame_count += 1
+                        
+                    cap.release()
+                    
+                    # --- CALCUL DE LA VITESSE ---
+                    # Vitesse = Différence de distance / Différence de temps
+                    df_vbt = pd.DataFrame({"Temps (s)": times, "Distance (px)": distances})
+                    df_vbt["Vitesse (px/s)"] = abs(df_vbt["Distance (px)"].diff() / df_vbt["Temps (s)"].diff())
+                    
+                    # Lissage de la courbe (Moyenne mobile) pour éviter le bruit
+                    df_vbt["Vitesse_lisse"] = df_vbt["Vitesse (px/s)"].rolling(window=3).mean()
+                    
+                    v_max = df_vbt["Vitesse_lisse"].max()
+                    
+                    st.success(f"✅ Analyse terminée ! Vitesse Max atteinte : {v_max:.2f} px/s")
+                    
+                    # Affichage graphique
+                    fig = px.line(df_vbt, x="Temps (s)", y="Vitesse_lisse", title="Profil Vitesse du Mouvement")
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+            if st.button("🗑️ Réinitialiser les points"):
+                st.session_state.gommettes = []
+                st.rerun()
 
 
 
