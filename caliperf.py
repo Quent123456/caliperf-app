@@ -583,6 +583,14 @@ import pandas as pd
 import plotly.express as px
 from streamlit_image_coordinates import streamlit_image_coordinates
 
+from PIL import Image
+import cv2
+import numpy as np
+import tempfile
+import pandas as pd
+import plotly.express as px
+from streamlit_image_coordinates import streamlit_image_coordinates
+
 with tab_vbt:
     st.header("⚡ Analyse Cinématique (VBT)")
     st.markdown("Mesure la vitesse entre deux points de ton choix (ex: Bassin/Barre, Main/Épaule).")
@@ -598,6 +606,7 @@ with tab_vbt:
             st.session_state.vbt_name = vbt_file.name
             st.session_state.gommettes = []
             st.session_state.last_frame = 0
+            st.session_state.frame_locked = False # NOUVEAU : gère le verrouillage de l'image
             
         video_path = st.session_state.vbt_path
 
@@ -613,13 +622,15 @@ with tab_vbt:
         if 'last_frame' not in st.session_state:
             st.session_state.last_frame = 0
 
-        # Curseur pour avancer dans la vidéo
-        selected_frame = st.slider("Avancer dans la vidéo", 0, max(0, total_frames - 1), st.session_state.last_frame, label_visibility="collapsed")
-        
-        # Si on bouge le curseur, on efface les anciennes gommettes
-        if selected_frame != st.session_state.last_frame:
-            st.session_state.gommettes = []
-            st.session_state.last_frame = selected_frame
+        # On cache le curseur si l'image est verrouillée
+        if not st.session_state.get('frame_locked', False):
+            selected_frame = st.slider("Avancer dans la vidéo", 0, max(0, total_frames - 1), st.session_state.last_frame, label_visibility="collapsed")
+            
+            # Si on bouge le curseur, on met à jour la position
+            if selected_frame != st.session_state.last_frame:
+                st.session_state.last_frame = selected_frame
+        else:
+            selected_frame = st.session_state.last_frame
 
         # On se place sur l'image choisie
         cap.set(cv2.CAP_PROP_POS_FRAMES, selected_frame)
@@ -633,103 +644,120 @@ with tab_vbt:
             
             frame_resized = cv2.resize(frame, (max_width, new_h))
             frame_rgb = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB)
-            pil_image = Image.fromarray(frame_rgb)
+            # On s'assure que le format est bien digéré par l'application
+            pil_image = Image.fromarray(np.uint8(frame_rgb))
             
             st.write("---")
-            st.subheader("🎯 Étape 2 : Place tes gommettes")
-            st.info("Clique sur l'image pour placer tes 2 gommettes de départ (ex: Bassin, Barre).")
-
-            # Affichage de l'image dynamique (un seul appel à la fonction !)
-            value = streamlit_image_coordinates(pil_image, key=f"points_{selected_frame}_{vbt_file.name}")
             
-            if value is not None:
-                point = (value["x"], value["y"])
-                if point not in st.session_state.gommettes and len(st.session_state.gommettes) < 2:
-                    st.session_state.gommettes.append(point)
+            # --- UX AMÉLIORÉE EN DEUX TEMPS ---
+            if not st.session_state.get('frame_locked', False):
+                # 1. AFFICHAGE RAPIDE POUR CHERCHER LE DÉBUT
+                st.image(pil_image, caption=f"Recherche en cours... (Image {selected_frame} / {total_frames})")
+                if st.button("✅ Verrouiller cette image", type="primary", use_container_width=True):
+                    st.session_state.frame_locked = True
                     st.rerun()
-
-            if len(st.session_state.gommettes) > 0:
-                st.write(f"📍 Point 1 : {st.session_state.gommettes[0]}")
-            if len(st.session_state.gommettes) == 2:
-                st.write(f"📍 Point 2 : {st.session_state.gommettes[1]}")
+            else:
+                # 2. AFFICHAGE INTERACTIF POUR LES GOMMETTES
+                st.subheader("🎯 Étape 2 : Place tes gommettes")
+                st.info("Clique sur l'image pour placer tes 2 gommettes.")
                 
-                # --- TRAITEMENT VIDÉO DYNAMIQUE ---
-                if st.button("🚀 Lancer l'analyse vidéo", type="primary", use_container_width=True):
-                    st.info("Analyse en cours... L'IA suit tes mouvements !")
-                    progress_bar = st.progress(0)
+                c_btn1, c_btn2 = st.columns(2)
+                with c_btn1:
+                    if st.button("🔄 Changer d'image", use_container_width=True):
+                        st.session_state.frame_locked = False
+                        st.session_state.gommettes = []
+                        st.rerun()
+                with c_btn2:
+                    if st.button("🗑️ Effacer les points", use_container_width=True):
+                        st.session_state.gommettes = []
+                        st.rerun()
+
+                # Le composant garde une clé fixe pour ne jamais planter
+                value = streamlit_image_coordinates(pil_image, key=f"points_picker_{st.session_state.vbt_name}")
+                
+                if value is not None:
+                    point = (value["x"], value["y"])
+                    if point not in st.session_state.gommettes and len(st.session_state.gommettes) < 2:
+                        st.session_state.gommettes.append(point)
+                        st.rerun()
+
+                if len(st.session_state.gommettes) > 0:
+                    st.write(f"📍 Point 1 : {st.session_state.gommettes[0]}")
+                if len(st.session_state.gommettes) == 2:
+                    st.write(f"📍 Point 2 : {st.session_state.gommettes[1]}")
                     
-                    p1_orig = (int(st.session_state.gommettes[0][0] / ratio), int(st.session_state.gommettes[0][1] / ratio))
-                    p2_orig = (int(st.session_state.gommettes[1][0] / ratio), int(st.session_state.gommettes[1][1] / ratio))
-
-                    tracker1 = cv2.TrackerCSRT_create()
-                    tracker2 = cv2.TrackerCSRT_create()
-
-                    box = 40
-                    bbox1 = (p1_orig[0] - box//2, p1_orig[1] - box//2, box, box)
-                    bbox2 = (p2_orig[0] - box//2, p2_orig[1] - box//2, box, box)
-
-                    out_path = tempfile.NamedTemporaryFile(delete=False, suffix='.webm').name
-                    fourcc = cv2.VideoWriter_fourcc(*'vp80')
-                    out = cv2.VideoWriter(out_path, fourcc, fps, (orig_w, orig_h))
-
-                    distances = []
-                    times = []
-                    
-                    # On relance la vidéo à partir du moment sélectionné par le curseur !
-                    cap.set(cv2.CAP_PROP_POS_FRAMES, selected_frame)
-                    frames_processed = 0
-                    frames_to_process = total_frames - selected_frame
-
-                    while True:
-                        ret, current_frame = cap.read()
-                        if not ret:
-                            break
+                    # --- TRAITEMENT VIDÉO DYNAMIQUE ---
+                    if st.button("🚀 Lancer l'analyse vidéo", type="primary", use_container_width=True):
+                        st.info("Analyse en cours... L'IA suit tes mouvements !")
+                        progress_bar = st.progress(0)
                         
-                        if frames_processed == 0:
-                            tracker1.init(current_frame, bbox1)
-                            tracker2.init(current_frame, bbox2)
+                        p1_orig = (int(st.session_state.gommettes[0][0] / ratio), int(st.session_state.gommettes[0][1] / ratio))
+                        p2_orig = (int(st.session_state.gommettes[1][0] / ratio), int(st.session_state.gommettes[1][1] / ratio))
+
+                        tracker1 = cv2.TrackerCSRT_create()
+                        tracker2 = cv2.TrackerCSRT_create()
+
+                        box = 40
+                        bbox1 = (p1_orig[0] - box//2, p1_orig[1] - box//2, box, box)
+                        bbox2 = (p2_orig[0] - box//2, p2_orig[1] - box//2, box, box)
+
+                        out_path = tempfile.NamedTemporaryFile(delete=False, suffix='.webm').name
+                        fourcc = cv2.VideoWriter_fourcc(*'vp80')
+                        out = cv2.VideoWriter(out_path, fourcc, fps, (orig_w, orig_h))
+
+                        distances = []
+                        times = []
                         
-                        succ1, b1 = tracker1.update(current_frame)
-                        succ2, b2 = tracker2.update(current_frame)
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, selected_frame)
+                        frames_processed = 0
+                        frames_to_process = total_frames - selected_frame
 
-                        if succ1 and succ2:
-                            c1 = (int(b1[0] + b1[2]/2), int(b1[1] + b1[3]/2))
-                            c2 = (int(b2[0] + b2[2]/2), int(b2[1] + b2[3]/2))
+                        while True:
+                            ret, current_frame = cap.read()
+                            if not ret:
+                                break
+                            
+                            if frames_processed == 0:
+                                tracker1.init(current_frame, bbox1)
+                                tracker2.init(current_frame, bbox2)
+                            
+                            succ1, b1 = tracker1.update(current_frame)
+                            succ2, b2 = tracker2.update(current_frame)
 
-                            cv2.circle(current_frame, c1, 15, (0, 0, 255), -1) 
-                            cv2.circle(current_frame, c2, 15, (0, 255, 0), -1) 
-                            cv2.line(current_frame, c1, c2, (255, 255, 255), 3) 
+                            if succ1 and succ2:
+                                c1 = (int(b1[0] + b1[2]/2), int(b1[1] + b1[3]/2))
+                                c2 = (int(b2[0] + b2[2]/2), int(b2[1] + b2[3]/2))
 
-                            dist = np.linalg.norm(np.array(c1) - np.array(c2))
-                            distances.append(dist)
-                            times.append(frames_processed / fps)
+                                cv2.circle(current_frame, c1, 15, (0, 0, 255), -1) 
+                                cv2.circle(current_frame, c2, 15, (0, 255, 0), -1) 
+                                cv2.line(current_frame, c1, c2, (255, 255, 255), 3) 
 
-                        out.write(current_frame)
-                        frames_processed += 1
+                                dist = np.linalg.norm(np.array(c1) - np.array(c2))
+                                distances.append(dist)
+                                times.append(frames_processed / fps)
+
+                            out.write(current_frame)
+                            frames_processed += 1
+                            
+                            if frames_to_process > 0:
+                                progress_bar.progress(min(frames_processed / frames_to_process, 1.0))
+
+                        cap.release()
+                        out.release()
                         
-                        if frames_to_process > 0:
-                            progress_bar.progress(min(frames_processed / frames_to_process, 1.0))
+                        st.success("✅ Vidéo analysée avec succès !")
 
-                    cap.release()
-                    out.release()
-                    
-                    st.success("✅ Vidéo analysée avec succès !")
-
-                    st.subheader("🎥 Replay du mouvement tracké")
-                    with open(out_path, 'rb') as video_file:
-                        video_bytes = video_file.read()
-                        st.video(video_bytes, format="video/webm")
-                    
-                    # Graphique
-                    df_vbt = pd.DataFrame({"Temps (s)": times, "Distance (px)": distances})
-                    if len(df_vbt) > 1:
-                        df_vbt["Vitesse (px/s)"] = abs(df_vbt["Distance (px)"].diff() / df_vbt["Temps (s)"].diff())
-                        df_vbt["Vitesse_lisse"] = df_vbt["Vitesse (px/s)"].rolling(window=4).mean()
+                        st.subheader("🎥 Replay du mouvement tracké")
+                        with open(out_path, 'rb') as video_file:
+                            video_bytes = video_file.read()
+                            st.video(video_bytes, format="video/webm")
                         
-                        fig = px.line(df_vbt, x="Temps (s)", y="Vitesse_lisse", title="Évolution de la vitesse")
-                        fig.update_layout(template="plotly_dark")
-                        st.plotly_chart(fig, use_container_width=True)
-
-            if st.button("🗑️ Recommencer"):
-                st.session_state.gommettes = []
-                st.rerun()
+                        # Graphique
+                        df_vbt = pd.DataFrame({"Temps (s)": times, "Distance (px)": distances})
+                        if len(df_vbt) > 1:
+                            df_vbt["Vitesse (px/s)"] = abs(df_vbt["Distance (px)"].diff() / df_vbt["Temps (s)"].diff())
+                            df_vbt["Vitesse_lisse"] = df_vbt["Vitesse (px/s)"].rolling(window=4).mean()
+                            
+                            fig = px.line(df_vbt, x="Temps (s)", y="Vitesse_lisse", title="Évolution de la vitesse")
+                            fig.update_layout(template="plotly_dark")
+                            st.plotly_chart(fig, use_container_width=True)
