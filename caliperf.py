@@ -641,9 +641,9 @@ with tab_vbt:
                     tracker1.init(frame, bbox1)
                     tracker2.init(frame, bbox2)
 
-                    # Préparer la vidéo de sortie
-                    out_path = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
-                    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                    # Préparer la vidéo de sortie (Format WebM ultra-compatible pour le Web/Mobile)
+                    out_path = tempfile.NamedTemporaryFile(delete=False, suffix='.webm').name
+                    fourcc = cv2.VideoWriter_fourcc(*'vp80') 
                     out = cv2.VideoWriter(out_path, fourcc, fps, (orig_w, orig_h))
 
                     distances = []
@@ -691,7 +691,7 @@ with tab_vbt:
                     # On affiche la vidéo avec les points qui bougent !
                     with open(out_path, 'rb') as video_file:
                         video_bytes = video_file.read()
-                        st.video(video_bytes)
+                        st.video(video_bytes, format="video/webm")
                     
                     # Calcul de la vitesse: v = Δd / Δt
                     df_vbt = pd.DataFrame({"Temps (s)": times, "Distance (px)": distances})
@@ -705,6 +705,7 @@ with tab_vbt:
             if st.button("🗑️ Recommencer"):
                 st.session_state.gommettes = []
                 st.rerun()
+
 
 
 
