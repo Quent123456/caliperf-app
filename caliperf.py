@@ -573,8 +573,8 @@ import tempfile
 from streamlit_image_coordinates import streamlit_image_coordinates
 
 with tab_vbt:
-    st.header("⚡ Analyse de la Vitesse (Velocity-Based Training)")
-    st.markdown("Mesure la vitesse de convergence entre le bassin et la barre pour objectiver la fatigue nerveuse.")
+    st.header("⚡ Analyse de la Vitesse ")
+    st.markdown("Mesure la vitesse pour objectiver la fatigue nerveuse.")
 
     vbt_file = st.file_uploader("📥 Charger la vidéo pour analyse biomécanique", type=['mp4', 'mov'], key="vbt_uploader")
 
@@ -662,6 +662,7 @@ with tab_vbt:
             if st.button("🗑️ Réinitialiser les points"):
                 st.session_state.gommettes = []
                 st.rerun()
+
 
 
 
