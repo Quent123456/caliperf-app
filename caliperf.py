@@ -697,7 +697,12 @@ with tab_vbt:
                         tracker1 = cv2.TrackerCSRT_create()
                         tracker2 = cv2.TrackerCSRT_create()
 
-                        box = 40
+                        # On agrandit la zone de "vision" de l'IA pour ne pas perdre les mouvements rapides.
+                        # On prend environ 10% de la largeur de la vidéo d'origine.
+                        box = int(orig_w * 0.10)
+                        # Sécurité : on s'assure que la boîte fait au moins 100 pixels et max 300 pixels
+                        box = max(100, min(box, 300)) 
+
                         bbox1 = (p1_orig[0] - box//2, p1_orig[1] - box//2, box, box)
                         bbox2 = (p2_orig[0] - box//2, p2_orig[1] - box//2, box, box)
 
@@ -761,3 +766,4 @@ with tab_vbt:
                             fig = px.line(df_vbt, x="Temps (s)", y="Vitesse_lisse", title="Évolution de la vitesse")
                             fig.update_layout(template="plotly_dark")
                             st.plotly_chart(fig, use_container_width=True)
+
