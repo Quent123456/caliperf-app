@@ -294,6 +294,7 @@ with tab_analyse:
                         st.write("🔥 **Détail du Combo**")
                         st.caption("Ajoute les figures réalisées et le nombre de répétitions. Tu peux ajouter autant de lignes que tu veux !")
 
+                        # --- RÉCUPÉRATION DES FIGURES DU BON ÉLÈVE ---
                         athlete_figures = st.session_state.students_data[s_student].get('Figures', {})
                         if not athlete_figures:
                             athlete_figures = {"Mouvement basique": 1}
@@ -302,11 +303,18 @@ with tab_analyse:
 
                         df_combo_init = pd.DataFrame([{"Figure": liste_noms_figures[0], "Répétitions": 1}])
                         
+                        # ⚠️ LA SOLUTION EST ICI : On crée une clé unique basée sur le nom de l'élève 
+                        # ET le nombre de figures qu'il possède. Ça force le tableau à se mettre à jour !
+                        editor_key = f"editor_{real_name}_{s_student}_{len(liste_noms_figures)}"
+
                         edited_combo = st.data_editor(
                             df_combo_init,
                             column_config={
                                 "Figure": st.column_config.SelectboxColumn(
-                                    "Figure réalisée", width="large", options=liste_noms_figures, required=True,
+                                    "Figure réalisée", 
+                                    width="large", 
+                                    options=liste_noms_figures, # Maintenant, ça affichera la liste de Quentin !
+                                    required=True,
                                 ),
                                 "Répétitions": st.column_config.NumberColumn(
                                     "Répétitions", min_value=1, step=1, required=True,
@@ -314,7 +322,7 @@ with tab_analyse:
                             },
                             num_rows="dynamic",
                             use_container_width=True,
-                            key=f"editor_{real_name}_{s_student}"
+                            key=editor_key
                         )
 
                         if st.form_submit_button("☁️ ENVOYER DONNÉES"):
@@ -542,6 +550,7 @@ with tab_eleves:
                             st.error("Mot de passe incorrect ❌")
         else:
             st.warning("Aucun élève inscrit dans la base.")
+
 
 
 
