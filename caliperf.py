@@ -583,14 +583,13 @@ with tab_vbt:
     vbt_file = st.file_uploader("📥 Charger la vidéo", type=['mp4', 'mov'], key="vbt_uploader")
 
     if vbt_file:
-        # --- Sauvegarder la vidéo une seule fois en mémoire ---
+        # --- Sauvegarder la vidéo une seule fois ---
         if 'vbt_path' not in st.session_state or st.session_state.get('vbt_name') != vbt_file.name:
             tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
             tfile.write(vbt_file.read())
             st.session_state.vbt_path = tfile.name
             st.session_state.vbt_name = vbt_file.name
             st.session_state.gommettes = []
-            st.session_state.last_frame = 0
             st.session_state.frame_locked = False
             
         video_path = st.session_state.vbt_path
@@ -601,22 +600,33 @@ with tab_vbt:
         orig_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         orig_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         
-        st.subheader("⏱️ Étape 1 : Trouve le début du mouvement")
-        st.markdown("Fais glisser le curseur pour trouver le moment exact où le mouvement commence.")
+        st.subheader("⏱️ Étape 1 : Isole le mouvement")
+        st.markdown("Ajuste les deux extrémités du curseur pour choisir le **début** et la **fin** de ton mouvement.")
         
-        if 'last_frame' not in st.session_state:
-            st.session_state.last_frame = 0
+        # --- NOUVEAU : INITIALISATION DU DOUBLE CURSEUR ---
+        if 'frame_range' not in st.session_state or st.session_state.get('vbt_name') != vbt_file.name:
+            st.session_state.frame_range = (0, max(0, total_frames - 1))
 
         # On cache le curseur si l'image est verrouillée
         if not st.session_state.get('frame_locked', False):
-            selected_frame = st.slider("Avancer dans la vidéo", 0, max(0, total_frames - 1), st.session_state.last_frame, label_visibility="collapsed")
-            if selected_frame != st.session_state.last_frame:
-                st.session_state.last_frame = selected_frame
+            selected_range = st.slider(
+                "Début et Fin de la vidéo", 
+                0, max(0, total_frames - 1), 
+                st.session_state.frame_range, 
+                label_visibility="collapsed"
+            )
+            # Si on bouge une des poignées du curseur
+            if selected_range != st.session_state.frame_range:
+                st.session_state.frame_range = selected_range
+                st.session_state.gommettes = []
         else:
-            selected_frame = st.session_state.last_frame
+            selected_range = st.session_state.frame_range
 
-        # On se place sur l'image choisie
-        cap.set(cv2.CAP_PROP_POS_FRAMES, selected_frame)
+        # On sépare le début et la fin
+        start_frame, end_frame = selected_range
+
+        # Pour placer les gommettes, on affiche l'image de DÉBUT choisie
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
         ret, frame = cap.read()
         
         if ret:
@@ -633,17 +643,17 @@ with tab_vbt:
             
             # --- UX AMÉLIORÉE EN DEUX TEMPS ---
             if not st.session_state.get('frame_locked', False):
-                st.image(pil_image, caption=f"Recherche en cours... (Image {selected_frame} / {total_frames})")
-                if st.button("✅ Verrouiller cette image", type="primary", use_container_width=True):
+                st.image(pil_image, caption=f"Début sélectionné à l'image {start_frame} | Fin prévue : {end_frame} (Total: {total_frames})")
+                if st.button("✅ Verrouiller cette séquence", type="primary", use_container_width=True):
                     st.session_state.frame_locked = True
                     st.rerun()
             else:
                 st.subheader("🎯 Étape 2 : Place tes gommettes")
-                st.info("Clique sur l'image pour placer tes 2 gommettes.")
+                st.info("Clique sur l'image pour placer tes 2 gommettes (au moment du départ).")
                 
                 c_btn1, c_btn2 = st.columns(2)
                 with c_btn1:
-                    if st.button("🔄 Changer d'image", use_container_width=True):
+                    if st.button("🔄 Modifier la coupe vidéo", use_container_width=True):
                         st.session_state.frame_locked = False
                         st.session_state.gommettes = []
                         st.rerun()
@@ -670,7 +680,7 @@ with tab_vbt:
                     box_size_ui = st.slider(
                         "Taille de la zone d'accroche", 
                         min_value=10, max_value=150, value=50, step=10,
-                        help="Diminue la taille si le point s'accroche au décor. Augmente-la si le point perd l'athlète."
+                        help="Diminue la taille si le point s'accroche au décor. Augmente-la si le point perd l'athlète lors d'un mouvement explosif."
                     )
 
                     # --- TRAITEMENT VIDÉO DYNAMIQUE ---
@@ -684,9 +694,7 @@ with tab_vbt:
                         tracker1 = cv2.TrackerCSRT_create()
                         tracker2 = cv2.TrackerCSRT_create()
 
-                        # Zone d'accroche dynamique selon le slider
                         real_box = int(box_size_ui / ratio)
-                        
                         bbox1 = (p1_orig[0] - real_box//2, p1_orig[1] - real_box//2, real_box, real_box)
                         bbox2 = (p2_orig[0] - real_box//2, p2_orig[1] - real_box//2, real_box, real_box)
 
@@ -697,13 +705,16 @@ with tab_vbt:
                         distances = []
                         times = []
                         
-                        cap.set(cv2.CAP_PROP_POS_FRAMES, selected_frame)
+                        # --- NOUVEAU : On s'arrête exactement à la frame de FIN ---
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
                         frames_processed = 0
-                        frames_to_process = total_frames - selected_frame
+                        frames_to_process = end_frame - start_frame
 
                         while True:
                             ret, current_frame = cap.read()
-                            if not ret:
+                            
+                            # Si on a fini la vidéo OU si on a atteint la coupe de fin, on arrête la boucle !
+                            if not ret or frames_processed > frames_to_process:
                                 break
                             
                             if frames_processed == 0:
@@ -734,9 +745,9 @@ with tab_vbt:
                         cap.release()
                         out.release()
                         
-                        st.success("✅ Vidéo analysée avec succès !")
+                        st.success("✅ Vidéo analysée et coupée avec succès !")
 
-                        st.subheader("🎥 Replay du mouvement tracké")
+                        st.subheader("🎥 Replay de la séquence isolée")
                         with open(out_path, 'rb') as video_file:
                             video_bytes = video_file.read()
                             st.video(video_bytes, format="video/webm")
@@ -747,9 +758,10 @@ with tab_vbt:
                             df_vbt["Vitesse (px/s)"] = abs(df_vbt["Distance (px)"].diff() / df_vbt["Temps (s)"].diff())
                             df_vbt["Vitesse_lisse"] = df_vbt["Vitesse (px/s)"].rolling(window=4).mean()
                             
-                            fig = px.line(df_vbt, x="Temps (s)", y="Vitesse_lisse", title="Évolution de la vitesse")
+                            fig = px.line(df_vbt, x="Temps (s)", y="Vitesse_lisse", title="Évolution de la vitesse sur le mouvement isolé")
                             fig.update_layout(template="plotly_dark")
                             st.plotly_chart(fig, use_container_width=True)
+
 
 
 
