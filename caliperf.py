@@ -685,6 +685,32 @@ with tab_vbt:
                     st.write(f"📍 Point 1 : {st.session_state.gommettes[0]}")
                 if len(st.session_state.gommettes) == 2:
                     st.write(f"📍 Point 2 : {st.session_state.gommettes[1]}")
+
+                    # --- NOUVEAU : RÉGLAGE DE LA SENSIBILITÉ ---
+                    st.write("---")
+                    st.markdown("⚙️ **Réglage du Tracker**")
+                    box_size_ui = st.slider(
+                        "Taille de la zone d'accroche", 
+                        min_value=10, max_value=150, value=50, step=10,
+                        help="Diminue la taille si le point s'accroche au décor. Augmente-la si le point perd l'athlète lors d'un mouvement très rapide."
+                    )
+                    
+                    # --- TRAITEMENT VIDÉO DYNAMIQUE ---
+                    if st.button("🚀 Lancer l'analyse vidéo", type="primary", use_container_width=True):
+                        st.info("Analyse en cours... L'IA suit tes mouvements !")
+                        progress_bar = st.progress(0)
+                        
+                        p1_orig = (int(st.session_state.gommettes[0][0] / ratio), int(st.session_state.gommettes[0][1] / ratio))
+                        p2_orig = (int(st.session_state.gommettes[1][0] / ratio), int(st.session_state.gommettes[1][1] / ratio))
+
+                        tracker1 = cv2.TrackerCSRT_create()
+                        tracker2 = cv2.TrackerCSRT_create()
+
+                        # On applique la taille choisie par l'utilisateur, remise à l'échelle de la vraie vidéo
+                        real_box = int(box_size_ui / ratio)
+                        
+                        bbox1 = (p1_orig[0] - real_box//2, p1_orig[1] - real_box//2, real_box, real_box)
+                        bbox2 = (p2_orig[0] - real_box//2, p2_orig[1] - real_box//2, real_box, real_box)
                     
                     # --- TRAITEMENT VIDÉO DYNAMIQUE ---
                     if st.button("🚀 Lancer l'analyse vidéo", type="primary", use_container_width=True):
@@ -766,4 +792,5 @@ with tab_vbt:
                             fig = px.line(df_vbt, x="Temps (s)", y="Vitesse_lisse", title="Évolution de la vitesse")
                             fig.update_layout(template="plotly_dark")
                             st.plotly_chart(fig, use_container_width=True)
+
 
