@@ -593,6 +593,17 @@ with tab_vbt:
             # Convertir l'image de BGR (OpenCV) à RGB (Streamlit)
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             
+            # --- CORRECTION ERGONOMIE MOBILE : REDIMENSIONNEMENT ---
+            h, w = frame_rgb.shape[:2]
+            max_width = 350 # Largeur idéale pour un téléphone (en pixels)
+            
+            if w > max_width:
+                ratio = max_width / w
+                new_h = int(h * ratio)
+                # On réduit la taille de l'image pour l'affichage
+                frame_rgb = cv2.resize(frame_rgb, (max_width, new_h))
+            # -------------------------------------------------------
+            
             st.subheader("🎯 Étape 1 : Place tes gommettes")
             st.info("Clique sur l'image pour placer tes 2 points (1: Bassin, 2: Barre).")
             
@@ -662,6 +673,7 @@ with tab_vbt:
             if st.button("🗑️ Réinitialiser les points"):
                 st.session_state.gommettes = []
                 st.rerun()
+
 
 
 
