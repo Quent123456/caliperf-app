@@ -314,7 +314,7 @@ with tab_analyse:
                             },
                             num_rows="dynamic",
                             use_container_width=True,
-                            key=f"editor_{real_name}"
+                            key=f"editor_{real_name}_{s_student}"
                         )
 
                         if st.form_submit_button("☁️ ENVOYER DONNÉES"):
@@ -542,5 +542,6 @@ with tab_eleves:
                             st.error("Mot de passe incorrect ❌")
         else:
             st.warning("Aucun élève inscrit dans la base.")
+
 
 
