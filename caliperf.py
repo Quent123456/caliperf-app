@@ -294,75 +294,91 @@ with tab_analyse:
                         st.write("🔥 **Détail du Combo**")
                         st.caption("Ajoute les figures réalisées et le nombre de répétitions. Tu peux ajouter autant de lignes que tu veux !")
 
-                        # --- RÉCUPÉRATION DES FIGURES DU BON ÉLÈVE ---
+                        # --- RÉCUPÉRATION DES FIGURES ---
                         athlete_figures = st.session_state.students_data[s_student].get('Figures', {})
                         if not athlete_figures:
                             athlete_figures = {"Mouvement basique": 1}
                             
                         liste_noms_figures = list(athlete_figures.keys())
 
-                        df_combo_init = pd.DataFrame([{"Figure": liste_noms_figures[0], "Répétitions": 1}])
+                        # --- NOUVELLE UI MOBILE-FRIENDLY ---
+                        options_figures = ["-- Aucune --"] + liste_noms_figures
                         
-                        # ⚠️ LA SOLUTION EST ICI : On crée une clé unique basée sur le nom de l'élève 
-                        # ET le nombre de figures qu'il possède. Ça force le tableau à se mettre à jour !
-                        editor_key = f"editor_{real_name}_{s_student}_{len(liste_noms_figures)}"
-
-                        edited_combo = st.data_editor(
-                            df_combo_init,
-                            column_config={
-                                "Figure": st.column_config.SelectboxColumn(
-                                    "Figure réalisée", 
-                                    width="large", 
-                                    options=liste_noms_figures, # Maintenant, ça affichera la liste de Quentin !
-                                    required=True,
-                                ),
-                                "Répétitions": st.column_config.NumberColumn(
-                                    "Répétitions", min_value=1, step=1, required=True,
+                        st.write("---")
+                        st.markdown("🔥 **Détail du Combo**")
+                        st.caption("Sélectionne tes figures. Laisse sur '-- Aucune --' si tu n'as pas besoin de toutes les lignes.")
+                        
+                        combo_selections = []
+                        
+                        # On prépare 5 emplacements (suffisant pour un combo classique)
+                        for i in range(5):
+                            c_fig, c_reps = st.columns([3, 1])
+                            with c_fig:
+                                # Le premier emplacement prend la 1ère figure par défaut, les autres sont vides
+                                default_idx = 1 if i == 0 else 0 
+                                fig = st.selectbox(
+                                    f"Figure {i}", 
+                                    options=options_figures, 
+                                    index=default_idx, 
+                                    key=f"fig_{real_name}_{s_student}_{i}",
+                                    label_visibility="collapsed" # Cache le titre pour gagner de la place
                                 )
-                            },
-                            num_rows="dynamic",
-                            use_container_width=True,
-                            key=editor_key
-                        )
+                            with c_reps:
+                                reps = st.number_input(
+                                    f"Reps {i}", 
+                                    min_value=1, step=1, 
+                                    key=f"reps_{real_name}_{s_student}_{i}",
+                                    label_visibility="collapsed"
+                                )
+                            combo_selections.append({"Figure": fig, "Répétitions": reps})
 
-                        if st.form_submit_button("☁️ ENVOYER DONNÉES"):
+                        st.write("---")
+
+                        # Bouton en pleine largeur pour mobile
+                        if st.form_submit_button("☁️ ENVOYER DONNÉES", type="primary", use_container_width=True):
                             f_time = timer['acc'] + (time.time() - timer['start'] if timer['run'] else 0)
                             
                             total_coeff = 0
                             noms_figures_realisees = []
 
-                            for index, row in edited_combo.iterrows():
-                                fig_name = row["Figure"]
-                                reps = row["Répétitions"]
-                                diff = athlete_figures.get(fig_name, 1)
-                                multiplicateur_unitaire = 1.0 + (diff - 1) * 0.25
-                                total_coeff += (multiplicateur_unitaire * reps)
-                                noms_figures_realisees.append(f"{reps}x {fig_name}")
+                            for item in combo_selections:
+                                fig_name = item["Figure"]
+                                reps = item["Répétitions"]
+                                
+                                # On ignore les lignes laissées sur "-- Aucune --"
+                                if fig_name != "-- Aucune --":
+                                    diff = athlete_figures.get(fig_name, 1)
+                                    multiplicateur_unitaire = 1.0 + (diff - 1) * 0.25
+                                    total_coeff += (multiplicateur_unitaire * reps)
+                                    noms_figures_realisees.append(f"{reps}x {fig_name}")
 
-                            nom_exo_final = " + ".join(noms_figures_realisees)
-                            charge = f_time * rpe * total_coeff
-                            val_princ = f"{round(f_time, 2)} s"
-
-                            if charge > 0:
-                                d_send = {
-                                    ENTRIES['nom']: s_student, 
-                                    ENTRIES['exo']: nom_exo_final,
-                                    ENTRIES['tst']: str(val_princ).replace('.', ','),
-                                    ENTRIES['rpe']: str(rpe), 
-                                    ENTRIES['charge']: str(round(charge, 2)).replace('.', ',')
-                                }
-                                try:
-                                    if requests.post(LINK_UNIQUE, data=d_send).status_code == 200:
-                                        st.toast(f"✅ Combo enregistré ! (Charge: {charge:.1f} | Coeff: x{total_coeff:.2f})")
-                                        st.session_state.processed_files.add(real_name)
-                                        time.sleep(1)
-                                        st.rerun()
-                                    else: 
-                                        st.error("Erreur d'envoi vers Google Forms")
-                                except Exception as e: 
-                                    st.error(f"Erreur: {e}")
+                            if not noms_figures_realisees:
+                                st.error("⚠️ Tu dois sélectionner au moins une figure !")
                             else:
-                                st.warning("Le chrono est à 0 !")
+                                nom_exo_final = " + ".join(noms_figures_realisees)
+                                charge = f_time * rpe * total_coeff
+                                val_princ = f"{round(f_time, 2)} s"
+
+                                if charge > 0:
+                                    d_send = {
+                                        ENTRIES['nom']: s_student, 
+                                        ENTRIES['exo']: nom_exo_final,
+                                        ENTRIES['tst']: str(val_princ).replace('.', ','),
+                                        ENTRIES['rpe']: str(rpe), 
+                                        ENTRIES['charge']: str(round(charge, 2)).replace('.', ',')
+                                    }
+                                    try:
+                                        if requests.post(LINK_UNIQUE, data=d_send).status_code == 200:
+                                            st.toast(f"✅ Combo enregistré ! (Charge: {charge:.1f} | Coeff: x{total_coeff:.2f})")
+                                            st.session_state.processed_files.add(real_name)
+                                            time.sleep(1)
+                                            st.rerun()
+                                        else: 
+                                            st.error("Erreur d'envoi vers Google Forms")
+                                    except Exception as e: 
+                                        st.error(f"Erreur: {e}")
+                                else:
+                                    st.warning("Le chrono est à 0 !")
                 else:
                     st.warning("Aucun élève enregistré.")
         else:
@@ -550,6 +566,7 @@ with tab_eleves:
                             st.error("Mot de passe incorrect ❌")
         else:
             st.warning("Aucun élève inscrit dans la base.")
+
 
 
 
