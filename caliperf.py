@@ -568,21 +568,6 @@ with tab_eleves:
             st.warning("Aucun élève inscrit dans la base.")
             
 
-import cv2
-import numpy as np
-import tempfile
-import pandas as pd
-import plotly.express as px
-from streamlit_image_coordinates import streamlit_image_coordinates
-
-from PIL import Image
-import cv2
-import numpy as np
-import tempfile
-import pandas as pd
-import plotly.express as px
-from streamlit_image_coordinates import streamlit_image_coordinates
-
 from PIL import Image
 import cv2
 import numpy as np
@@ -606,7 +591,7 @@ with tab_vbt:
             st.session_state.vbt_name = vbt_file.name
             st.session_state.gommettes = []
             st.session_state.last_frame = 0
-            st.session_state.frame_locked = False # NOUVEAU : gère le verrouillage de l'image
+            st.session_state.frame_locked = False
             
         video_path = st.session_state.vbt_path
 
@@ -625,8 +610,6 @@ with tab_vbt:
         # On cache le curseur si l'image est verrouillée
         if not st.session_state.get('frame_locked', False):
             selected_frame = st.slider("Avancer dans la vidéo", 0, max(0, total_frames - 1), st.session_state.last_frame, label_visibility="collapsed")
-            
-            # Si on bouge le curseur, on met à jour la position
             if selected_frame != st.session_state.last_frame:
                 st.session_state.last_frame = selected_frame
         else:
@@ -644,20 +627,17 @@ with tab_vbt:
             
             frame_resized = cv2.resize(frame, (max_width, new_h))
             frame_rgb = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB)
-            # On s'assure que le format est bien digéré par l'application
             pil_image = Image.fromarray(np.uint8(frame_rgb))
             
             st.write("---")
             
             # --- UX AMÉLIORÉE EN DEUX TEMPS ---
             if not st.session_state.get('frame_locked', False):
-                # 1. AFFICHAGE RAPIDE POUR CHERCHER LE DÉBUT
                 st.image(pil_image, caption=f"Recherche en cours... (Image {selected_frame} / {total_frames})")
                 if st.button("✅ Verrouiller cette image", type="primary", use_container_width=True):
                     st.session_state.frame_locked = True
                     st.rerun()
             else:
-                # 2. AFFICHAGE INTERACTIF POUR LES GOMMETTES
                 st.subheader("🎯 Étape 2 : Place tes gommettes")
                 st.info("Clique sur l'image pour placer tes 2 gommettes.")
                 
@@ -672,7 +652,6 @@ with tab_vbt:
                         st.session_state.gommettes = []
                         st.rerun()
 
-                # Le composant garde une clé fixe pour ne jamais planter
                 value = streamlit_image_coordinates(pil_image, key=f"points_picker_{st.session_state.vbt_name}")
                 
                 if value is not None:
@@ -685,16 +664,15 @@ with tab_vbt:
                     st.write(f"📍 Point 1 : {st.session_state.gommettes[0]}")
                 if len(st.session_state.gommettes) == 2:
                     st.write(f"📍 Point 2 : {st.session_state.gommettes[1]}")
-
-                    # --- NOUVEAU : RÉGLAGE DE LA SENSIBILITÉ ---
+                    
                     st.write("---")
                     st.markdown("⚙️ **Réglage du Tracker**")
                     box_size_ui = st.slider(
                         "Taille de la zone d'accroche", 
                         min_value=10, max_value=150, value=50, step=10,
-                        help="Diminue la taille si le point s'accroche au décor. Augmente-la si le point perd l'athlète lors d'un mouvement très rapide."
+                        help="Diminue la taille si le point s'accroche au décor. Augmente-la si le point perd l'athlète."
                     )
-                    
+
                     # --- TRAITEMENT VIDÉO DYNAMIQUE ---
                     if st.button("🚀 Lancer l'analyse vidéo", type="primary", use_container_width=True):
                         st.info("Analyse en cours... L'IA suit tes mouvements !")
@@ -706,31 +684,11 @@ with tab_vbt:
                         tracker1 = cv2.TrackerCSRT_create()
                         tracker2 = cv2.TrackerCSRT_create()
 
-                        # On applique la taille choisie par l'utilisateur, remise à l'échelle de la vraie vidéo
+                        # Zone d'accroche dynamique selon le slider
                         real_box = int(box_size_ui / ratio)
                         
                         bbox1 = (p1_orig[0] - real_box//2, p1_orig[1] - real_box//2, real_box, real_box)
                         bbox2 = (p2_orig[0] - real_box//2, p2_orig[1] - real_box//2, real_box, real_box)
-                    
-                    # --- TRAITEMENT VIDÉO DYNAMIQUE ---
-                    if st.button("🚀 Lancer l'analyse vidéo", type="primary", use_container_width=True):
-                        st.info("Analyse en cours... L'IA suit tes mouvements !")
-                        progress_bar = st.progress(0)
-                        
-                        p1_orig = (int(st.session_state.gommettes[0][0] / ratio), int(st.session_state.gommettes[0][1] / ratio))
-                        p2_orig = (int(st.session_state.gommettes[1][0] / ratio), int(st.session_state.gommettes[1][1] / ratio))
-
-                        tracker1 = cv2.TrackerCSRT_create()
-                        tracker2 = cv2.TrackerCSRT_create()
-
-                        # On agrandit la zone de "vision" de l'IA pour ne pas perdre les mouvements rapides.
-                        # On prend environ 10% de la largeur de la vidéo d'origine.
-                        box = int(orig_w * 0.10)
-                        # Sécurité : on s'assure que la boîte fait au moins 100 pixels et max 300 pixels
-                        box = max(100, min(box, 300)) 
-
-                        bbox1 = (p1_orig[0] - box//2, p1_orig[1] - box//2, box, box)
-                        bbox2 = (p2_orig[0] - box//2, p2_orig[1] - box//2, box, box)
 
                         out_path = tempfile.NamedTemporaryFile(delete=False, suffix='.webm').name
                         fourcc = cv2.VideoWriter_fourcc(*'vp80')
@@ -792,5 +750,6 @@ with tab_vbt:
                             fig = px.line(df_vbt, x="Temps (s)", y="Vitesse_lisse", title="Évolution de la vitesse")
                             fig.update_layout(template="plotly_dark")
                             st.plotly_chart(fig, use_container_width=True)
+
 
 
