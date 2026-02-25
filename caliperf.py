@@ -578,7 +578,7 @@ from streamlit_image_coordinates import streamlit_image_coordinates
 
 with tab_vbt:
     st.header("⚡ Analyse Cinématique (VBT)")
-    st.markdown("Mesure la vitesse entre deux points de ton choix (ex: Bassin/Barre, Main/Épaule).")
+    st.markdown("Mesure la vitesse entre un point mobile (ex: Main/Bassin) et un point fixe (ex: Sol/Barre).")
 
     vbt_file = st.file_uploader("📥 Charger la vidéo", type=['mp4', 'mov'], key="vbt_uploader")
 
@@ -601,13 +601,16 @@ with tab_vbt:
         orig_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         
         st.subheader("⏱️ Étape 1 : Isole le mouvement")
-        st.markdown("Ajuste les deux extrémités du curseur pour choisir le **début** et la **fin** de ton mouvement.")
         
-        # --- NOUVEAU : INITIALISATION DU DOUBLE CURSEUR ---
+        # NOUVEAU : Affichage de la vidéo pour repérer le moment exact
+        st.markdown("**1. Utilise le lecteur ci-dessous pour trouver le moment exact (fais pause) :**")
+        st.video(video_path)
+        
+        st.markdown("**2. Ajuste les extrémités du curseur pour isoler la séquence :**")
+        
         if 'frame_range' not in st.session_state or st.session_state.get('vbt_name') != vbt_file.name:
             st.session_state.frame_range = (0, max(0, total_frames - 1))
 
-        # On cache le curseur si l'image est verrouillée
         if not st.session_state.get('frame_locked', False):
             selected_range = st.slider(
                 "Début et Fin de la vidéo", 
@@ -615,22 +618,18 @@ with tab_vbt:
                 st.session_state.frame_range, 
                 label_visibility="collapsed"
             )
-            # Si on bouge une des poignées du curseur
             if selected_range != st.session_state.frame_range:
                 st.session_state.frame_range = selected_range
                 st.session_state.gommettes = []
         else:
             selected_range = st.session_state.frame_range
 
-        # On sépare le début et la fin
         start_frame, end_frame = selected_range
 
-        # Pour placer les gommettes, on affiche l'image de DÉBUT choisie
         cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
         ret, frame = cap.read()
         
         if ret:
-            # --- REDIMENSIONNEMENT MOBILE ---
             max_width = 350
             ratio = max_width / orig_w if orig_w > max_width else 1.0
             new_h = int(orig_h * ratio)
@@ -641,15 +640,14 @@ with tab_vbt:
             
             st.write("---")
             
-            # --- UX AMÉLIORÉE EN DEUX TEMPS ---
             if not st.session_state.get('frame_locked', False):
-                st.image(pil_image, caption=f"Début sélectionné à l'image {start_frame} | Fin prévue : {end_frame} (Total: {total_frames})")
+                st.image(pil_image, caption=f"Image de départ ({start_frame}) | Fin : {end_frame}")
                 if st.button("✅ Verrouiller cette séquence", type="primary", use_container_width=True):
                     st.session_state.frame_locked = True
                     st.rerun()
             else:
                 st.subheader("🎯 Étape 2 : Place tes gommettes")
-                st.info("Clique sur l'image pour placer tes 2 gommettes (au moment du départ).")
+                st.info("📍 Clic 1 : Le point **MOBILE** (à tracker)\n📍 Clic 2 : Le point **FIXE** (référence)")
                 
                 c_btn1, c_btn2 = st.columns(2)
                 with c_btn1:
@@ -671,32 +669,30 @@ with tab_vbt:
                         st.rerun()
 
                 if len(st.session_state.gommettes) > 0:
-                    st.write(f"📍 Point 1 : {st.session_state.gommettes[0]}")
+                    st.write(f"🏃 Point Mobile : {st.session_state.gommettes[0]}")
                 if len(st.session_state.gommettes) == 2:
-                    st.write(f"📍 Point 2 : {st.session_state.gommettes[1]}")
+                    st.write(f"⚓ Point Fixe : {st.session_state.gommettes[1]}")
                     
                     st.write("---")
-                    st.markdown("⚙️ **Réglage du Tracker**")
+                    st.markdown("⚙️ **Réglage du Tracker (Point Mobile uniquement)**")
                     box_size_ui = st.slider(
                         "Taille de la zone d'accroche", 
                         min_value=10, max_value=150, value=50, step=10,
-                        help="Diminue la taille si le point s'accroche au décor. Augmente-la si le point perd l'athlète lors d'un mouvement explosif."
+                        help="Diminue la taille si le point s'accroche au décor."
                     )
 
-                    # --- TRAITEMENT VIDÉO DYNAMIQUE ---
                     if st.button("🚀 Lancer l'analyse vidéo", type="primary", use_container_width=True):
-                        st.info("Analyse en cours... L'IA suit tes mouvements !")
+                        st.info("Analyse en cours...")
                         progress_bar = st.progress(0)
                         
+                        # Conversion des coordonnées selon le ratio
                         p1_orig = (int(st.session_state.gommettes[0][0] / ratio), int(st.session_state.gommettes[0][1] / ratio))
                         p2_orig = (int(st.session_state.gommettes[1][0] / ratio), int(st.session_state.gommettes[1][1] / ratio))
 
+                        # OPTIMISATION : Un seul tracker pour le point mobile
                         tracker1 = cv2.TrackerCSRT_create()
-                        tracker2 = cv2.TrackerCSRT_create()
-
                         real_box = int(box_size_ui / ratio)
                         bbox1 = (p1_orig[0] - real_box//2, p1_orig[1] - real_box//2, real_box, real_box)
-                        bbox2 = (p2_orig[0] - real_box//2, p2_orig[1] - real_box//2, real_box, real_box)
 
                         out_path = tempfile.NamedTemporaryFile(delete=False, suffix='.webm').name
                         fourcc = cv2.VideoWriter_fourcc(*'vp80')
@@ -705,34 +701,34 @@ with tab_vbt:
                         distances = []
                         times = []
                         
-                        # --- NOUVEAU : On s'arrête exactement à la frame de FIN ---
                         cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
                         frames_processed = 0
                         frames_to_process = end_frame - start_frame
 
+                        # OPTIMISATION : Le point 2 reste strictement fixe
+                        c2_fixed = p2_orig 
+
                         while True:
                             ret, current_frame = cap.read()
                             
-                            # Si on a fini la vidéo OU si on a atteint la coupe de fin, on arrête la boucle !
                             if not ret or frames_processed > frames_to_process:
                                 break
                             
                             if frames_processed == 0:
                                 tracker1.init(current_frame, bbox1)
-                                tracker2.init(current_frame, bbox2)
                             
+                            # On update uniquement le point 1
                             succ1, b1 = tracker1.update(current_frame)
-                            succ2, b2 = tracker2.update(current_frame)
 
-                            if succ1 and succ2:
+                            if succ1:
                                 c1 = (int(b1[0] + b1[2]/2), int(b1[1] + b1[3]/2))
-                                c2 = (int(b2[0] + b2[2]/2), int(b2[1] + b2[3]/2))
 
-                                cv2.circle(current_frame, c1, 15, (0, 0, 255), -1) 
-                                cv2.circle(current_frame, c2, 15, (0, 255, 0), -1) 
-                                cv2.line(current_frame, c1, c2, (255, 255, 255), 3) 
+                                # Dessin sur la vidéo
+                                cv2.circle(current_frame, c1, 15, (0, 0, 255), -1) # Point mobile en rouge 
+                                cv2.circle(current_frame, c2_fixed, 15, (0, 255, 0), -1) # Point fixe en vert
+                                cv2.line(current_frame, c1, c2_fixed, (255, 255, 255), 3) 
 
-                                dist = np.linalg.norm(np.array(c1) - np.array(c2))
+                                dist = np.linalg.norm(np.array(c1) - np.array(c2_fixed))
                                 distances.append(dist)
                                 times.append(frames_processed / fps)
 
@@ -745,14 +741,13 @@ with tab_vbt:
                         cap.release()
                         out.release()
                         
-                        st.success("✅ Vidéo analysée et coupée avec succès !")
+                        st.success("✅ Vidéo analysée avec succès !")
 
                         st.subheader("🎥 Replay de la séquence isolée")
                         with open(out_path, 'rb') as video_file:
                             video_bytes = video_file.read()
                             st.video(video_bytes, format="video/webm")
                         
-                        # Graphique
                         df_vbt = pd.DataFrame({"Temps (s)": times, "Distance (px)": distances})
                         if len(df_vbt) > 1:
                             df_vbt["Vitesse (px/s)"] = abs(df_vbt["Distance (px)"].diff() / df_vbt["Temps (s)"].diff())
