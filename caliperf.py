@@ -671,7 +671,7 @@ with tab_vbt:
                     )
                 
                 if value is not None:
-                
+    
                     point = (value["x"], value["y"])
                     if point not in st.session_state.gommettes and len(st.session_state.gommettes) < 2:
                         st.session_state.gommettes.append(point)
@@ -691,17 +691,23 @@ with tab_vbt:
                     )
 
                     if st.button("🚀 Lancer l'analyse vidéo", type="primary", use_container_width=True):
-                        st.info("Analyse en cours...")
+                        st.info("Analyse en cours (Tracking par Flux Optique)... 🚀")
                         progress_bar = st.progress(0)
                         
                         # Conversion des coordonnées selon le ratio
                         p1_orig = (int(st.session_state.gommettes[0][0] / ratio), int(st.session_state.gommettes[0][1] / ratio))
-                        p2_orig = (int(st.session_state.gommettes[1][0] / ratio), int(st.session_state.gommettes[1][1] / ratio))
+                        c2_fixed = (int(st.session_state.gommettes[1][0] / ratio), int(st.session_state.gommettes[1][1] / ratio))
 
-                        # OPTIMISATION : Un seul tracker pour le point mobile
-                        tracker1 = cv2.TrackerCSRT_create()
+                        # --- OPTIMISATION : FLUX OPTIQUE (Lucas-Kanade) ---
                         real_box = int(box_size_ui / ratio)
-                        bbox1 = (p1_orig[0] - real_box//2, p1_orig[1] - real_box//2, real_box, real_box)
+                        lk_params = dict(
+                            winSize=(real_box, real_box),
+                            maxLevel=3,
+                            criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03)
+                        )
+                        
+                        # Initialisation du point de départ pour l'algorithme
+                        p0 = np.array([[[float(p1_orig[0]), float(p1_orig[1])]]], dtype=np.float32)
 
                         out_path = tempfile.NamedTemporaryFile(delete=False, suffix='.webm').name
                         fourcc = cv2.VideoWriter_fourcc(*'vp80')
@@ -714,38 +720,46 @@ with tab_vbt:
                         frames_processed = 0
                         frames_to_process = end_frame - start_frame
 
-                        # OPTIMISATION : Le point 2 reste strictement fixe
-                        c2_fixed = p2_orig 
+                        # Lire la première image pour l'initialisation du flux optique
+                        ret, old_frame = cap.read()
+                        if ret:
+                            old_gray = cv2.cvtColor(old_frame, cv2.COLOR_BGR2GRAY)
+                            cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame) # On rembobine pour la boucle
 
-                        while True:
-                            ret, current_frame = cap.read()
-                            
-                            if not ret or frames_processed > frames_to_process:
-                                break
-                            
-                            if frames_processed == 0:
-                                tracker1.init(current_frame, bbox1)
-                            
-                            # On update uniquement le point 1
-                            succ1, b1 = tracker1.update(current_frame)
+                            while True:
+                                ret, current_frame = cap.read()
+                                
+                                if not ret or frames_processed > frames_to_process:
+                                    break
+                                
+                                frame_gray = cv2.cvtColor(current_frame, cv2.COLOR_BGR2GRAY)
 
-                            if succ1:
-                                c1 = (int(b1[0] + b1[2]/2), int(b1[1] + b1[3]/2))
+                                if frames_processed == 0:
+                                    c1 = p1_orig
+                                else:
+                                    # Calcul du déplacement du point entre l'ancienne et la nouvelle frame
+                                    p1, st_status, err = cv2.calcOpticalFlowPyrLK(old_gray, frame_gray, p0, None, **lk_params)
+                                    
+                                    if st_status[0][0] == 1: # Si le tracker a bien trouvé le point
+                                        c1 = (int(p1[0][0]), int(p1[0][1]))
+                                        p0 = p1 # Mise à jour du point pour la frame suivante
+                                        old_gray = frame_gray.copy() # Mise à jour de l'image de référence
+                                    # Si st_status est 0 (point perdu), c1 garde sa position précédente
 
                                 # Dessin sur la vidéo
-                                cv2.circle(current_frame, c1, 15, (0, 0, 255), -1) # Point mobile en rouge 
-                                cv2.circle(current_frame, c2_fixed, 15, (0, 255, 0), -1) # Point fixe en vert
+                                cv2.circle(current_frame, c1, 15, (0, 0, 255), -1) # Point mobile
+                                cv2.circle(current_frame, c2_fixed, 15, (0, 255, 0), -1) # Point fixe
                                 cv2.line(current_frame, c1, c2_fixed, (255, 255, 255), 3) 
 
                                 dist = np.linalg.norm(np.array(c1) - np.array(c2_fixed))
                                 distances.append(dist)
                                 times.append(frames_processed / fps)
 
-                            out.write(current_frame)
-                            frames_processed += 1
-                            
-                            if frames_to_process > 0:
-                                progress_bar.progress(min(frames_processed / frames_to_process, 1.0))
+                                out.write(current_frame)
+                                frames_processed += 1
+                                
+                                if frames_to_process > 0:
+                                    progress_bar.progress(min(frames_processed / frames_to_process, 1.0))
 
                         cap.release()
                         out.release()
@@ -765,6 +779,7 @@ with tab_vbt:
                             fig = px.line(df_vbt, x="Temps (s)", y="Vitesse_lisse", title="Évolution de la vitesse sur le mouvement isolé")
                             fig.update_layout(template="plotly_dark")
                             st.plotly_chart(fig, use_container_width=True)
+
 
 
 
