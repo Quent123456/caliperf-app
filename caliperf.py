@@ -9,6 +9,8 @@ import requests
 import json
 import os
 import mediapipe as mp
+from mediapipe.solutions import pose as mp_pose
+from mediapipe.solutions import drawing_utils as mp_drawing
 from datetime import datetime
 
 # --- CONFIGURATION DE LA PAGE ---
@@ -643,9 +645,6 @@ with tab_vbt:
             progress_bar = st.progress(0)
 
             # --- UTILISATION PROPRE DE MEDIAPIPE ---
-            mp_pose = mp.solutions.pose
-            mp_drawing = mp.solutions.drawing_utils
-
             out_path = tempfile.NamedTemporaryFile(delete=False, suffix='.webm').name
             fourcc = cv2.VideoWriter_fourcc(*'vp80')
             out = cv2.VideoWriter(out_path, fourcc, fps, (orig_w, orig_h))
@@ -729,3 +728,4 @@ with tab_vbt:
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
