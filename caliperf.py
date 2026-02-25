@@ -740,11 +740,15 @@ with tab_vbt:
                                     # Calcul du déplacement du point entre l'ancienne et la nouvelle frame
                                     p1, st_status, err = cv2.calcOpticalFlowPyrLK(old_gray, frame_gray, p0, None, **lk_params)
                                     
-                                    if st_status[0][0] == 1: # Si le tracker a bien trouvé le point
-                                        c1 = (int(p1[0][0]), int(p1[0][1]))
+                                    # On vérifie que le statut existe bien et que le point est suivi
+                                    if st_status is not None and st_status[0][0] == 1: 
+                                        
+                                        # CORRECTION ICI : .ravel() extrait proprement le X et le Y
+                                        x, y = p1.ravel()
+                                        c1 = (int(x), int(y))
+                                        
                                         p0 = p1 # Mise à jour du point pour la frame suivante
                                         old_gray = frame_gray.copy() # Mise à jour de l'image de référence
-                                    # Si st_status est 0 (point perdu), c1 garde sa position précédente
 
                                 # Dessin sur la vidéo
                                 cv2.circle(current_frame, c1, 15, (0, 0, 255), -1) # Point mobile
@@ -779,6 +783,7 @@ with tab_vbt:
                             fig = px.line(df_vbt, x="Temps (s)", y="Vitesse_lisse", title="Évolution de la vitesse sur le mouvement isolé")
                             fig.update_layout(template="plotly_dark")
                             st.plotly_chart(fig, use_container_width=True)
+
 
 
 
