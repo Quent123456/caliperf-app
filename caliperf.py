@@ -660,9 +660,18 @@ with tab_vbt:
                         st.session_state.gommettes = []
                         st.rerun()
 
-                value = streamlit_image_coordinates(pil_image, key=f"points_picker_{st.session_state.vbt_name}")
+                        st.write("---")
+                st.markdown("👇 **Clique sur l'image ci-dessous pour placer tes points :**")
+
+                with st.container():
+                    value = streamlit_image_coordinates(
+                        pil_image, 
+                        key=f"points_picker_{st.session_state.vbt_name}",
+                        width=max_width
+                    )
                 
                 if value is not None:
+                
                     point = (value["x"], value["y"])
                     if point not in st.session_state.gommettes and len(st.session_state.gommettes) < 2:
                         st.session_state.gommettes.append(point)
@@ -756,6 +765,7 @@ with tab_vbt:
                             fig = px.line(df_vbt, x="Temps (s)", y="Vitesse_lisse", title="Évolution de la vitesse sur le mouvement isolé")
                             fig.update_layout(template="plotly_dark")
                             st.plotly_chart(fig, use_container_width=True)
+
 
 
 
