@@ -8,6 +8,7 @@ from PIL import Image
 import requests
 import json
 import os
+import mediapipe as mp
 from datetime import datetime
 
 # --- CONFIGURATION DE LA PAGE ---
@@ -577,20 +578,17 @@ import plotly.express as px
 from streamlit_image_coordinates import streamlit_image_coordinates
 
 with tab_vbt:
-    st.header("⚡ Analyse Cinématique (VBT)")
-    st.markdown("Mesure la vitesse entre un point mobile (ex: Main/Bassin) et un point fixe (ex: Sol/Barre).")
+    st.header("⚡ Analyse Biomécanique IA (VBT)")
+    st.markdown("L'IA détecte automatiquement tes articulations. Choisis simplement ce que tu veux analyser !")
 
     vbt_file = st.file_uploader("📥 Charger la vidéo", type=['mp4', 'mov'], key="vbt_uploader")
 
     if vbt_file:
-        # --- Sauvegarder la vidéo une seule fois ---
         if 'vbt_path' not in st.session_state or st.session_state.get('vbt_name') != vbt_file.name:
             tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
             tfile.write(vbt_file.read())
             st.session_state.vbt_path = tfile.name
             st.session_state.vbt_name = vbt_file.name
-            st.session_state.gommettes = []
-            st.session_state.frame_locked = False
             
         video_path = st.session_state.vbt_path
 
@@ -601,175 +599,134 @@ with tab_vbt:
         orig_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         
         st.subheader("⏱️ Étape 1 : Isole le mouvement")
-        
-        # NOUVEAU : Affichage de la vidéo pour repérer le moment exact
-        st.markdown("**1. Utilise le lecteur ci-dessous pour trouver le moment exact (fais pause) :**")
         st.video(video_path)
         
-        st.markdown("**2. Ajuste les extrémités du curseur pour isoler la séquence :**")
+        st.markdown("**Ajuste les extrémités du curseur pour isoler ta répétition :**")
         
         if 'frame_range' not in st.session_state or st.session_state.get('vbt_name') != vbt_file.name:
             st.session_state.frame_range = (0, max(0, total_frames - 1))
 
-        if not st.session_state.get('frame_locked', False):
-            selected_range = st.slider(
-                "Début et Fin de la vidéo", 
-                0, max(0, total_frames - 1), 
-                st.session_state.frame_range, 
-                label_visibility="collapsed"
-            )
-            if selected_range != st.session_state.frame_range:
-                st.session_state.frame_range = selected_range
-                st.session_state.gommettes = []
-        else:
-            selected_range = st.session_state.frame_range
-
+        selected_range = st.slider(
+            "Début et Fin de la vidéo", 
+            0, max(0, total_frames - 1), 
+            st.session_state.frame_range, 
+            label_visibility="collapsed"
+        )
+        
+        st.session_state.frame_range = selected_range
         start_frame, end_frame = selected_range
 
-        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
-        ret, frame = cap.read()
+        st.write("---")
+        st.subheader("🎯 Étape 2 : Paramétrage de l'IA")
         
-        if ret:
-            max_width = 350
-            ratio = max_width / orig_w if orig_w > max_width else 1.0
-            new_h = int(orig_h * ratio)
-            
-            frame_resized = cv2.resize(frame, (max_width, new_h))
-            frame_rgb = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB)
-            pil_image = Image.fromarray(np.uint8(frame_rgb))
-            
-            st.write("---")
-            
-            if not st.session_state.get('frame_locked', False):
-                st.image(pil_image, caption=f"Image de départ ({start_frame}) | Fin : {end_frame}")
-                if st.button("✅ Verrouiller cette séquence", type="primary", use_container_width=True):
-                    st.session_state.frame_locked = True
-                    st.rerun()
-            else:
-                st.subheader("🎯 Étape 2 : Place tes gommettes")
-                st.info("📍 Clic 1 : Le point **MOBILE** (à tracker)\n📍 Clic 2 : Le point **FIXE** (référence)")
-                
-                c_btn1, c_btn2 = st.columns(2)
-                with c_btn1:
-                    if st.button("🔄 Modifier la coupe vidéo", use_container_width=True):
-                        st.session_state.frame_locked = False
-                        st.session_state.gommettes = []
-                        st.rerun()
-                with c_btn2:
-                    if st.button("🗑️ Effacer les points", use_container_width=True):
-                        st.session_state.gommettes = []
-                        st.rerun()
+        # --- DICTIONNAIRE DES POINTS ANATOMIQUES MEDIAPIPE ---
+        # On prend la moyenne entre la gauche et la droite pour avoir le centre exact
+        POINTS_ANATOMIQUES = {
+            "Chevilles (Pointe des pieds)": (27, 28),
+            "Bassin (Centre de gravité)": (23, 24),
+            "Épaules": (11, 12),
+            "Poignets (Appuis)": (15, 16)
+        }
 
-                        st.write("---")
-                st.markdown("👇 **Clique sur l'image ci-dessous pour placer tes points :**")
+        col1, col2 = st.columns(2)
+        with col1:
+            pt_mobile = st.selectbox("🏃 Point Mobile (Celui qui bouge)", list(POINTS_ANATOMIQUES.keys()), index=0)
+        with col2:
+            pt_fixe = st.selectbox("⚓ Point Fixe (Ta référence)", list(POINTS_ANATOMIQUES.keys()), index=3)
 
-                with st.container():
-                    value = streamlit_image_coordinates(
-                        pil_image, 
-                        key=f"points_picker_{st.session_state.vbt_name}",
-                        width=max_width
-                    )
-                
-                if value is not None:
-    
-                    point = (value["x"], value["y"])
-                    if point not in st.session_state.gommettes and len(st.session_state.gommettes) < 2:
-                        st.session_state.gommettes.append(point)
-                        st.rerun()
+        if st.button("🚀 Lancer l'analyse 3D", type="primary", use_container_width=True):
+            st.info("L'IA scanne ton squelette... 🤖")
+            progress_bar = st.progress(0)
 
-                if len(st.session_state.gommettes) > 0:
-                    st.write(f"🏃 Point Mobile : {st.session_state.gommettes[0]}")
-                if len(st.session_state.gommettes) == 2:
-                    st.write(f"⚓ Point Fixe : {st.session_state.gommettes[1]}")
+            # Initialisation de MediaPipe Pose
+            mp_pose = mp.solutions.pose
+            mp_drawing = mp.solutions.drawing_utils
+
+            out_path = tempfile.NamedTemporaryFile(delete=False, suffix='.webm').name
+            fourcc = cv2.VideoWriter_fourcc(*'vp80')
+            out = cv2.VideoWriter(out_path, fourcc, fps, (orig_w, orig_h))
+
+            distances = []
+            times = []
+            
+            cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+            frames_processed = 0
+            frames_to_process = end_frame - start_frame
+
+            with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
+                while True:
+                    ret, current_frame = cap.read()
                     
-                    st.write("---")
-                    st.markdown("⚙️ **Réglage du Tracker (Point Mobile uniquement)**")
-                    box_size_ui = st.slider(
-                        "Taille de la zone d'accroche", 
-                        min_value=10, max_value=150, value=50, step=10,
-                        help="Diminue la taille si le point s'accroche au décor."
-                    )
+                    if not ret or frames_processed > frames_to_process:
+                        break
+                    
+                    # Convertir l'image en RGB pour MediaPipe
+                    frame_rgb = cv2.cvtColor(current_frame, cv2.COLOR_BGR2RGB)
+                    results = pose.process(frame_rgb)
 
-                    if st.button("🚀 Lancer l'analyse vidéo", type="primary", use_container_width=True):
-                        st.info("Analyse en cours (Tracking de zone CSRT)... 🚀")
-                        progress_bar = st.progress(0)
+                    if results.pose_landmarks:
+                        landmarks = results.pose_landmarks.landmark
                         
-                        # Conversion des coordonnées selon le ratio
-                        p1_orig = (int(st.session_state.gommettes[0][0] / ratio), int(st.session_state.gommettes[0][1] / ratio))
-                        c2_fixed = (int(st.session_state.gommettes[1][0] / ratio), int(st.session_state.gommettes[1][1] / ratio))
+                        # Fonction pour récupérer le centre (moyenne Gauche/Droite) d'une articulation
+                        def get_center(idx1, idx2):
+                            x = int((landmarks[idx1].x + landmarks[idx2].x) / 2 * orig_w)
+                            y = int((landmarks[idx1].y + landmarks[idx2].y) / 2 * orig_h)
+                            return (x, y)
 
-                        # --- OPTIMISATION : TRACKER CSRT ---
-                        tracker1 = cv2.TrackerCSRT_create()
-                        real_box = int(box_size_ui / ratio)
-                        
-                        # Création de la boîte de suivi autour du clic
-                        bbox1 = (p1_orig[0] - real_box//2, p1_orig[1] - real_box//2, real_box, real_box)
+                        # Récupérer les coordonnées de tes deux points
+                        idx_mob_1, idx_mob_2 = POINTS_ANATOMIQUES[pt_mobile]
+                        idx_fix_1, idx_fix_2 = POINTS_ANATOMIQUES[pt_fixe]
 
-                        out_path = tempfile.NamedTemporaryFile(delete=False, suffix='.webm').name
-                        fourcc = cv2.VideoWriter_fourcc(*'vp80')
-                        out = cv2.VideoWriter(out_path, fourcc, fps, (orig_w, orig_h))
+                        c_mobile = get_center(idx_mob_1, idx_mob_2)
+                        c_fixe = get_center(idx_fix_1, idx_fix_2)
 
-                        distances = []
-                        times = []
-                        
-                        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
-                        frames_processed = 0
-                        frames_to_process = end_frame - start_frame
+                        # Dessin personnalisé sur la vidéo
+                        cv2.circle(current_frame, c_mobile, 15, (0, 0, 255), -1) # Point mobile en rouge
+                        cv2.circle(current_frame, c_fixe, 15, (0, 255, 0), -1)   # Point fixe en vert
+                        cv2.line(current_frame, c_mobile, c_fixe, (255, 255, 255), 3) # Ligne de mesure
 
-                        while True:
-                            ret, current_frame = cap.read()
-                            
-                            if not ret or frames_processed > frames_to_process:
-                                break
-                            
-                            if frames_processed == 0:
-                                tracker1.init(current_frame, bbox1)
-                            
-                            succ1, b1 = tracker1.update(current_frame)
+                        # En option : Dessiner tout le squelette en transparence
+                        mp_drawing.draw_landmarks(
+                            current_frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS,
+                            mp_drawing.DrawingSpec(color=(245,117,66), thickness=2, circle_radius=2),
+                            mp_drawing.DrawingSpec(color=(245,66,230), thickness=2, circle_radius=2)
+                        )
 
-                            if succ1:
-                                # Le centre de la nouvelle boîte trouvée
-                                c1 = (int(b1[0] + b1[2]/2), int(b1[1] + b1[3]/2))
+                        # Calcul VBT
+                        dist = np.linalg.norm(np.array(c_mobile) - np.array(c_fixe))
+                        distances.append(dist)
+                        times.append(frames_processed / fps)
 
-                                # Dessin sur la vidéo
-                                cv2.rectangle(current_frame, (int(b1[0]), int(b1[1])), (int(b1[0]+b1[2]), int(b1[1]+b1[3])), (255, 0, 0), 2) # Affiche la zone suivie en bleu
-                                cv2.circle(current_frame, c1, 10, (0, 0, 255), -1) # Point mobile rouge
-                                cv2.circle(current_frame, c2_fixed, 10, (0, 255, 0), -1) # Point fixe vert
-                                cv2.line(current_frame, c1, c2_fixed, (255, 255, 255), 3) 
+                    out.write(current_frame)
+                    frames_processed += 1
+                    
+                    if frames_to_process > 0:
+                        progress_bar.progress(min(frames_processed / frames_to_process, 1.0))
 
-                                dist = np.linalg.norm(np.array(c1) - np.array(c2_fixed))
-                                distances.append(dist)
-                                times.append(frames_processed / fps)
+            cap.release()
+            out.release()
+            
+            st.success("✅ Vidéo scannée avec succès !")
 
-                            out.write(current_frame)
-                            frames_processed += 1
-                            
-                            if frames_to_process > 0:
-                                progress_bar.progress(min(frames_processed / frames_to_process, 1.0))
-
-                        cap.release()
-                        out.release()
-                        
-                        st.success("✅ Vidéo analysée avec succès !")
-
-                        st.subheader("🎥 Replay de la séquence isolée")
-                        with open(out_path, 'rb') as video_file:
-                            video_bytes = video_file.read()
-                            st.video(video_bytes, format="video/webm")
-                        
-                        df_vbt = pd.DataFrame({"Temps (s)": times, "Distance (px)": distances})
-                        if len(df_vbt) > 1:
-                            df_vbt["Vitesse (px/s)"] = abs(df_vbt["Distance (px)"].diff() / df_vbt["Temps (s)"].diff())
-                            df_vbt["Vitesse_lisse"] = df_vbt["Vitesse (px/s)"].rolling(window=4).mean()
-                            
-                            fig = px.line(df_vbt, x="Temps (s)", y="Vitesse_lisse", title="Évolution de la vitesse sur le mouvement isolé")
-                            fig.update_layout(template="plotly_dark")
-                            st.plotly_chart(fig, use_container_width=True)
-
-
-
-
-
-
-
-
+            st.subheader("🎥 Replay Biomécanique")
+            with open(out_path, 'rb') as video_file:
+                video_bytes = video_file.read()
+                st.video(video_bytes, format="video/webm")
+            
+            # --- Graphique de la Vitesse ---
+            if len(distances) > 1:
+                df_vbt = pd.DataFrame({"Temps (s)": times, "Distance (px)": distances})
+                df_vbt["Vitesse (px/s)"] = abs(df_vbt["Distance (px)"].diff() / df_vbt["Temps (s)"].diff())
+                # Lissage pour un graphique plus propre
+                df_vbt["Vitesse_lisse"] = df_vbt["Vitesse (px/s)"].rolling(window=3, center=True).mean()
+                
+                fig = px.line(df_vbt, x="Temps (s)", y="Vitesse_lisse", title=f"Vitesse : {pt_mobile} par rapport aux {pt_fixe}")
+                fig.update_layout(template="plotly_dark", yaxis_title="Vitesse (pixels / seconde)")
+                
+                # Ajout de la vitesse max (Peak Velocity)
+                v_max = df_vbt["Vitesse_lisse"].max()
+                fig.add_hline(y=v_max, line_dash="dot", line_color="red", annotation_text=f"Vmax: {v_max:.0f} px/s")
+                
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.error("⚠️ Squelette non détecté sur la vidéo. Essaye une vidéo plus lumineuse ou recule un peu la caméra.")
