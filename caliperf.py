@@ -579,7 +579,7 @@ from streamlit_image_coordinates import streamlit_image_coordinates
 
 with tab_vbt:
     st.header("⚡ Analyse Biomécanique IA (VBT)")
-    st.markdown("L'IA détecte automatiquement tes articulations. Choisis simplement ce que tu veux analyser !")
+    st.markdown("L'IA détecte tes articulations. Analyse la vitesse absolue de ton mouvement (ex: montée des pieds en Planche Press).")
 
     vbt_file = st.file_uploader("📥 Charger la vidéo", type=['mp4', 'mov'], key="vbt_uploader")
 
@@ -616,38 +616,44 @@ with tab_vbt:
         st.session_state.frame_range = selected_range
         start_frame, end_frame = selected_range
 
+        # --- NOUVEAU : RETOUR DE L'APERÇU IMAGE ---
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+        ret, frame = cap.read()
+        if ret:
+            max_width = 350
+            ratio = max_width / orig_w if orig_w > max_width else 1.0
+            new_h = int(orig_h * ratio)
+            frame_resized = cv2.resize(frame, (max_width, new_h))
+            frame_rgb = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB)
+            st.image(frame_rgb, caption=f"📸 Aperçu de l'image de départ (Frame {start_frame})")
+
         st.write("---")
-        st.subheader("🎯 Étape 2 : Paramétrage de l'IA")
+        st.subheader("🎯 Étape 2 : Que veut-on analyser ?")
         
-        # --- DICTIONNAIRE DES POINTS ANATOMIQUES MEDIAPIPE ---
-        # On prend la moyenne entre la gauche et la droite pour avoir le centre exact
         POINTS_ANATOMIQUES = {
-            "Chevilles (Pointe des pieds)": (27, 28),
+            "Chevilles (ex: pour Planche Press)": (27, 28),
             "Bassin (Centre de gravité)": (23, 24),
             "Épaules": (11, 12),
-            "Poignets (Appuis)": (15, 16)
+            "Poignets": (15, 16)
         }
 
-        col1, col2 = st.columns(2)
-        with col1:
-            pt_mobile = st.selectbox("🏃 Point Mobile (Celui qui bouge)", list(POINTS_ANATOMIQUES.keys()), index=0)
-        with col2:
-            pt_fixe = st.selectbox("⚓ Point Fixe (Ta référence)", list(POINTS_ANATOMIQUES.keys()), index=3)
+        pt_mobile = st.selectbox("🏃 Articulation à suivre", list(POINTS_ANATOMIQUES.keys()), index=0)
 
         if st.button("🚀 Lancer l'analyse 3D", type="primary", use_container_width=True):
             st.info("L'IA scanne ton squelette... 🤖")
             progress_bar = st.progress(0)
 
-            # Initialisation de MediaPipe Pose
-            mp_pose = mp.solutions.pose
-            mp_drawing = mp.solutions.drawing_utils
+            # --- CORRECTION DU BUG MEDIAPIPE (Imports directs) ---
+            import mediapipe.python.solutions.pose as mp_pose
+            import mediapipe.python.solutions.drawing_utils as mp_drawing
 
             out_path = tempfile.NamedTemporaryFile(delete=False, suffix='.webm').name
             fourcc = cv2.VideoWriter_fourcc(*'vp80')
             out = cv2.VideoWriter(out_path, fourcc, fps, (orig_w, orig_h))
 
-            distances = []
             times = []
+            speeds = []
+            prev_c_mobile = None
             
             cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
             frames_processed = 0
@@ -660,42 +666,41 @@ with tab_vbt:
                     if not ret or frames_processed > frames_to_process:
                         break
                     
-                    # Convertir l'image en RGB pour MediaPipe
                     frame_rgb = cv2.cvtColor(current_frame, cv2.COLOR_BGR2RGB)
                     results = pose.process(frame_rgb)
 
                     if results.pose_landmarks:
                         landmarks = results.pose_landmarks.landmark
                         
-                        # Fonction pour récupérer le centre (moyenne Gauche/Droite) d'une articulation
-                        def get_center(idx1, idx2):
-                            x = int((landmarks[idx1].x + landmarks[idx2].x) / 2 * orig_w)
-                            y = int((landmarks[idx1].y + landmarks[idx2].y) / 2 * orig_h)
-                            return (x, y)
-
-                        # Récupérer les coordonnées de tes deux points
                         idx_mob_1, idx_mob_2 = POINTS_ANATOMIQUES[pt_mobile]
-                        idx_fix_1, idx_fix_2 = POINTS_ANATOMIQUES[pt_fixe]
+                        
+                        x = int((landmarks[idx_mob_1].x + landmarks[idx_mob_2].x) / 2 * orig_w)
+                        y = int((landmarks[idx_mob_1].y + landmarks[idx_mob_2].y) / 2 * orig_h)
+                        c_mobile = (x, y)
 
-                        c_mobile = get_center(idx_mob_1, idx_mob_2)
-                        c_fixe = get_center(idx_fix_1, idx_fix_2)
-
-                        # Dessin personnalisé sur la vidéo
-                        cv2.circle(current_frame, c_mobile, 15, (0, 0, 255), -1) # Point mobile en rouge
-                        cv2.circle(current_frame, c_fixe, 15, (0, 255, 0), -1)   # Point fixe en vert
-                        cv2.line(current_frame, c_mobile, c_fixe, (255, 255, 255), 3) # Ligne de mesure
-
-                        # En option : Dessiner tout le squelette en transparence
+                        # Dessin de la cible
+                        cv2.circle(current_frame, c_mobile, 15, (0, 0, 255), -1) 
+                        
+                        # Squelette
                         mp_drawing.draw_landmarks(
                             current_frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS,
                             mp_drawing.DrawingSpec(color=(245,117,66), thickness=2, circle_radius=2),
                             mp_drawing.DrawingSpec(color=(245,66,230), thickness=2, circle_radius=2)
                         )
 
-                        # Calcul VBT
-                        dist = np.linalg.norm(np.array(c_mobile) - np.array(c_fixe))
-                        distances.append(dist)
-                        times.append(frames_processed / fps)
+                        # --- CALCUL DE VITESSE ABSOLUE ---
+                        if prev_c_mobile is not None:
+                            # On calcule la distance parcourue depuis la frame précédente
+                            dist_pixel = np.linalg.norm(np.array(c_mobile) - np.array(prev_c_mobile))
+                            current_speed = dist_pixel * fps # Distance * Frames par seconde = Vitesse en pixels/s
+                            
+                            speeds.append(current_speed)
+                            times.append(frames_processed / fps)
+                        else:
+                            speeds.append(0) # Vitesse à l'arrêt
+                            times.append(frames_processed / fps)
+                            
+                        prev_c_mobile = c_mobile
 
                     out.write(current_frame)
                     frames_processed += 1
@@ -713,20 +718,17 @@ with tab_vbt:
                 video_bytes = video_file.read()
                 st.video(video_bytes, format="video/webm")
             
-            # --- Graphique de la Vitesse ---
-            if len(distances) > 1:
-                df_vbt = pd.DataFrame({"Temps (s)": times, "Distance (px)": distances})
-                df_vbt["Vitesse (px/s)"] = abs(df_vbt["Distance (px)"].diff() / df_vbt["Temps (s)"].diff())
-                # Lissage pour un graphique plus propre
-                df_vbt["Vitesse_lisse"] = df_vbt["Vitesse (px/s)"].rolling(window=3, center=True).mean()
+            if len(speeds) > 1:
+                df_vbt = pd.DataFrame({"Temps (s)": times, "Vitesse (px/s)": speeds})
+                # Lissage de la courbe
+                df_vbt["Vitesse_lisse"] = df_vbt["Vitesse (px/s)"].rolling(window=3, center=True).mean().fillna(0)
                 
-                fig = px.line(df_vbt, x="Temps (s)", y="Vitesse_lisse", title=f"Vitesse : {pt_mobile} par rapport aux {pt_fixe}")
+                fig = px.line(df_vbt, x="Temps (s)", y="Vitesse_lisse", title=f"Vitesse absolue : {pt_mobile}")
                 fig.update_layout(template="plotly_dark", yaxis_title="Vitesse (pixels / seconde)")
                 
-                # Ajout de la vitesse max (Peak Velocity)
                 v_max = df_vbt["Vitesse_lisse"].max()
                 fig.add_hline(y=v_max, line_dash="dot", line_color="red", annotation_text=f"Vmax: {v_max:.0f} px/s")
                 
                 st.plotly_chart(fig, use_container_width=True)
             else:
-                st.error("⚠️ Squelette non détecté sur la vidéo. Essaye une vidéo plus lumineuse ou recule un peu la caméra.")
+                st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
