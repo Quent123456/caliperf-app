@@ -5,7 +5,8 @@ plotly
 st-gsheets-connection
 opencv-contrib-python-headless
 streamlit-image-coordinates
-pip install mediapipe
+mediapipe
+
 
 
 
