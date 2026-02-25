@@ -616,7 +616,6 @@ with tab_vbt:
         st.session_state.frame_range = selected_range
         start_frame, end_frame = selected_range
 
-        # --- NOUVEAU : RETOUR DE L'APERÇU IMAGE ---
         cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
         ret, frame = cap.read()
         if ret:
@@ -643,9 +642,9 @@ with tab_vbt:
             st.info("L'IA scanne ton squelette... 🤖")
             progress_bar = st.progress(0)
 
-            # --- CORRECTION DU BUG MEDIAPIPE (Imports directs) ---
-            import mediapipe.python.solutions.pose as mp_pose
-            import mediapipe.python.solutions.drawing_utils as mp_drawing
+            # --- UTILISATION PROPRE DE MEDIAPIPE ---
+            mp_pose = mp.solutions.pose
+            mp_drawing = mp.solutions.drawing_utils
 
             out_path = tempfile.NamedTemporaryFile(delete=False, suffix='.webm').name
             fourcc = cv2.VideoWriter_fourcc(*'vp80')
@@ -688,16 +687,15 @@ with tab_vbt:
                             mp_drawing.DrawingSpec(color=(245,66,230), thickness=2, circle_radius=2)
                         )
 
-                        # --- CALCUL DE VITESSE ABSOLUE ---
+                        # Calcul de vitesse absolue
                         if prev_c_mobile is not None:
-                            # On calcule la distance parcourue depuis la frame précédente
                             dist_pixel = np.linalg.norm(np.array(c_mobile) - np.array(prev_c_mobile))
-                            current_speed = dist_pixel * fps # Distance * Frames par seconde = Vitesse en pixels/s
+                            current_speed = dist_pixel * fps 
                             
                             speeds.append(current_speed)
                             times.append(frames_processed / fps)
                         else:
-                            speeds.append(0) # Vitesse à l'arrêt
+                            speeds.append(0) 
                             times.append(frames_processed / fps)
                             
                         prev_c_mobile = c_mobile
@@ -720,7 +718,6 @@ with tab_vbt:
             
             if len(speeds) > 1:
                 df_vbt = pd.DataFrame({"Temps (s)": times, "Vitesse (px/s)": speeds})
-                # Lissage de la courbe
                 df_vbt["Vitesse_lisse"] = df_vbt["Vitesse (px/s)"].rolling(window=3, center=True).mean().fillna(0)
                 
                 fig = px.line(df_vbt, x="Temps (s)", y="Vitesse_lisse", title=f"Vitesse absolue : {pt_mobile}")
