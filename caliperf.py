@@ -57,6 +57,30 @@ def add_new_user(user_dict):
         st.error(f"Erreur de sauvegarde : {e}")
         return False
 
+def add_training_data(training_dict):
+    """Ajoute une ligne d'entraînement dans l'onglet 'Trainings' du Google Sheet"""
+    try:
+        try:
+            # On essaie de lire l'onglet existant
+            df_actuel = conn.read(worksheet="Trainings", ttl=0)
+        except Exception:
+            # Si l'onglet est vide, on crée une base vide
+            df_actuel = pd.DataFrame(columns=["Timestamp", "Nom", "Exercice", "TST", "RPE", "Charge"])
+            
+        new_row = pd.DataFrame([training_dict])
+        
+        if not df_actuel.empty:
+            df_updated = pd.concat([df_actuel, new_row], ignore_index=True)
+        else:
+            df_updated = new_row
+            
+        conn.update(worksheet="Trainings", data=df_updated)
+        st.cache_data.clear()
+        return True
+    except Exception as e:
+        st.error(f"Erreur de sauvegarde de l'entraînement : {e}")
+        return False
+
 def save_figures_to_cloud(fullname, figures_dict):
     """Sauvegarde le dictionnaire de figures d'un élève dans le Google Sheet"""
     try:
@@ -76,12 +100,10 @@ def save_figures_to_cloud(fullname, figures_dict):
         return False
 
 @st.cache_data(ttl=60)
-def fetch_training_data(csv_url):
+def fetch_training_data():
+    """Récupère l'historique des entraînements sans passer par un CSV public"""
     try:
-        if not csv_url: return pd.DataFrame()
-        df = pd.read_csv(csv_url)
-        if len(df.columns) >= 6:
-            df.columns = ["Timestamp", "Nom", "Exercice", "TST", "RPE", "Charge"]
+        df = conn.read(worksheet="Trainings", ttl=0)
         return df
     except Exception as e:
         return pd.DataFrame()
@@ -244,16 +266,23 @@ with tab_analyse:
                 st.write("")
                 st.write("")
                 if eleve_repos and st.button("💤 VALIDER REPOS", type="primary", use_container_width=True):
-                    data_repos = {
-                        ENTRIES['nom']: eleve_repos, ENTRIES['exo']: "Repos",
-                        ENTRIES['tst']: "0", ENTRIES['rpe']: "0", ENTRIES['charge']: "0"
+                    # 1. On prépare le dictionnaire avec les colonnes exactes de Google Sheets
+                    nouveau_repos = {
+                        "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "Nom": eleve_repos,
+                        "Exercice": "Repos",
+                        "TST": "0",
+                        "RPE": "0",
+                        "Charge": "0"
                     }
-                    try:
-                        requests.post(LINK_UNIQUE, data=data_repos)
-                        st.success(f"Repos noté pour {eleve_repos}")
+                    
+                    # 2. On utilise ta nouvelle fonction centralisée
+                    if add_training_data(nouveau_repos):
+                        st.success(f"💤 Jour de repos validé pour {eleve_repos} !")
                         time.sleep(1)
                         st.rerun()
-                    except: st.error("Erreur envoi")
+                    else:
+                        st.error("⚠️ Erreur lors de l'enregistrement du repos dans Google Sheets.")
 
         st.divider()
         
@@ -366,21 +395,24 @@ with tab_analyse:
                                 val_princ = f"{round(f_time, 2)} s"
 
                                 if charge > 0:
-                                    d_send = {
-                                        ENTRIES['nom']: s_student, 
-                                        ENTRIES['exo']: nom_exo_final,
-                                        ENTRIES['tst']: str(val_princ).replace('.', ','),
-                                        ENTRIES['rpe']: str(rpe), 
-                                        ENTRIES['charge']: str(round(charge, 2)).replace('.', ',')
+                                    # On prépare le dictionnaire comme pour les utilisateurs
+                                    new_training = {
+                                        "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                        "Nom": s_student,
+                                        "Exercice": nom_exo_final,
+                                        "TST": str(val_princ).replace('.', ','),
+                                        "RPE": str(rpe),
+                                        "Charge": str(round(charge, 2)).replace('.', ',')
                                     }
-                                    try:
-                                        if requests.post(LINK_UNIQUE, data=d_send).status_code == 200:
-                                            st.toast(f"✅ Combo enregistré ! (Charge: {charge:.1f} | Coeff: x{total_coeff:.2f})")
-                                            st.session_state.processed_files.add(real_name)
-                                            time.sleep(1)
-                                            st.rerun()
-                                        else: 
-                                            st.error("Erreur d'envoi vers Google Forms")
+                                    
+                                    # On utilise notre nouvelle fonction
+                                    if add_training_data(new_training):
+                                        st.toast(f"✅ Combo enregistré ! (Charge: {charge:.1f} | Coeff: x{total_coeff:.2f})")
+                                        st.session_state.processed_files.add(real_name)
+                                        time.sleep(1)
+                                        st.rerun()
+                                    else: 
+                                        st.error("Erreur lors de l'enregistrement dans Google Sheets")
                                     except Exception as e: 
                                         st.error(f"Erreur: {e}")
                                 else:
@@ -408,7 +440,7 @@ with tab_eleves:
     
     SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTABZd8nfqjdUzGUBjb57ntk8ACmBIPg7CM5VBMjGSdXJtiAN1ZJhwpGUb2EJvQZOrJ55s9eE2c8exn/pub?output=csv"
     if SHEET_CSV_URL:
-        df_history = fetch_training_data(SHEET_CSV_URL)
+        df_history = fetch_training_data()
         if not df_history.empty and 'Charge' in df_history.columns:
             df_history['Charge'] = df_history['Charge'].astype(str).str.replace(',', '.').apply(pd.to_numeric, errors='coerce')
             df_history['Timestamp'] = pd.to_datetime(df_history['Timestamp'], errors='coerce')
@@ -795,6 +827,7 @@ with tab_vbt:
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
