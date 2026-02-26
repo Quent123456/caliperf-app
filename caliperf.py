@@ -10,6 +10,7 @@ import json
 import os
 import mediapipe as mp
 from datetime import datetime
+import hashlib
 
 # --- CONFIGURATION DE LA PAGE ---
 st.set_page_config(page_title="Caliperf - Coach Pro", layout="wide", page_icon="💪")
@@ -110,6 +111,10 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+def hash_password(password):
+    """Transforme un mot de passe en texte clair en un hachage sécurisé SHA-256"""
+    return hashlib.sha256(str.encode(password)).hexdigest()
+
 # --- INITIALISATION SESSION STATE ---
 if 'processed_files' not in st.session_state: st.session_state.processed_files = set()
 if 'timers' not in st.session_state: st.session_state.timers = {} 
@@ -199,8 +204,11 @@ with tab_intro:
                     "Fullname": f"{prenom} {nom}",
                     "Nom": nom,
                     "Prenom": prenom,
-                    "Password": pwd_eleve,
+                    # --- NOUVEAU : On hache le mot de passe avant de l'envoyer sur le cloud ! ---
+                    "Password": hash_password(pwd_eleve), 
                     "Frequence": freq,
+                    # ... (le reste de tes variables : Experience, Poids, etc.)
+                }
                     "Experience": experience,
                     "Poids": poids,
                     "Taille": taille,
@@ -509,9 +517,17 @@ with tab_eleves:
                 else:
                     input_pwd = st.text_input("Mon mot de passe :", type="password", key=f"pwd_{selected_name}")
                     
-                    if st.button("Se connecter 🔓", key=f"btn_log_{selected_name}") or input_pwd == stored_password:
-                        if input_pwd == stored_password:
+                    # --- NOUVEAU : On hache ce que l'utilisateur vient de taper ---
+                    hashed_input = hash_password(input_pwd) if input_pwd else ""
+                    
+                    # On compare le hachage tapé avec le hachage stocké
+                    if st.button("Se connecter 🔓", key=f"btn_log_{selected_name}") or hashed_input == stored_password:
+                        if hashed_input == stored_password:
                             st.success(f"Bon retour, {selected_name} !")
+                            
+                            # ... (la suite de ton code avec st.markdown et les graphiques) ...
+                        else:
+                            st.error("Mot de passe incorrect ❌")
                             
                             emoji_sexe = "♂️" if info.get('Sexe') == "Homme" else "♀️"
                             st.markdown(f"""
@@ -787,6 +803,7 @@ with tab_vbt:
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
