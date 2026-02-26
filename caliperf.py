@@ -667,88 +667,99 @@ with tab_vbt:
             st.info("L'IA scanne ton squelette... 🤖")
             progress_bar = st.progress(0)
 
-            # --- LA MÉTHODE OFFICIELLE QUI VA MARCHER ---
             mp_pose = mp.solutions.pose
             mp_drawing = mp.solutions.drawing_utils
 
+            # Définition de la résolution cible (Standardisation)
+            TARGET_HEIGHT = 720
+            scale_factor = TARGET_HEIGHT / orig_h if orig_h > TARGET_HEIGHT else 1.0
+            work_w = int(orig_w * scale_factor)
+            work_h = int(orig_h * scale_factor)
+
             out_path = tempfile.NamedTemporaryFile(delete=False, suffix='.webm').name
             fourcc = cv2.VideoWriter_fourcc(*'vp80')
-            out = cv2.VideoWriter(out_path, fourcc, fps, (orig_w, orig_h))
+            out = cv2.VideoWriter(out_path, fourcc, fps, (work_w, work_h))
 
             times = []
             speeds = []
             prev_c_mobile = None
-            ratio_m_px = None # NOUVEAU : Initialisation du ratio
+            ratio_m_px = None
             
             cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
             frames_processed = 0
             frames_to_process = end_frame - start_frame
 
-            with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
-                while True:
-                    ret, current_frame = cap.read()
-                    if not ret or frames_processed > frames_to_process:
-                        break
-                    
-                    frame_rgb = cv2.cvtColor(current_frame, cv2.COLOR_BGR2RGB)
-                    results = pose.process(frame_rgb)
+            try:
+                with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
+                    while True:
+                        ret, raw_frame = cap.read()
+                        if not ret or frames_processed > frames_to_process:
+                            break
+                        
+                        # --- DOWNSAMPLING : On compresse la frame à la volée ---
+                        work_frame = cv2.resize(raw_frame, (work_w, work_h))
+                        frame_rgb = cv2.cvtColor(work_frame, cv2.COLOR_BGR2RGB)
+                        results = pose.process(frame_rgb)
 
-                    if results.pose_landmarks:
-                        landmarks = results.pose_landmarks.landmark
-                        
-                        # --- NOUVEAU : CALIBRATION SUR LA PREMIÈRE FRAME VALIDE ---
-                        if ratio_m_px is None:
-                            # On prend le nez (repère 0) et la moyenne des deux chevilles (repères 27 et 28)
-                            y_nez = landmarks[0].y * orig_h
-                            y_chevilles = (landmarks[27].y + landmarks[28].y) / 2 * orig_h
-                            hauteur_pixels = abs(y_chevilles - y_nez)
+                        if results.pose_landmarks:
+                            landmarks = results.pose_landmarks.landmark
                             
-                            if hauteur_pixels > 0:
-                                ratio_m_px = taille_m / hauteur_pixels
-                        # -----------------------------------------------------------
+                            # Calibration basée sur la NOUVELLE résolution (work_h)
+                            if ratio_m_px is None:
+                                y_nez = landmarks[0].y * work_h
+                                y_chevilles = (landmarks[27].y + landmarks[28].y) / 2 * work_h
+                                hauteur_pixels = abs(y_chevilles - y_nez)
+                                
+                                if hauteur_pixels > 0:
+                                    ratio_m_px = taille_m / hauteur_pixels
 
-                        idx_mob_1, idx_mob_2 = POINTS_ANATOMIQUES[pt_mobile]
-                        
-                        x = int((landmarks[idx_mob_1].x + landmarks[idx_mob_2].x) / 2 * orig_w)
-                        y = int((landmarks[idx_mob_1].y + landmarks[idx_mob_2].y) / 2 * orig_h)
-                        c_mobile = (x, y)
+                            idx_mob_1, idx_mob_2 = POINTS_ANATOMIQUES[pt_mobile]
+                            
+                            # Coordonnées basées sur la vidéo redimensionnée
+                            x = int((landmarks[idx_mob_1].x + landmarks[idx_mob_2].x) / 2 * work_w)
+                            y = int((landmarks[idx_mob_1].y + landmarks[idx_mob_2].y) / 2 * work_h)
+                            c_mobile = (x, y)
 
-                        # Dessin de la cible
-                        cv2.circle(current_frame, c_mobile, 15, (0, 0, 255), -1) 
-                        
-                        # Squelette
-                        mp_drawing.draw_landmarks(
-                            current_frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS,
-                            mp_drawing.DrawingSpec(color=(245,117,66), thickness=2, circle_radius=2),
-                            mp_drawing.DrawingSpec(color=(245,66,230), thickness=2, circle_radius=2)
-                        )
-                        
-                        # --- NOUVEAU : Calcul de vitesse absolue en m/s ---
-                        if prev_c_mobile is not None and ratio_m_px is not None:
-                            dist_pixel = np.linalg.norm(np.array(c_mobile) - np.array(prev_c_mobile))
-                            dist_metres = dist_pixel * ratio_m_px
+                            cv2.circle(work_frame, c_mobile, 15, (0, 0, 255), -1) 
                             
-                            # fps = images par seconde. 1/fps = temps entre deux frames.
-                            current_speed_ms = dist_metres * fps 
+                            mp_drawing.draw_landmarks(
+                                work_frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS,
+                                mp_drawing.DrawingSpec(color=(245,117,66), thickness=2, circle_radius=2),
+                                mp_drawing.DrawingSpec(color=(245,66,230), thickness=2, circle_radius=2)
+                            )
                             
-                            speeds.append(current_speed_ms)
+                            # Calcul de vitesse
+                            if prev_c_mobile is not None and ratio_m_px is not None:
+                                dist_pixel = np.linalg.norm(np.array(c_mobile) - np.array(prev_c_mobile))
+                                current_speed_ms = (dist_pixel * ratio_m_px) * fps 
+                                
+                                speeds.append(current_speed_ms)
+                            else:
+                                speeds.append(0) 
+                                
                             times.append(frames_processed / fps)
-                        else:
-                            speeds.append(0) 
-                            times.append(frames_processed / fps)
-                            
-                        prev_c_mobile = c_mobile
+                            prev_c_mobile = c_mobile
 
-                    out.write(current_frame)
-                    frames_processed += 1
-                    
-                    if frames_to_process > 0:
-                        progress_bar.progress(min(frames_processed / frames_to_process, 1.0))
+                        out.write(work_frame)
+                        frames_processed += 1
+                        
+                        if frames_to_process > 0:
+                            progress_bar.progress(min(frames_processed / frames_to_process, 1.0))
 
-            cap.release()
-            out.release()
-            
-            st.success("✅ Vidéo scannée avec succès !")
+            finally:
+                # --- GARBAGE COLLECTION : Le serveur respire ---
+                cap.release()
+                out.release()
+                # On supprime la lourde vidéo d'origine du serveur de manière garantie
+                if os.path.exists(video_path):
+                    try:
+                        os.remove(video_path)
+                    except Exception as e:
+                        print(f"Erreur lors de la suppression du cache : {e}")
+
+            # --- Affichage des résultats (inchangé) ---
+            st.success("✅ Vidéo scannée et optimisée avec succès !")
+            # ... st.video(video_bytes) et tracé du graphique ...
 
             st.subheader("🎥 Replay Biomécanique")
             with open(out_path, 'rb') as video_file:
@@ -769,4 +780,5 @@ with tab_vbt:
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
