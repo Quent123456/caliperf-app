@@ -642,6 +642,13 @@ with tab_vbt:
             st.info("L'IA scanne ton squelette... 🤖")
             progress_bar = st.progress(0)
 
+            st.write("---")
+st.subheader("📏 Étape 2.5 : Calibration de l'échelle")
+st.caption("Pour obtenir une vitesse en m/s, nous avons besoin d'une référence visuelle.")
+# On met 175cm par défaut, mais tu pourrais pré-remplir avec st.session_state.students_data si l'élève est connecté
+taille_cm = st.number_input("Taille de l'athlète sur la vidéo (cm)", min_value=100, max_value=230, value=175)
+taille_m = taille_cm / 100.0
+
             # --- LA MÉTHODE OFFICIELLE QUI VA MARCHER ---
             mp_pose = mp.solutions.pose
             mp_drawing = mp.solutions.drawing_utils
@@ -653,6 +660,7 @@ with tab_vbt:
             times = []
             speeds = []
             prev_c_mobile = None
+            ratio_m_px = None # NOUVEAU : Initialisation du ratio
             
             cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
             frames_processed = 0
@@ -661,7 +669,6 @@ with tab_vbt:
             with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
                 while True:
                     ret, current_frame = cap.read()
-                    
                     if not ret or frames_processed > frames_to_process:
                         break
                     
@@ -671,6 +678,17 @@ with tab_vbt:
                     if results.pose_landmarks:
                         landmarks = results.pose_landmarks.landmark
                         
+                        # --- NOUVEAU : CALIBRATION SUR LA PREMIÈRE FRAME VALIDE ---
+                        if ratio_m_px is None:
+                            # On prend le nez (repère 0) et la moyenne des deux chevilles (repères 27 et 28)
+                            y_nez = landmarks[0].y * orig_h
+                            y_chevilles = (landmarks[27].y + landmarks[28].y) / 2 * orig_h
+                            hauteur_pixels = abs(y_chevilles - y_nez)
+                            
+                            if hauteur_pixels > 0:
+                                ratio_m_px = taille_m / hauteur_pixels
+                        # -----------------------------------------------------------
+
                         idx_mob_1, idx_mob_2 = POINTS_ANATOMIQUES[pt_mobile]
                         
                         x = int((landmarks[idx_mob_1].x + landmarks[idx_mob_2].x) / 2 * orig_w)
@@ -686,13 +704,17 @@ with tab_vbt:
                             mp_drawing.DrawingSpec(color=(245,117,66), thickness=2, circle_radius=2),
                             mp_drawing.DrawingSpec(color=(245,66,230), thickness=2, circle_radius=2)
                         )
+                        
 
-                        # Calcul de vitesse absolue
-                        if prev_c_mobile is not None:
+                        # --- NOUVEAU : Calcul de vitesse absolue en m/s ---
+                        if prev_c_mobile is not None and ratio_m_px is not None:
                             dist_pixel = np.linalg.norm(np.array(c_mobile) - np.array(prev_c_mobile))
-                            current_speed = dist_pixel * fps 
+                            dist_metres = dist_pixel * ratio_m_px
                             
-                            speeds.append(current_speed)
+                            # fps = images par seconde. 1/fps = temps entre deux frames.
+                            current_speed_ms = dist_metres * fps 
+                            
+                            speeds.append(current_speed_ms)
                             times.append(frames_processed / fps)
                         else:
                             speeds.append(0) 
@@ -717,15 +739,17 @@ with tab_vbt:
                 st.video(video_bytes, format="video/webm")
             
             if len(speeds) > 1:
-                df_vbt = pd.DataFrame({"Temps (s)": times, "Vitesse (px/s)": speeds})
-                df_vbt["Vitesse_lisse"] = df_vbt["Vitesse (px/s)"].rolling(window=3, center=True).mean().fillna(0)
+                df_vbt = pd.DataFrame({"Temps (s)": times, "Vitesse (m/s)": speeds})
+                # On lisse un peu plus pour éviter les pics parasites liés aux micro-erreurs de l'IA
+                df_vbt["Vitesse_lisse"] = df_vbt["Vitesse (m/s)"].rolling(window=5, center=True).mean().fillna(0)
                 
                 fig = px.line(df_vbt, x="Temps (s)", y="Vitesse_lisse", title=f"Vitesse absolue : {pt_mobile}")
-                fig.update_layout(template="plotly_dark", yaxis_title="Vitesse (pixels / seconde)")
+                fig.update_layout(template="plotly_dark", yaxis_title="Vitesse (m/s)")
                 
                 v_max = df_vbt["Vitesse_lisse"].max()
-                fig.add_hline(y=v_max, line_dash="dot", line_color="red", annotation_text=f"Vmax: {v_max:.0f} px/s")
+                fig.add_hline(y=v_max, line_dash="dot", line_color="red", annotation_text=f"Vmax: {v_max:.2f} m/s")
                 
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
