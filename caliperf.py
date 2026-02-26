@@ -702,51 +702,49 @@ with tab_vbt:
                         results = pose.process(frame_rgb)
 
                         if results.pose_landmarks:
-                            landmarks = results.pose_landmarks.landmark
-                            
-                            # --- CALIBRATION MULTI-ANGLES (Debout, Planche, Front Lever) ---
+                        landmarks = results.pose_landmarks.landmark
+                        
+                        # --- CALIBRATION MULTI-ANGLES ---
                         if ratio_m_px is None:
-                            # Coordonnées X et Y du Nez
                             x_nez = landmarks[0].x * work_w
                             y_nez = landmarks[0].y * work_h
-                            
-                            # Coordonnées X et Y du point central entre les deux chevilles
                             x_chevilles = (landmarks[27].x + landmarks[28].x) / 2 * work_w
                             y_chevilles = (landmarks[27].y + landmarks[28].y) / 2 * work_h
                             
-                            # Distance Euclidienne exacte (Pythagore), peu importe l'angle du corps
                             hauteur_pixels = np.sqrt((x_chevilles - x_nez)**2 + (y_chevilles - y_nez)**2)
                             
                             if hauteur_pixels > 0:
                                 ratio_m_px = taille_m / hauteur_pixels
-                        # -----------------------------------------------------------
-                            idx_mob_1, idx_mob_2 = POINTS_ANATOMIQUES[pt_mobile]
-                            
-                            # Coordonnées basées sur la vidéo redimensionnée
-                            x = int((landmarks[idx_mob_1].x + landmarks[idx_mob_2].x) / 2 * work_w)
-                            y = int((landmarks[idx_mob_1].y + landmarks[idx_mob_2].y) / 2 * work_h)
-                            c_mobile = (x, y)
 
-                            cv2.circle(work_frame, c_mobile, 15, (0, 0, 255), -1) 
-                            
-                            mp_drawing.draw_landmarks(
-                                work_frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS,
-                                mp_drawing.DrawingSpec(color=(245,117,66), thickness=2, circle_radius=2),
-                                mp_drawing.DrawingSpec(color=(245,66,230), thickness=2, circle_radius=2)
-                            )
-                            
-                            # Calcul de vitesse
-                            if prev_c_mobile is not None and ratio_m_px is not None:
-                                dist_pixel = np.linalg.norm(np.array(c_mobile) - np.array(prev_c_mobile))
-                                current_speed_ms = (dist_pixel * ratio_m_px) * fps 
-                                
-                                speeds.append(current_speed_ms)
-                            else:
-                                speeds.append(0) 
-                                
-                            times.append(frames_processed / fps)
-                            prev_c_mobile = c_mobile
+                        idx_mob_1, idx_mob_2 = POINTS_ANATOMIQUES[pt_mobile]
+                        
+                        x = int((landmarks[idx_mob_1].x + landmarks[idx_mob_2].x) / 2 * work_w)
+                        y = int((landmarks[idx_mob_1].y + landmarks[idx_mob_2].y) / 2 * work_h)
+                        c_mobile = (x, y)
 
+                        cv2.circle(work_frame, c_mobile, 15, (0, 0, 255), -1) 
+                        
+                        mp_drawing.draw_landmarks(
+                            work_frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS,
+                            mp_drawing.DrawingSpec(color=(245,117,66), thickness=2, circle_radius=2),
+                            mp_drawing.DrawingSpec(color=(245,66,230), thickness=2, circle_radius=2)
+                        )
+                        
+                        # Calcul de la vitesse
+                        if prev_c_mobile is not None and ratio_m_px is not None:
+                            dist_pixel = np.linalg.norm(np.array(c_mobile) - np.array(prev_c_mobile))
+                            current_speed_ms = (dist_pixel * ratio_m_px) * fps 
+                            speeds.append(current_speed_ms)
+                        else:
+                            speeds.append(0) 
+                            
+                        times.append(frames_processed / fps)
+                        prev_c_mobile = c_mobile
+                        
+                    else:
+                        # --- NOUVEAU : Si l'IA te perd temporairement de vue ---
+                        speeds.append(0)
+                        times.append(frames_processed / fps)
                         out.write(work_frame)
                         frames_processed += 1
                         
@@ -787,6 +785,7 @@ with tab_vbt:
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
