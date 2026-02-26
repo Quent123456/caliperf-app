@@ -630,8 +630,8 @@ with tab_vbt:
         st.subheader("🎯 Étape 2 : Que veut-on analyser ?")
         
         POINTS_ANATOMIQUES = {
-            "Chevilles (ex: pour Planche Press)": (27, 28),
-            "Bassin (Centre de gravité)": (23, 24),
+            "Chevilles (ex: Planche Press)": (27, 28),
+            "Bassin / Pubis (ex: Front Lever Pull-Up)": (23, 24),
             "Épaules": (11, 12),
             "Poignets": (15, 16)
         }
@@ -704,15 +704,22 @@ with tab_vbt:
                         if results.pose_landmarks:
                             landmarks = results.pose_landmarks.landmark
                             
-                            # Calibration basée sur la NOUVELLE résolution (work_h)
-                            if ratio_m_px is None:
-                                y_nez = landmarks[0].y * work_h
-                                y_chevilles = (landmarks[27].y + landmarks[28].y) / 2 * work_h
-                                hauteur_pixels = abs(y_chevilles - y_nez)
-                                
-                                if hauteur_pixels > 0:
-                                    ratio_m_px = taille_m / hauteur_pixels
-
+                            # --- CALIBRATION MULTI-ANGLES (Debout, Planche, Front Lever) ---
+                        if ratio_m_px is None:
+                            # Coordonnées X et Y du Nez
+                            x_nez = landmarks[0].x * work_w
+                            y_nez = landmarks[0].y * work_h
+                            
+                            # Coordonnées X et Y du point central entre les deux chevilles
+                            x_chevilles = (landmarks[27].x + landmarks[28].x) / 2 * work_w
+                            y_chevilles = (landmarks[27].y + landmarks[28].y) / 2 * work_h
+                            
+                            # Distance Euclidienne exacte (Pythagore), peu importe l'angle du corps
+                            hauteur_pixels = np.sqrt((x_chevilles - x_nez)**2 + (y_chevilles - y_nez)**2)
+                            
+                            if hauteur_pixels > 0:
+                                ratio_m_px = taille_m / hauteur_pixels
+                        # -----------------------------------------------------------
                             idx_mob_1, idx_mob_2 = POINTS_ANATOMIQUES[pt_mobile]
                             
                             # Coordonnées basées sur la vidéo redimensionnée
@@ -780,5 +787,6 @@ with tab_vbt:
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
