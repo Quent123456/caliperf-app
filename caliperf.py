@@ -413,8 +413,7 @@ with tab_analyse:
                                         st.rerun()
                                     else: 
                                         st.error("Erreur lors de l'enregistrement dans Google Sheets")
-                                    except Exception as e: 
-                                        st.error(f"Erreur: {e}")
+                                    
                                 else:
                                     st.warning("Le chrono est à 0 !")
                 else:
@@ -827,6 +826,7 @@ with tab_vbt:
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
