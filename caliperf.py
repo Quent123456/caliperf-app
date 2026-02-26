@@ -642,13 +642,6 @@ with tab_vbt:
             st.info("L'IA scanne ton squelette... 🤖")
             progress_bar = st.progress(0)
 
-            st.write("---")
-st.subheader("📏 Étape 2.5 : Calibration de l'échelle")
-st.caption("Pour obtenir une vitesse en m/s, nous avons besoin d'une référence visuelle.")
-# On met 175cm par défaut, mais tu pourrais pré-remplir avec st.session_state.students_data si l'élève est connecté
-taille_cm = st.number_input("Taille de l'athlète sur la vidéo (cm)", min_value=100, max_value=230, value=175)
-taille_m = taille_cm / 100.0
-
             # --- LA MÉTHODE OFFICIELLE QUI VA MARCHER ---
             mp_pose = mp.solutions.pose
             mp_drawing = mp.solutions.drawing_utils
@@ -663,6 +656,7 @@ taille_m = taille_cm / 100.0
             ratio_m_px = None # NOUVEAU : Initialisation du ratio
             
             cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+            # ... (la suite de ton code d'analyse) ...
             frames_processed = 0
             frames_to_process = end_frame - start_frame
 
@@ -752,4 +746,5 @@ taille_m = taille_cm / 100.0
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
