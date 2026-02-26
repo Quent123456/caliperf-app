@@ -514,17 +514,12 @@ with tab_eleves:
                 else:
                     input_pwd = st.text_input("Mon mot de passe :", type="password", key=f"pwd_{selected_name}")
                     
-                    # --- NOUVEAU : On hache ce que l'utilisateur vient de taper ---
+                    # --- NOUVEAU : Hachage du mot de passe tapé ---
                     hashed_input = hash_password(input_pwd) if input_pwd else ""
                     
-                    # On compare le hachage tapé avec le hachage stocké
                     if st.button("Se connecter 🔓", key=f"btn_log_{selected_name}") or hashed_input == stored_password:
                         if hashed_input == stored_password:
                             st.success(f"Bon retour, {selected_name} !")
-                            
-                            # ... (la suite de ton code avec st.markdown et les graphiques) ...
-                        else:
-                            st.error("Mot de passe incorrect ❌")
                             
                             emoji_sexe = "♂️" if info.get('Sexe') == "Homme" else "♀️"
                             st.markdown(f"""
@@ -800,6 +795,7 @@ with tab_vbt:
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
