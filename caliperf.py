@@ -691,62 +691,63 @@ with tab_vbt:
 
             try:
                 with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
-                    while True:
+                    while True:  # <--- C'EST CETTE BOUCLE QUI MANQUAIT OU ÉTAIT MAL ALIGNÉE
                         ret, raw_frame = cap.read()
-                    if not ret or frames_processed > frames_to_process:
-                        break
-                    
-                    # --- DOWNSAMPLING : On compresse la frame à la volée ---
-                    work_frame = cv2.resize(raw_frame, (work_w, work_h))
-                    frame_rgb = cv2.cvtColor(work_frame, cv2.COLOR_BGR2RGB)
-                    results = pose.process(frame_rgb)
-
-                    # ⚠️ Regarde bien le décalage ici :
-                    if results.pose_landmarks:
-                        # Cette ligne doit être décalée vers la droite par rapport au "if"
-                        landmarks = results.pose_landmarks.landmark
+                        if not ret or frames_processed > frames_to_process:
+                            break  # <--- Maintenant le "break" est bien dans sa boucle !
                         
-                        # --- CALIBRATION MULTI-ANGLES ---
-                        if ratio_m_px is None:
-                            x_nez = landmarks[0].x * work_w
-                            y_nez = landmarks[0].y * work_h
-                            x_chevilles = (landmarks[27].x + landmarks[28].x) / 2 * work_w
-                            y_chevilles = (landmarks[27].y + landmarks[28].y) / 2 * work_h
+                        # --- DOWNSAMPLING : On compresse la frame à la volée ---
+                        work_frame = cv2.resize(raw_frame, (work_w, work_h))
+                        frame_rgb = cv2.cvtColor(work_frame, cv2.COLOR_BGR2RGB)
+                        results = pose.process(frame_rgb)
+
+                        if results.pose_landmarks:
+                            landmarks = results.pose_landmarks.landmark
                             
-                            hauteur_pixels = np.sqrt((x_chevilles - x_nez)**2 + (y_chevilles - y_nez)**2)
+                            # --- CALIBRATION MULTI-ANGLES ---
+                            if ratio_m_px is None:
+                                x_nez = landmarks[0].x * work_w
+                                y_nez = landmarks[0].y * work_h
+                                x_chevilles = (landmarks[27].x + landmarks[28].x) / 2 * work_w
+                                y_chevilles = (landmarks[27].y + landmarks[28].y) / 2 * work_h
+                                
+                                # Distance Euclidienne exacte (Pythagore)
+                                hauteur_pixels = np.sqrt((x_chevilles - x_nez)**2 + (y_chevilles - y_nez)**2)
+                                
+                                if hauteur_pixels > 0:
+                                    ratio_m_px = taille_m / hauteur_pixels
+
+                            idx_mob_1, idx_mob_2 = POINTS_ANATOMIQUES[pt_mobile]
                             
-                            if hauteur_pixels > 0:
-                                ratio_m_px = taille_m / hauteur_pixels
+                            x = int((landmarks[idx_mob_1].x + landmarks[idx_mob_2].x) / 2 * work_w)
+                            y = int((landmarks[idx_mob_1].y + landmarks[idx_mob_2].y) / 2 * work_h)
+                            c_mobile = (x, y)
 
-                        idx_mob_1, idx_mob_2 = POINTS_ANATOMIQUES[pt_mobile]
-                        
-                        x = int((landmarks[idx_mob_1].x + landmarks[idx_mob_2].x) / 2 * work_w)
-                        y = int((landmarks[idx_mob_1].y + landmarks[idx_mob_2].y) / 2 * work_h)
-                        c_mobile = (x, y)
-
-                        cv2.circle(work_frame, c_mobile, 15, (0, 0, 255), -1) 
-                        
-                        mp_drawing.draw_landmarks(
-                            work_frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS,
-                            mp_drawing.DrawingSpec(color=(245,117,66), thickness=2, circle_radius=2),
-                            mp_drawing.DrawingSpec(color=(245,66,230), thickness=2, circle_radius=2)
-                        )
-                        
-                        # Calcul de la vitesse
-                        if prev_c_mobile is not None and ratio_m_px is not None:
-                            dist_pixel = np.linalg.norm(np.array(c_mobile) - np.array(prev_c_mobile))
-                            current_speed_ms = (dist_pixel * ratio_m_px) * fps 
-                            speeds.append(current_speed_ms)
+                            cv2.circle(work_frame, c_mobile, 15, (0, 0, 255), -1) 
+                            
+                            mp_drawing.draw_landmarks(
+                                work_frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS,
+                                mp_drawing.DrawingSpec(color=(245,117,66), thickness=2, circle_radius=2),
+                                mp_drawing.DrawingSpec(color=(245,66,230), thickness=2, circle_radius=2)
+                            )
+                            
+                            # Calcul de la vitesse
+                            if prev_c_mobile is not None and ratio_m_px is not None:
+                                dist_pixel = np.linalg.norm(np.array(c_mobile) - np.array(prev_c_mobile))
+                                current_speed_ms = (dist_pixel * ratio_m_px) * fps 
+                                speeds.append(current_speed_ms)
+                            else:
+                                speeds.append(0) 
+                                
+                            times.append(frames_processed / fps)
+                            prev_c_mobile = c_mobile
+                            
                         else:
-                            speeds.append(0) 
-                            
-                        times.append(frames_processed / fps)
-                        prev_c_mobile = c_mobile
-                        
-                    else:
-                        # Si l'IA perd le corps de vue, on met la vitesse à 0 pour éviter de crasher
-                        speeds.append(0)
-                        times.append(frames_processed / fps)
+                            # Si l'IA perd le corps de vue, on met la vitesse à 0
+                            speeds.append(0)
+                            times.append(frames_processed / fps)
+
+                        # Écriture de la vidéo et progression
                         out.write(work_frame)
                         frames_processed += 1
                         
@@ -757,7 +758,6 @@ with tab_vbt:
                 # --- GARBAGE COLLECTION : Le serveur respire ---
                 cap.release()
                 out.release()
-                # On supprime la lourde vidéo d'origine du serveur de manière garantie
                 if os.path.exists(video_path):
                     try:
                         os.remove(video_path)
@@ -787,6 +787,7 @@ with tab_vbt:
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
