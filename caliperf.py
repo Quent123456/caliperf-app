@@ -204,11 +204,8 @@ with tab_intro:
                     "Fullname": f"{prenom} {nom}",
                     "Nom": nom,
                     "Prenom": prenom,
-                    # --- NOUVEAU : On hache le mot de passe avant de l'envoyer sur le cloud ! ---
-                    "Password": hash_password(pwd_eleve), 
+                    "Password": hash_password(pwd_eleve),
                     "Frequence": freq,
-                    # ... (le reste de tes variables : Experience, Poids, etc.)
-                }
                     "Experience": experience,
                     "Poids": poids,
                     "Taille": taille,
@@ -803,6 +800,7 @@ with tab_vbt:
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
