@@ -640,9 +640,27 @@ with tab_vbt:
 
         st.write("---")
         st.subheader("📏 Étape 2.5 : Calibration de l'échelle")
-        st.caption("Pour obtenir une vitesse en m/s, nous avons besoin d'une référence visuelle.")
-        # On met 175cm par défaut
-        taille_cm = st.number_input("Taille de l'athlète sur la vidéo (cm)", min_value=100, max_value=230, value=175)
+        st.caption("Sélectionne l'athlète pour utiliser sa taille enregistrée, ou saisis-la manuellement.")
+        
+        # 1. On prépare la liste des élèves disponibles
+        liste_eleves = list(st.session_state.students_data.keys())
+        options_eleves = ["-- Profil manuel --"] + liste_eleves
+
+        # 2. Le menu déroulant pour choisir
+        eleve_choisi = st.selectbox("👤 Qui est sur la vidéo ?", options_eleves)
+
+        # 3. On détermine la taille par défaut
+        taille_defaut = 175 # Valeur de base si profil manuel ou erreur
+        if eleve_choisi != "-- Profil manuel --":
+            try:
+                # On récupère la taille dans les données de la session
+                taille_sauvegardee = st.session_state.students_data[eleve_choisi].get("Taille", 175)
+                taille_defaut = int(float(taille_sauvegardee)) # On s'assure que c'est bien un nombre
+            except Exception:
+                taille_defaut = 175
+
+        # 4. Le champ se pré-remplit tout seul, mais reste modifiable au cas où !
+        taille_cm = st.number_input("📏 Taille (cm)", min_value=100, max_value=230, value=taille_defaut)
         taille_m = taille_cm / 100.0
         
         if st.button("🚀 Lancer l'analyse 3D", type="primary", use_container_width=True):
@@ -751,3 +769,4 @@ with tab_vbt:
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
