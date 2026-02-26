@@ -531,21 +531,29 @@ with tab_eleves:
                     if st.button("🗑️ Supprimer définitivement", type="primary", use_container_width=True):
                         if eleve_a_supprimer != "-- Choisir --":
                             try:
-                                # On lit la base de données actuelle
+                                # --- 1. SUPPRESSION DU PROFIL (Onglet 'Users') ---
                                 df_users = get_users_data()
-                                
-                                # On garde tout le monde SAUF l'élève à supprimer
                                 df_updated = df_users[df_users['Fullname'] != eleve_a_supprimer]
-                                
-                                # On met à jour le Google Sheet avec la nouvelle liste
                                 conn.update(worksheet="Users", data=df_updated)
                                 
-                                # On vide le cache et la session pour que l'app comprenne le changement
+                                # --- 2. SUPPRESSION DE L'HISTORIQUE (Onglet 'Trainings') ---
+                                try:
+                                    # On lit les entraînements
+                                    df_trainings = conn.read(worksheet="Trainings", ttl=0)
+                                    if not df_trainings.empty and 'Nom' in df_trainings.columns:
+                                        # On garde toutes les lignes SAUF celles de l'élève supprimé
+                                        df_trainings_updated = df_trainings[df_trainings['Nom'] != eleve_a_supprimer]
+                                        # On met à jour l'onglet Trainings
+                                        conn.update(worksheet="Trainings", data=df_trainings_updated)
+                                except Exception as e_train:
+                                    print(f"Erreur nettoyage Trainings: {e_train}")
+                                
+                                # --- 3. NETTOYAGE DU CACHE ET DE L'INTERFACE ---
                                 st.cache_data.clear()
                                 if eleve_a_supprimer in st.session_state.students_data:
                                     del st.session_state.students_data[eleve_a_supprimer]
                                 
-                                st.success(f"✅ Le profil de {eleve_a_supprimer} a bien été supprimé !")
+                                st.success(f"✅ Le profil ET les données de {eleve_a_supprimer} ont été supprimés !")
                                 time.sleep(1.5)
                                 st.rerun()
                                 
@@ -859,6 +867,7 @@ with tab_vbt:
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
