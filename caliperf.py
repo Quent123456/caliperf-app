@@ -516,10 +516,43 @@ with tab_eleves:
                             render_figure_manager(name)
 
                 st.write("---")
-                cd, ct = st.columns([1,3])
+                st.subheader("🚨 Zone de Danger : Gérer les élèves")
+                
+                cd, ct = st.columns([1, 2])
                 with cd:
-                    if st.button("🗑️ Supprimer un élève", key="del_student_btn"):
-                        st.warning("La suppression nécessite l'ID exact. Fonction en maintenance.")
+                    # 1. On crée un menu déroulant pour choisir qui supprimer
+                    eleve_a_supprimer = st.selectbox(
+                        "Sélectionner l'élève à supprimer :", 
+                        ["-- Choisir --"] + list(st.session_state.students_data.keys()), 
+                        key="sel_del_student"
+                    )
+                    
+                    # 2. Le vrai bouton d'action
+                    if st.button("🗑️ Supprimer définitivement", type="primary", use_container_width=True):
+                        if eleve_a_supprimer != "-- Choisir --":
+                            try:
+                                # On lit la base de données actuelle
+                                df_users = get_users_data()
+                                
+                                # On garde tout le monde SAUF l'élève à supprimer
+                                df_updated = df_users[df_users['Fullname'] != eleve_a_supprimer]
+                                
+                                # On met à jour le Google Sheet avec la nouvelle liste
+                                conn.update(worksheet="Users", data=df_updated)
+                                
+                                # On vide le cache et la session pour que l'app comprenne le changement
+                                st.cache_data.clear()
+                                if eleve_a_supprimer in st.session_state.students_data:
+                                    del st.session_state.students_data[eleve_a_supprimer]
+                                
+                                st.success(f"✅ Le profil de {eleve_a_supprimer} a bien été supprimé !")
+                                time.sleep(1.5)
+                                st.rerun()
+                                
+                            except Exception as e:
+                                st.error(f"Erreur lors de la suppression : {e}")
+                        else:
+                            st.warning("⚠️ Merci de sélectionner un élève dans la liste d'abord.")
             else:
                 st.warning("La base de données des élèves est vide. Si tu viens d'ajouter un élève, rafraîchis la page.")
         else:
@@ -826,6 +859,7 @@ with tab_vbt:
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
