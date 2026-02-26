@@ -693,15 +693,17 @@ with tab_vbt:
                 with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
                     while True:
                         ret, raw_frame = cap.read()
-                        if not ret or frames_processed > frames_to_process:
-                            break
-                        
-                        # --- DOWNSAMPLING : On compresse la frame à la volée ---
-                        work_frame = cv2.resize(raw_frame, (work_w, work_h))
-                        frame_rgb = cv2.cvtColor(work_frame, cv2.COLOR_BGR2RGB)
-                        results = pose.process(frame_rgb)
+                    if not ret or frames_processed > frames_to_process:
+                        break
+                    
+                    # --- DOWNSAMPLING : On compresse la frame à la volée ---
+                    work_frame = cv2.resize(raw_frame, (work_w, work_h))
+                    frame_rgb = cv2.cvtColor(work_frame, cv2.COLOR_BGR2RGB)
+                    results = pose.process(frame_rgb)
 
-                        if results.pose_landmarks:
+                    # ⚠️ Regarde bien le décalage ici :
+                    if results.pose_landmarks:
+                        # Cette ligne doit être décalée vers la droite par rapport au "if"
                         landmarks = results.pose_landmarks.landmark
                         
                         # --- CALIBRATION MULTI-ANGLES ---
@@ -742,7 +744,7 @@ with tab_vbt:
                         prev_c_mobile = c_mobile
                         
                     else:
-                        # --- NOUVEAU : Si l'IA te perd temporairement de vue ---
+                        # Si l'IA perd le corps de vue, on met la vitesse à 0 pour éviter de crasher
                         speeds.append(0)
                         times.append(frames_processed / fps)
                         out.write(work_frame)
@@ -785,6 +787,7 @@ with tab_vbt:
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
