@@ -418,8 +418,7 @@ with tab_analyse:
                                 else:
                                     st.warning("⚠️ La charge calculée est de 0 (le chrono était peut-être à 0) !")
                                     
-                                else:
-                                    st.warning("Le chrono est à 0 !")
+                            
                 else:
                     st.warning("Aucun élève enregistré.")
         else:
@@ -871,6 +870,7 @@ with tab_vbt:
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
