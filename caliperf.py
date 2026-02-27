@@ -11,7 +11,13 @@ import os
 import mediapipe as mp
 from datetime import datetime
 import hashlib
+import cv2
+import numpy as np
+import tempfile
+from streamlit_image_coordinates import streamlit_image_coordinates
 
+# --- CONFIGURATION DE LA PAGE ---
+st.set_page_config(page_title="Caliperf - Coach Pro", layout="wide", page_icon="💪")
 # --- CONFIGURATION DE LA PAGE ---
 st.set_page_config(page_title="Caliperf - Coach Pro", layout="wide", page_icon="💪")
 
@@ -814,15 +820,6 @@ elif page_choisie == "📊 Mon Suivi":
         else:
             st.warning("Aucun élève inscrit dans la base.")
             
-
-from PIL import Image
-import cv2
-import numpy as np
-import tempfile
-import pandas as pd
-import plotly.express as px
-from streamlit_image_coordinates import streamlit_image_coordinates
-
 elif page_choisie == "⚡ Analyse Vitesse":
     st.header("⚡ Analyse Biomécanique IA (VBT)")
     st.markdown("L'IA détecte tes articulations. Analyse la vitesse absolue de ton mouvement (ex: montée des pieds en Planche Press).")
@@ -1049,6 +1046,7 @@ elif page_choisie == "⚡ Analyse Vitesse":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
