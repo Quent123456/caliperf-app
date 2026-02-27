@@ -32,10 +32,11 @@ DB_FILE = "caliperf_db.json"
 # --- 2. FONCTIONS DE GESTION DES DONNÉES (VERSION CLOUD) ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
+@st.cache_data(ttl=300) # Garde en cache pendant 5 minutes
 def get_users_data():
     """Récupère les données de l'onglet 'Users'"""
     try:
-        return conn.read(worksheet="Users", ttl=0)
+        return conn.read(worksheet="Users", ttl=0) # Le ttl=0 ici force la lecture, mais la fonction entière est gérée par st.cache_data
     except Exception:
         return pd.DataFrame()
 
@@ -873,6 +874,7 @@ with tab_vbt:
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
