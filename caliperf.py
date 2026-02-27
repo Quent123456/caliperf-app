@@ -823,7 +823,7 @@ import pandas as pd
 import plotly.express as px
 from streamlit_image_coordinates import streamlit_image_coordinates
 
-elif page_choisie == "⚡ Analyse Vitesse
+elif page_choisie == "⚡ Analyse Vitesse":
     st.header("⚡ Analyse Biomécanique IA (VBT)")
     st.markdown("L'IA détecte tes articulations. Analyse la vitesse absolue de ton mouvement (ex: montée des pieds en Planche Press).")
 
@@ -1049,6 +1049,7 @@ elif page_choisie == "⚡ Analyse Vitesse
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
