@@ -855,6 +855,9 @@ with tab_vbt:
             with open(out_path, 'rb') as video_file:
                 video_bytes = video_file.read()
                 st.video(video_bytes, format="video/webm")
+
+            if os.path.exists(out_path):
+                os.remove(out_path) 
             
             if len(speeds) > 1:
                 df_vbt = pd.DataFrame({"Temps (s)": times, "Vitesse (m/s)": speeds})
@@ -870,6 +873,7 @@ with tab_vbt:
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
