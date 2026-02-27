@@ -409,16 +409,15 @@ with tab_analyse:
                             else:
                                 nom_exo_final = " + ".join(noms_figures_realisees)
                                 charge = total_time_calc * rpe * total_coeff
-                                val_princ = f"{round(total_time_calc, 2)} s"
+
                                 if charge > 0:
-                                    # On prépare le dictionnaire comme pour les utilisateurs
                                     new_training = {
                                         "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                                         "Nom": s_student,
                                         "Exercice": nom_exo_final,
-                                        "TST": str(val_princ).replace('.', ','),
-                                        "RPE": str(rpe),
-                                        "Charge": str(round(charge, 2)).replace('.', ',')
+                                        "TST": round(total_time_calc, 2), # Nombre pur
+                                        "RPE": int(rpe),                  # Nombre pur
+                                        "Charge": round(charge, 2)        # Nombre pur
                                     }
                                     
                                     # --- NOUVEAU : Le spinner avec la bonne indentation ---
@@ -497,7 +496,7 @@ with tab_eleves:
                             if not df_history.empty:
                                 s_df = df_history[df_history['Nom'] == name].copy()
                                 if not s_df.empty:
-                                    s_df['TST_Val'] = s_df['TST'].astype(str).str.extract(r'(\d+[.,]?\d*)')[0].str.replace(',', '.', regex=False).astype(float).fillna(0)
+                                    s_df['TST_Val'] = pd.to_numeric(s_df['TST'], errors='coerce').fillna(0)
                                     s_df['Date'] = pd.to_datetime(s_df['Date'])
                                     
                                     daily = s_df.groupby('Date').agg({'Charge':'sum', 'TST_Val':'sum', 'RPE':'mean'})
@@ -625,7 +624,7 @@ with tab_eleves:
                             if not df_history.empty:
                                 s_df = df_history[df_history['Nom'] == selected_name].copy()
                                 if not s_df.empty:
-                                    s_df['TST_Val'] = s_df['TST'].astype(str).str.extract(r'(\d+[.,]?\d*)')[0].str.replace(',', '.', regex=False).astype(float).fillna(0)
+                                    s_df['TST_Val'] = pd.to_numeric(s_df['TST'], errors='coerce').fillna(0)
                                     s_df['Date'] = pd.to_datetime(s_df['Date'])
                                     
                                     daily = s_df.groupby('Date').agg({'Charge':'sum', 'TST_Val':'sum', 'RPE':'mean'})
@@ -889,6 +888,7 @@ with tab_vbt:
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
