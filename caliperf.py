@@ -135,8 +135,15 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 def hash_password(password):
-    """Transforme un mot de passe en texte clair en un hachage sécurisé SHA-256"""
-    return hashlib.sha256(str.encode(password)).hexdigest()
+    """Transforme un mot de passe en texte clair en un hachage sécurisé SHA-256 avec un sel"""
+    # On récupère le sel dans les secrets (ou on en met un par défaut si oublié)
+    salt = st.secrets["general"].get("password_salt", "Caliperf_Secret_Salt_2024!")
+    
+    # On mélange le mot de passe de l'élève avec notre sel secret
+    password_with_salt = password + salt
+    
+    # On crypte le tout
+    return hashlib.sha256(str.encode(password_with_salt)).hexdigest()
 
 # --- INITIALISATION SESSION STATE ---
 if 'processed_files' not in st.session_state: st.session_state.processed_files = set()
@@ -874,6 +881,7 @@ with tab_vbt:
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
