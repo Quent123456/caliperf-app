@@ -120,7 +120,22 @@ def toggle_timer(video_key):
         timer['run'] = True
 
 def reset_timer(video_key):
-    st.session_state.timers[video_key] = {'start': 0, 'acc': 0.0, 'run': False}
+    st.session_state.timers[video_key] = {'start': 0, 'acc': 0.0, 'run': False, 'holds': []}
+
+def capture_hold(video_key):
+    """Capture le temps actuel comme une isométrie et remet le chrono à zéro pour la suite"""
+    timer = st.session_state.timers[video_key]
+    if 'holds' not in timer:
+        timer['holds'] = []
+    
+    # Calcul du temps actuel
+    curr = timer['acc'] + (time.time() - timer['start'] if timer['run'] else 0)
+    
+    if curr > 0:
+        timer['holds'].append(round(curr, 2)) # Sauvegarde (ex: 5.3s)
+        # Remise à zéro fluide pour mesurer la figure suivante
+        timer['start'] = time.time() if timer['run'] else 0
+        timer['acc'] = 0.0
 
 # --- CSS / STYLE ---
 st.markdown("""
@@ -314,13 +329,32 @@ with tab_analyse:
                 curr = timer['acc'] + (time.time() - timer['start'] if timer['run'] else 0)
                 st.markdown(f'<div class="big-time">{curr:.2f} s</div>', unsafe_allow_html=True)
                 
-                b1, b2 = st.columns(2)
+                # --- AFFICHAGE DU CHRONO ET BOUTON DE CAPTURE ---
+                b1, b2, b3 = st.columns([1, 1, 1.5])
                 with b1: st.button("⏸️ PAUSE" if timer['run'] else "▶️ START", key=f"btn_{real_name}", on_click=toggle_timer, args=(real_name,), use_container_width=True)
                 with b2: st.button("🗑️ RAZ", key=f"rst_{real_name}", on_click=reset_timer, args=(real_name,), use_container_width=True)
+                
+                # NOUVEAU BOUTON : Attention, il faut passer la bonne clé 'args=(real_name,)'
+                with b3: 
+                    # J'utilise une petite astuce locale au lieu du callback pour éviter un re-run complet qui buggerait le chrono
+                    if st.button("📸 Capturer", key=f"cap_{real_name}", use_container_width=True):
+                        if 'holds' not in timer:
+                            timer['holds'] = []
+                        if curr > 0:
+                            timer['holds'].append(round(curr, 2))
+                            timer['start'] = time.time() if timer['run'] else 0
+                            timer['acc'] = 0.0
+                            st.rerun()
+
+                # Affichage des isométries mémorisées
+                holds_enregistres = timer.get('holds', [])
+                if holds_enregistres:
+                    holds_str = " ➔ ".join([f"⏱️ {h}s" for h in holds_enregistres])
+                    st.success(f"**Séquence capturée :** {holds_str}")
 
                 st.write("---")
                 
-                # --- NOUVELLE STRUCTURE ---
+                # --- FORMULAIRE ET SÉLECTION DE L'ATHLÈTE ---
                 s_keys = list(st.session_state.students_data.keys())
                 
                 if s_keys:
@@ -331,77 +365,71 @@ with tab_analyse:
                         with c_rpe:
                             rpe = st.slider("Intensité globale (RPE)", 1, 10, 7)
                         with c_info:
-                            st.info(f"⏱️ Temps total : {curr:.2f} s")
+                            # TST global = temps encore sur le chrono + la somme des isométries capturées
+                            total_time_calc = curr + sum(holds_enregistres)
+                            st.info(f"⏱️ Temps total : {total_time_calc:.2f} s")
 
                         st.write("---")
-                        st.write("🔥 **Détail du Combo**")
-                        st.caption("Ajoute les figures réalisées et le nombre de répétitions. Tu peux ajouter autant de lignes que tu veux !")
+                        st.markdown("🔥 **Construction du Combo**")
+                        st.caption("Définis chaque étape. Si tu as capturé des isométries, les temps s'afficheront par défaut !")
 
-                        # --- RÉCUPÉRATION DES FIGURES ---
-                        athlete_figures = st.session_state.students_data[s_student].get('Figures', {})
-                        if not athlete_figures:
-                            athlete_figures = {"Mouvement basique": 1}
-                            
-                        liste_noms_figures = list(athlete_figures.keys())
-
-                        # --- NOUVELLE UI MOBILE-FRIENDLY ---
-                        options_figures = ["-- Aucune --"] + liste_noms_figures
-                        
-                        st.write("---")
-                        st.markdown("🔥 **Détail du Combo**")
-                        st.caption("Sélectionne tes figures. Laisse sur '-- Aucune --' si tu n'as pas besoin de toutes les lignes.")
+                        athlete_figures = st.session_state.students_data[s_student].get('Figures', {"Mouvement basique": 1})
+                        options_figures = ["-- Aucune --"] + list(athlete_figures.keys())
                         
                         combo_selections = []
                         
-                        # On prépare 5 emplacements (suffisant pour un combo classique)
+                        # --- LES 5 LIGNES DYNAMIQUES DU COMBO ---
                         for i in range(5):
-                            c_fig, c_reps = st.columns([3, 1])
+                            c_cat, c_fig, c_type, c_val = st.columns([1.2, 2, 1.2, 1])
+                            
+                            with c_cat:
+                                cat = st.selectbox("Catégorie", ["Push", "Pull", "Mixte"], key=f"cat_{real_name}_{s_student}_{i}", label_visibility="collapsed")
+                            
                             with c_fig:
-                                # Le premier emplacement prend la 1ère figure par défaut, les autres sont vides
                                 default_idx = 1 if i == 0 else 0 
-                                fig = st.selectbox(
-                                    f"Figure {i}", 
-                                    options=options_figures, 
-                                    index=default_idx, 
-                                    key=f"fig_{real_name}_{s_student}_{i}",
-                                    label_visibility="collapsed" # Cache le titre pour gagner de la place
-                                )
-                            with c_reps:
-                                reps = st.number_input(
-                                    f"Reps {i}", 
-                                    min_value=1, step=1, 
-                                    key=f"reps_{real_name}_{s_student}_{i}",
-                                    label_visibility="collapsed"
-                                )
-                            combo_selections.append({"Figure": fig, "Répétitions": reps})
+                                fig = st.selectbox("Figure", options_figures, index=default_idx, key=f"fig_{real_name}_{s_student}_{i}", label_visibility="collapsed")
+                            
+                            with c_type:
+                                default_type_idx = 1 if (i < len(holds_enregistres)) else 0
+                                etype = st.selectbox("Type", ["Dynamique", "Statique"], index=default_type_idx, key=f"etype_{real_name}_{s_student}_{i}", label_visibility="collapsed")
+                            
+                            with c_val:
+                                val_defaut = float(holds_enregistres[i]) if i < len(holds_enregistres) else 1.0
+                                val = st.number_input("Val", min_value=0.1, step=0.5, value=val_defaut, key=f"val_{real_name}_{s_student}_{i}", label_visibility="collapsed")
+                                
+                            combo_selections.append({"Cat": cat, "Figure": fig, "Type": etype, "Valeur": val})
 
                         st.write("---")
 
-                        # Bouton en pleine largeur pour mobile
                         if st.form_submit_button("☁️ ENVOYER DONNÉES", type="primary", use_container_width=True):
-                            f_time = timer['acc'] + (time.time() - timer['start'] if timer['run'] else 0)
-                            
                             total_coeff = 0
                             noms_figures_realisees = []
 
                             for item in combo_selections:
                                 fig_name = item["Figure"]
-                                reps = item["Répétitions"]
-                                
-                                # On ignore les lignes laissées sur "-- Aucune --"
                                 if fig_name != "-- Aucune --":
+                                    cat = item["Cat"]
+                                    etype = item["Type"]
+                                    val = item["Valeur"]
+                                    
                                     diff = athlete_figures.get(fig_name, 1)
                                     multiplicateur_unitaire = 1.0 + (diff - 1) * 0.25
-                                    total_coeff += (multiplicateur_unitaire * reps)
-                                    noms_figures_realisees.append(f"{reps}x {fig_name}")
+                                    
+                                    if etype == "Statique":
+                                        reps_virtuelles = val 
+                                        bonus_intensite = 1.0 if rpe < 8 else (rpe / 7.0) 
+                                        total_coeff += (multiplicateur_unitaire * reps_virtuelles * bonus_intensite)
+                                        noms_figures_realisees.append(f"[{cat}] {fig_name} ({val}s)")
+                                    else:
+                                        total_coeff += (multiplicateur_unitaire * val)
+                                        noms_figures_realisees.append(f"[{cat}] {int(val)}x {fig_name}")
 
                             if not noms_figures_realisees:
                                 st.error("⚠️ Tu dois sélectionner au moins une figure !")
                             else:
                                 nom_exo_final = " + ".join(noms_figures_realisees)
-                                charge = f_time * rpe * total_coeff
-                                val_princ = f"{round(f_time, 2)} s"
-
+                                charge = total_time_calc * rpe * total_coeff
+                                val_princ = f"{round(total_time_calc, 2)} s"
                                 if charge > 0:
                                     # On prépare le dictionnaire comme pour les utilisateurs
                                     new_training = {
@@ -881,6 +909,7 @@ with tab_vbt:
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
