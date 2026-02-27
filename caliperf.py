@@ -137,15 +137,133 @@ def capture_hold(video_key):
         timer['start'] = time.time() if timer['run'] else 0
         timer['acc'] = 0.0
 
-# --- CSS / STYLE ---
+# --- CSS / STYLE FUTURISTE HARDWAVE ---
 st.markdown("""
     <style>
-    .stApp { background-color: #0e1117; }
-    h1, h2, h3 { font-family: 'Helvetica Neue', sans-serif; text-transform: uppercase; letter-spacing: 1px; }
-    .stTabs [data-baseweb="tab-list"] button [data-testid="stMarkdownContainer"] p { font-size: 1.1rem; font-weight: 600; }
-    .metric-card { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3); transition: transform 0.2s; }
-    .metric-card:hover { transform: translateY(-5px); border-color: #ff4b4b; }
-    div.stButton > button { border-radius: 20px; font-weight: bold; border: none; transition: all 0.3s ease; }
+    /* Importation des polices futuristes depuis Google Fonts */
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;500;600;700&display=swap');
+
+    /* Fond d'écran global : dégradé sombre type "Abysse Numérique" */
+    .stApp { 
+        background: radial-gradient(circle at 50% 0%, #160a2c 0%, #05010f 100%); 
+        color: #e0e6ed;
+    }
+
+    /* Typographie des titres */
+    h1, h2, h3, h4 { 
+        font-family: 'Orbitron', sans-serif !important; 
+        text-transform: uppercase; 
+        letter-spacing: 2px; 
+        color: #00f3ff; /* Cyan Néon */
+        text-shadow: 0 0 8px rgba(0, 243, 255, 0.4), 0 0 15px rgba(0, 243, 255, 0.2);
+    }
+
+    /* Typographie du texte classique */
+    p, span, div, label {
+        font-family: 'Rajdhani', sans-serif !important;
+        font-size: 1.15rem;
+    }
+
+    /* Style des onglets (Tabs) */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 10px;
+        border-bottom: 2px solid rgba(176, 38, 255, 0.3);
+    }
+    .stTabs [data-baseweb="tab-list"] button {
+        background: rgba(15, 5, 30, 0.5);
+        border: 1px solid rgba(176, 38, 255, 0.5);
+        border-radius: 5px 5px 0 0;
+        color: #b026ff;
+        font-family: 'Orbitron', sans-serif;
+        text-transform: uppercase;
+        transition: all 0.3s;
+    }
+    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
+        background: linear-gradient(90deg, rgba(176,38,255,0.2), rgba(0,243,255,0.2));
+        border: 1px solid #00f3ff;
+        border-bottom: none;
+        color: #00f3ff;
+        box-shadow: 0 -5px 15px rgba(0, 243, 255, 0.2);
+    }
+
+    /* Boutons génériques (Glow Cyberpunk) */
+    div.stButton > button { 
+        border-radius: 4px; 
+        font-weight: bold; 
+        font-family: 'Orbitron', sans-serif;
+        background-color: transparent;
+        color: #00f3ff;
+        border: 1px solid #00f3ff;
+        box-shadow: inset 0 0 10px rgba(0,243,255,0.1), 0 0 10px rgba(0,243,255,0.2);
+        transition: all 0.3s ease; 
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    div.stButton > button:hover { 
+        background-color: rgba(0, 243, 255, 0.15); 
+        box-shadow: inset 0 0 20px rgba(0,243,255,0.3), 0 0 20px rgba(0,243,255,0.6);
+        transform: translateY(-2px); 
+        color: #fff;
+    }
+
+    /* Boutons "Primary" (Ex: Envoi de formulaires) */
+    div.stButton > button[kind="primary"] {
+        border: 1px solid #b026ff;
+        color: #f0f0f0;
+        background: rgba(176, 38, 255, 0.15);
+        box-shadow: inset 0 0 10px rgba(176,38,255,0.3), 0 0 15px rgba(176,38,255,0.4);
+    }
+    div.stButton > button[kind="primary"]:hover {
+        background: rgba(176, 38, 255, 0.4);
+        box-shadow: inset 0 0 20px rgba(176,38,255,0.6), 0 0 25px rgba(176,38,255,0.8);
+        border-color: #d475ff;
+    }
+
+    /* Cartes de métriques (Glassmorphism + Neon Border) */
+    .metric-card { 
+        background: rgba(15, 5, 30, 0.6); 
+        backdrop-filter: blur(15px); 
+        border: 1px solid rgba(176, 38, 255, 0.3); 
+        padding: 20px; 
+        border-radius: 8px; 
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5); 
+        transition: all 0.3s; 
+        border-left: 4px solid #b026ff;
+    }
+    .metric-card:hover { 
+        transform: scale(1.02); 
+        border-left-color: #00f3ff; 
+        border-right: 4px solid #00f3ff;
+        box-shadow: 0 0 20px rgba(176, 38, 255, 0.4); 
+    }
+
+    /* Stylisation du gros Chrono */
+    .big-time {
+        font-size: 3.5rem;
+        font-family: 'Orbitron', sans-serif;
+        font-weight: 900;
+        color: #00f3ff;
+        text-shadow: 0 0 10px rgba(0,243,255,0.5), 0 0 20px rgba(0,243,255,0.3);
+        text-align: center;
+        background: rgba(0, 0, 0, 0.4);
+        border: 1px solid rgba(0, 243, 255, 0.3);
+        border-radius: 10px;
+        padding: 10px;
+        margin-bottom: 15px;
+    }
+
+    /* Inputs (Text, Number, Select) */
+    .stTextInput input, .stNumberInput input {
+        background-color: rgba(15, 5, 30, 0.8) !important;
+        border: 1px solid rgba(176, 38, 255, 0.4) !important;
+        color: #00f3ff !important;
+        font-family: 'Rajdhani', sans-serif !important;
+        font-size: 1.2rem !important;
+    }
+    .stTextInput input:focus, .stNumberInput input:focus {
+        border-color: #00f3ff !important;
+        box-shadow: 0 0 10px rgba(0,243,255,0.4) !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -888,6 +1006,7 @@ with tab_vbt:
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
