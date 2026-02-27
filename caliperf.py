@@ -200,7 +200,7 @@ with tab_intro:
     st.header("Création ou Mise à jour du Profil 🚀")
     st.caption("Remplis ce formulaire pour créer ton compte ou mettre à jour tes informations.")
     
-    with st.form("form_intro"):
+    with st.form("form_intro", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1: nom = st.text_input("Nom")
         with col2: prenom = st.text_input("Prénom")
@@ -318,7 +318,7 @@ with tab_analyse:
                 if s_keys:
                     s_student = st.selectbox("Athlète", s_keys, key=f"sel_athlete_{real_name}")
                     
-                    with st.form(key=f"f_{real_name}"):
+                    with st.form(key=f"f_{real_name}", clear_on_submit=True):
                         c_rpe, c_info = st.columns([2, 1])
                         with c_rpe:
                             rpe = st.slider("Intensité globale (RPE)", 1, 10, 7)
@@ -405,10 +405,10 @@ with tab_analyse:
                                         "Charge": str(round(charge, 2)).replace('.', ',')
                                     }
                                     
-                                    # On utilise notre nouvelle fonction
+                                    
+                                with st.spinner("⏳ Enregistrement dans le Cloud..."):
                                     if add_training_data(new_training):
                                         st.toast(f"✅ Combo enregistré ! (Charge: {charge:.1f} | Coeff: x{total_coeff:.2f})")
-                                        st.session_state.processed_files.add(real_name)
                                         time.sleep(1)
                                         st.rerun()
                                     else: 
@@ -867,6 +867,7 @@ with tab_vbt:
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
