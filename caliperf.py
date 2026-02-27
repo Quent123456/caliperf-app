@@ -140,6 +140,27 @@ def capture_hold(video_key):
 # --- CSS / STYLE FUTURISTE HARDWAVE ---
 st.markdown("""
     <style>
+    /* --- FOND D'ÉCRAN PERSONNALISÉ --- */
+    [data-testid="stAppViewContainer"] {
+        /* Remplace l'URL ci-dessous par le lien de ton image */
+        background-image: url("https://images.unsplash.com/photo-1550684848-fac1c5b4e853?q=80&w=2070&auto=format&fit=crop");
+        background-size: cover;
+        background-position: center;
+        background-attachment: fixed;
+    }
+    
+    /* Rendre le header (la barre du haut) transparent pour voir l'image */
+    [data-testid="stHeader"] {
+        background-color: rgba(0,0,0,0);
+    }
+
+    /* Rendre la sidebar légèrement transparente avec un effet verre (Glassmorphism) */
+    [data-testid="stSidebar"] {
+        background-color: rgba(15, 5, 30, 0.7) !important;
+        backdrop-filter: blur(10px);
+        border-right: 1px solid rgba(176, 38, 255, 0.3);
+    }
+    
     /* Importation des polices futuristes depuis Google Fonts */
     @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;500;600;700&display=swap');
 
@@ -303,7 +324,16 @@ if 'students_data' not in st.session_state:
 
 st.title("🏋️ Caliperf : Espace Coaching")
 
-tab_intro, tab_analyse, tab_eleves, tab_vbt = st.tabs(["👋 Profil", "🎥 Espace Vidéo", "📊 Mon Suivi", "⚡ Analyse Vitesse (VBT)"])
+# --- MENU DE NAVIGATION DANS LA SIDEBAR ---
+with st.sidebar:
+    st.markdown("### 🎛️ MENU PRINCIPAL")
+    page_choisie = st.radio(
+        "Navigation",
+        ["👋 Profil", "🎥 Espace Vidéo", "📊 Mon Suivi", "⚡ Analyse Vitesse (VBT)"],
+        label_visibility="collapsed"
+    )
+    st.write("---")
+    st.caption("Caliperf - Coach Pro v2.0")
 # =========================================================
 # COMPOSANT PARTAGÉ : BIBLIOTHÈQUE DE FIGURES
 # =========================================================
@@ -337,7 +367,7 @@ def render_figure_manager(athlete_name):
 # =========================================================
 # ONGLET 1 : INSCRIPTION / PROFIL
 # =========================================================
-with tab_intro:
+if page_choisie == "👋 Profil":
     st.header("Création ou Mise à jour du Profil 🚀")
     st.caption("Remplis ce formulaire pour créer ton compte ou mettre à jour tes informations.")
     
@@ -385,7 +415,7 @@ with tab_intro:
 # =========================================================
 # ONGLET 2 : ANALYSE VIDÉO
 # =========================================================
-with tab_analyse:
+elif page_choisie == "🎥 Espace Vidéo":
     col_titre, col_login = st.columns([3, 1])
     with col_titre:
         st.caption("Espace d'échange et d'analyse technique.")
@@ -570,7 +600,7 @@ with tab_analyse:
 # =========================================================
 # ONGLET 3 : MON SUIVI (SÉCURISÉ)
 # =========================================================
-with tab_eleves:
+elif page_choisie == "📊 Mon Suivi":
     st.header("📊 Suivi des Performances")
     
     SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTABZd8nfqjdUzGUBjb57ntk8ACmBIPg7CM5VBMjGSdXJtiAN1ZJhwpGUb2EJvQZOrJ55s9eE2c8exn/pub?output=csv"
@@ -793,7 +823,7 @@ import pandas as pd
 import plotly.express as px
 from streamlit_image_coordinates import streamlit_image_coordinates
 
-with tab_vbt:
+elif page_choisie == "⚡ Analyse Vitesse
     st.header("⚡ Analyse Biomécanique IA (VBT)")
     st.markdown("L'IA détecte tes articulations. Analyse la vitesse absolue de ton mouvement (ex: montée des pieds en Planche Press).")
 
@@ -1019,6 +1049,7 @@ with tab_vbt:
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
