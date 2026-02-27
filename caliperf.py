@@ -143,37 +143,33 @@ def capture_hold(video_key):
         timer['start'] = time.time() if timer['run'] else 0
         timer['acc'] = 0.0
 
-# --- CSS / STYLE FUTURISTE HARDWAVE ---
+# --- CSS / STYLE ATMOSPHÉRIQUE NOIR & BLEU ÉLECTRIQUE (Style de référence) ---
 st.markdown("""
     <style>
-    /* --- FOND D'ÉCRAN PERSONNALISÉ --- */
+    /* Importation des polices futuristes depuis Google Fonts */
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;500;600;700&display=swap');
+
+    /* --- FOND D'ÉCRAN PERSONNALISÉ (Inspiré de ta référence) --- */
     [data-testid="stAppViewContainer"] {
-        /* Remplace l'URL ci-dessous par le lien de ton image */
-        background-image: url("https://images.unsplash.com/photo-1550684848-fac1c5b4e853?q=80&w=2070&auto=format&fit=crop");
+        /* Utilisation d'une image de brouillard urbain nocturne avec lumières bleues */
+        background-image: linear-gradient(to top, rgba(5, 1, 31, 1) 0%, rgba(16, 10, 44, 0.8) 50%, rgba(22, 10, 44, 0.4) 100%), 
+                          url("https://images.unsplash.com/photo-1563089145-599997674d42?q=80&w=2070&auto=format&fit=crop");
         background-size: cover;
         background-position: center;
         background-attachment: fixed;
+        color: #e0e6ed;
     }
     
-    /* Rendre le header (la barre du haut) transparent pour voir l'image */
+    /* Rendre le header (la barre du haut) transparent pour voir le fond */
     [data-testid="stHeader"] {
         background-color: rgba(0,0,0,0);
     }
 
-    /* Rendre la sidebar légèrement transparente avec un effet verre (Glassmorphism) */
+    /* Rendre la sidebar encore plus "fumée" avec un effet verre (Glassmorphism renforcé) */
     [data-testid="stSidebar"] {
-        background-color: rgba(15, 5, 30, 0.7) !important;
-        backdrop-filter: blur(10px);
+        background-color: rgba(15, 5, 30, 0.8) !important;
+        backdrop-filter: blur(15px);
         border-right: 1px solid rgba(176, 38, 255, 0.3);
-    }
-    
-    /* Importation des polices futuristes depuis Google Fonts */
-    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;500;600;700&display=swap');
-
-    /* Fond d'écran global : dégradé sombre type "Abysse Numérique" */
-    .stApp { 
-        background: radial-gradient(circle at 50% 0%, #160a2c 0%, #05010f 100%); 
-        color: #e0e6ed;
     }
 
     /* Typographie des titres */
@@ -181,36 +177,16 @@ st.markdown("""
         font-family: 'Orbitron', sans-serif !important; 
         text-transform: uppercase; 
         letter-spacing: 2px; 
-        color: #00f3ff; /* Cyan Néon */
-        text-shadow: 0 0 8px rgba(0, 243, 255, 0.4), 0 0 15px rgba(0, 243, 255, 0.2);
+        color: #00f3ff; /* Cyan Néon (électric) */
+        text-shadow: 0 0 10px rgba(0, 243, 255, 0.5), 0 0 20px rgba(0, 243, 255, 0.3);
     }
 
     /* Typographie du texte classique */
     p, span, div, label {
         font-family: 'Rajdhani', sans-serif !important;
         font-size: 1.15rem;
-    }
-
-    /* Style des onglets (Tabs) */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 10px;
-        border-bottom: 2px solid rgba(176, 38, 255, 0.3);
-    }
-    .stTabs [data-baseweb="tab-list"] button {
-        background: rgba(15, 5, 30, 0.5);
-        border: 1px solid rgba(176, 38, 255, 0.5);
-        border-radius: 5px 5px 0 0;
-        color: #b026ff;
-        font-family: 'Orbitron', sans-serif;
-        text-transform: uppercase;
-        transition: all 0.3s;
-    }
-    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
-        background: linear-gradient(90deg, rgba(176,38,255,0.2), rgba(0,243,255,0.2));
-        border: 1px solid #00f3ff;
-        border-bottom: none;
-        color: #00f3ff;
-        box-shadow: 0 -5px 15px rgba(0, 243, 255, 0.2);
+        /* Ajout d'une ombre légère sur le texte pour la lisibilité sur le fond atmosphérique */
+        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
     }
 
     /* Boutons génériques (Glow Cyberpunk) */
@@ -228,7 +204,7 @@ st.markdown("""
     }
     div.stButton > button:hover { 
         background-color: rgba(0, 243, 255, 0.15); 
-        box-shadow: inset 0 0 20px rgba(0,243,255,0.3), 0 0 20px rgba(0,243,255,0.6);
+        box-shadow: inset 0 0 20px rgba(0,243,255,0.3), 0 0 25px rgba(0,243,255,0.7);
         transform: translateY(-2px); 
         color: #fff;
     }
@@ -1046,6 +1022,7 @@ elif page_choisie == "⚡ Analyse Vitesse":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
