@@ -329,28 +329,10 @@ with tab_analyse:
                 curr = timer['acc'] + (time.time() - timer['start'] if timer['run'] else 0)
                 st.markdown(f'<div class="big-time">{curr:.2f} s</div>', unsafe_allow_html=True)
                 
-                # --- AFFICHAGE DU CHRONO ET BOUTON DE CAPTURE ---
-                b1, b2, b3 = st.columns([1, 1, 1.5])
+                # --- AFFICHAGE DU CHRONO ---
+                b1, b2 = st.columns(2)
                 with b1: st.button("⏸️ PAUSE" if timer['run'] else "▶️ START", key=f"btn_{real_name}", on_click=toggle_timer, args=(real_name,), use_container_width=True)
                 with b2: st.button("🗑️ RAZ", key=f"rst_{real_name}", on_click=reset_timer, args=(real_name,), use_container_width=True)
-                
-                # NOUVEAU BOUTON : Attention, il faut passer la bonne clé 'args=(real_name,)'
-                with b3: 
-                    # J'utilise une petite astuce locale au lieu du callback pour éviter un re-run complet qui buggerait le chrono
-                    if st.button("📸 Capturer", key=f"cap_{real_name}", use_container_width=True):
-                        if 'holds' not in timer:
-                            timer['holds'] = []
-                        if curr > 0:
-                            timer['holds'].append(round(curr, 2))
-                            timer['start'] = time.time() if timer['run'] else 0
-                            timer['acc'] = 0.0
-                            st.rerun()
-
-                # Affichage des isométries mémorisées
-                holds_enregistres = timer.get('holds', [])
-                if holds_enregistres:
-                    holds_str = " ➔ ".join([f"⏱️ {h}s" for h in holds_enregistres])
-                    st.success(f"**Séquence capturée :** {holds_str}")
 
                 st.write("---")
                 
@@ -365,13 +347,13 @@ with tab_analyse:
                         with c_rpe:
                             rpe = st.slider("Intensité globale (RPE)", 1, 10, 7)
                         with c_info:
-                            # TST global = temps encore sur le chrono + la somme des isométries capturées
-                            total_time_calc = curr + sum(holds_enregistres)
-                            st.info(f"⏱️ Temps total : {total_time_calc:.2f} s")
+                            # On se base directement sur le temps du chrono
+                            total_time_calc = curr
+                            st.info(f"⏱️ Temps chrono : {total_time_calc:.2f} s")
 
                         st.write("---")
                         st.markdown("🔥 **Construction du Combo**")
-                        st.caption("Définis chaque étape. Si tu as capturé des isométries, les temps s'afficheront par défaut !")
+                        st.caption("Définis chaque étape. Pour l'isométrie (Statique), indique la durée en secondes dans 'Val'.")
 
                         athlete_figures = st.session_state.students_data[s_student].get('Figures', {"Mouvement basique": 1})
                         options_figures = ["-- Aucune --"] + list(athlete_figures.keys())
@@ -390,12 +372,10 @@ with tab_analyse:
                                 fig = st.selectbox("Figure", options_figures, index=default_idx, key=f"fig_{real_name}_{s_student}_{i}", label_visibility="collapsed")
                             
                             with c_type:
-                                default_type_idx = 1 if (i < len(holds_enregistres)) else 0
-                                etype = st.selectbox("Type", ["Dynamique", "Statique"], index=default_type_idx, key=f"etype_{real_name}_{s_student}_{i}", label_visibility="collapsed")
+                                etype = st.selectbox("Type", ["Dynamique", "Statique"], key=f"etype_{real_name}_{s_student}_{i}", label_visibility="collapsed")
                             
                             with c_val:
-                                val_defaut = float(holds_enregistres[i]) if i < len(holds_enregistres) else 1.0
-                                val = st.number_input("Val", min_value=0.1, step=0.5, value=val_defaut, key=f"val_{real_name}_{s_student}_{i}", label_visibility="collapsed")
+                                val = st.number_input("Val (reps/sec)", min_value=0.1, step=0.5, value=1.0, key=f"val_{real_name}_{s_student}_{i}", label_visibility="collapsed")
                                 
                             combo_selections.append({"Cat": cat, "Figure": fig, "Type": etype, "Valeur": val})
 
@@ -909,6 +889,7 @@ with tab_vbt:
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
