@@ -405,14 +405,18 @@ with tab_analyse:
                                         "Charge": str(round(charge, 2)).replace('.', ',')
                                     }
                                     
-                                    
-                                with st.spinner("⏳ Enregistrement dans le Cloud..."):
-                                    if add_training_data(new_training):
-                                        st.toast(f"✅ Combo enregistré ! (Charge: {charge:.1f} | Coeff: x{total_coeff:.2f})")
-                                        time.sleep(1)
-                                        st.rerun()
-                                    else: 
-                                        st.error("Erreur lors de l'enregistrement dans Google Sheets")
+                                    # --- NOUVEAU : Le spinner avec la bonne indentation ---
+                                    with st.spinner("⏳ Enregistrement dans le Cloud..."):
+                                        if add_training_data(new_training):
+                                            st.toast(f"✅ Combo enregistré ! (Charge: {charge:.1f} | Coeff: x{total_coeff:.2f})")
+                                            st.session_state.processed_files.add(real_name)
+                                            time.sleep(1)
+                                            st.rerun()
+                                        else: 
+                                            st.error("Erreur lors de l'enregistrement dans Google Sheets")
+                                            
+                                else:
+                                    st.warning("⚠️ La charge calculée est de 0 (le chrono était peut-être à 0) !")
                                     
                                 else:
                                     st.warning("Le chrono est à 0 !")
@@ -867,6 +871,7 @@ with tab_vbt:
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
