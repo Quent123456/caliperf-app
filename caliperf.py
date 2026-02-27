@@ -997,7 +997,16 @@ with tab_vbt:
                 # On lisse un peu plus pour éviter les pics parasites liés aux micro-erreurs de l'IA
                 df_vbt["Vitesse_lisse"] = df_vbt["Vitesse (m/s)"].rolling(window=5, center=True).mean().fillna(0)
                 
-                fig = px.line(df_vbt, x="Temps (s)", y="Vitesse_lisse", title=f"Vitesse absolue : {pt_mobile}")
+                fig = px.line(df_vbt, x="Temps (s)", y="Vitesse_lisse", title=f"VITESSE ABSOLUE : {pt_mobile}")
+fig.update_traces(line_color='#00f3ff', line_width=3) # Ligne Cyan
+fig.update_layout(
+    template="plotly_dark", 
+    yaxis_title="Vitesse (m/s)",
+    plot_bgcolor='rgba(0,0,0,0)', # Rend le fond du graph transparent
+    paper_bgcolor='rgba(0,0,0,0)',
+    font=dict(family="Orbitron", color="#e0e6ed")
+)
+fig.add_hline(y=v_max, line_dash="dot", line_color="#b026ff", annotation_text=f"Vmax: {v_max:.2f} m/s", annotation_font_color="#b026ff") # Ligne max Violette
                 fig.update_layout(template="plotly_dark", yaxis_title="Vitesse (m/s)")
                 
                 v_max = df_vbt["Vitesse_lisse"].max()
@@ -1006,6 +1015,7 @@ with tab_vbt:
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
