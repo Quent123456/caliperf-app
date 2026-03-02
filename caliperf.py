@@ -267,6 +267,15 @@ st.markdown("""
         border-color: #00f3ff !important;
         box-shadow: 0 0 10px rgba(0,243,255,0.4) !important;
     }
+    /* --- RÉPARATION DE L'ICÔNE SIDEBAR (MATERIAL SYMBOLS) --- */
+    span.material-symbols-rounded, 
+    [data-testid="stSidebarCollapseButton"] span,
+    [data-testid="collapsedControl"] span {
+        font-family: 'Material Symbols Rounded', sans-serif !important;
+        font-size: 24px !important;
+        text-shadow: 0 0 10px rgba(0, 243, 255, 0.5) !important; /* Garde ton effet néon */
+        color: #00f3ff !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -1022,6 +1031,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
