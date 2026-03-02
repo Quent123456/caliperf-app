@@ -148,10 +148,10 @@ st.markdown("""
     <style>
     /* Importation des polices futuristes depuis Google Fonts */
     @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0');
 
-    /* --- FOND D'ÉCRAN PERSONNALISÉ (Inspiré de ta référence) --- */
+    /* --- FOND D'ÉCRAN PERSONNALISÉ --- */
     [data-testid="stAppViewContainer"] {
-        /* Utilisation d'une image de brouillard urbain nocturne avec lumières bleues */
         background-image: linear-gradient(to top, rgba(5, 1, 31, 1) 0%, rgba(16, 10, 44, 0.8) 50%, rgba(22, 10, 44, 0.4) 100%), 
                           url("https://images.unsplash.com/photo-1563089145-599997674d42?q=80&w=2070&auto=format&fit=crop");
         background-size: cover;
@@ -165,7 +165,7 @@ st.markdown("""
         background-color: rgba(0,0,0,0);
     }
 
-    /* Rendre la sidebar encore plus "fumée" avec un effet verre (Glassmorphism renforcé) */
+    /* Rendre la sidebar encore plus "fumée" avec un effet verre */
     [data-testid="stSidebar"] {
         background-color: rgba(15, 5, 30, 0.8) !important;
         backdrop-filter: blur(15px);
@@ -177,7 +177,7 @@ st.markdown("""
         font-family: 'Orbitron', sans-serif !important; 
         text-transform: uppercase; 
         letter-spacing: 2px; 
-        color: #00f3ff; /* Cyan Néon (électric) */
+        color: #00f3ff; 
         text-shadow: 0 0 10px rgba(0, 243, 255, 0.5), 0 0 20px rgba(0, 243, 255, 0.3);
     }
 
@@ -185,8 +185,17 @@ st.markdown("""
     p, span, div, label {
         font-family: 'Rajdhani', sans-serif !important;
         font-size: 1.15rem;
-        /* Ajout d'une ombre légère sur le texte pour la lisibilité sur le fond atmosphérique */
         text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+    }
+
+    /* --- RÉPARATION DE L'ICÔNE SIDEBAR (EXCLUSION DU RAJDHANI) --- */
+    span.material-symbols-rounded, 
+    [data-testid="stSidebarCollapseButton"] span,
+    [data-testid="collapsedControl"] span {
+        font-family: 'Material Symbols Rounded' !important;
+        font-size: 28px !important;
+        text-shadow: 0 0 10px rgba(0, 243, 255, 0.5) !important;
+        color: #00f3ff !important;
     }
 
     /* Boutons génériques (Glow Cyberpunk) */
@@ -269,7 +278,6 @@ st.markdown("""
     }
     </style>
 """, unsafe_allow_html=True)
-
 def hash_password(password):
     """Transforme un mot de passe en texte clair en un hachage sécurisé SHA-256 avec un sel"""
     # On récupère le sel dans les secrets (ou on en met un par défaut si oublié)
