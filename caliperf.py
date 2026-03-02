@@ -222,6 +222,45 @@ st.markdown("""
         border-color: #d475ff;
     }
 
+    /* --- REMPLACEMENT DE L'ICÔNE DE LA SIDEBAR (HAMBURGER MENU) --- */
+    
+    /* 1. Bouton quand la sidebar est fermée (en haut à gauche) */
+    [data-testid="collapsedControl"] svg {
+        display: none !important; /* On cache la double flèche par défaut */
+    }
+    [data-testid="collapsedControl"]::before {
+        content: "☰"; /* Le caractère Unicode du menu Hamburger */
+        font-size: 28px;
+        color: #00f3ff; /* Bleu électrique */
+        text-shadow: 0 0 10px rgba(0, 243, 255, 0.5), 0 0 20px rgba(0, 243, 255, 0.3);
+        font-weight: bold;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.3s ease;
+    }
+    [data-testid="collapsedControl"]:hover::before {
+        transform: scale(1.1);
+        text-shadow: 0 0 15px rgba(0, 243, 255, 0.8), 0 0 25px rgba(0, 243, 255, 0.5);
+    }
+
+    /* 2. Bouton quand la sidebar est ouverte (Croix de fermeture ou Hamburger) */
+    [data-testid="stSidebarCollapseButton"] svg {
+        display: none !important; /* On cache l'icône par défaut */
+    }
+    [data-testid="stSidebarCollapseButton"]::before {
+        content: "☰"; /* Tu peux remplacer par "✖" si tu préfères une croix pour fermer */
+        font-size: 24px;
+        color: #00f3ff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.3s ease;
+    }
+    [data-testid="stSidebarCollapseButton"]:hover::before {
+        color: #b026ff; /* Devient violet fluo au survol pour le dynamisme */
+    }
+
     /* Cartes de métriques (Glassmorphism + Neon Border) */
     .metric-card { 
         background: rgba(15, 5, 30, 0.6); 
@@ -1022,6 +1061,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
