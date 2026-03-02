@@ -222,41 +222,38 @@ st.markdown("""
         border-color: #d475ff;
     }
 
-    /* --- REMPLACEMENT DÉFINITIF DE L'ICÔNE (HAMBURGER) --- */
+    /* --- OPTION NUCLÉAIRE : SUPPRESSION DÉFINITIVE DU TEXTE NATIF --- */
 
-    /* 1. On cible les boutons cliquables, on rend le texte invisible et on le réduit à 0px */
-    [data-testid="collapsedControl"] button,
-    [data-testid="stSidebarCollapseButton"] {
-        font-size: 0px !important; 
-        color: transparent !important;
-        background: transparent !important;
-    }
-
-    /* 2. On désactive les icônes SVG natives de Streamlit au cas où elles s'affichent */
-    [data-testid="collapsedControl"] svg,
-    [data-testid="stSidebarCollapseButton"] svg {
+    /* 1. On désintègre TOUT le contenu interne (adieu le span avec le texte dégueulasse) */
+    [data-testid="collapsedControl"] button *,
+    [data-testid="stSidebarCollapseButton"] * {
         display: none !important;
     }
 
-    /* 3. On injecte notre menu Hamburger DANS le bouton, pour qu'il reste cliquable */
-    [data-testid="collapsedControl"] button::before,
-    [data-testid="stSidebarCollapseButton"]::before {
+    /* 2. On s'assure que les conteneurs n'ont plus aucune trace de texte fantôme */
+    [data-testid="collapsedControl"] button,
+    [data-testid="stSidebarCollapseButton"] {
+        color: transparent !important;
+        font-size: 0px !important;
+        background: transparent !important;
+    }
+
+    /* 3. On fait spawn notre propre icône Hamburger toute propre */
+    [data-testid="collapsedControl"] button::after,
+    [data-testid="stSidebarCollapseButton"]::after {
         content: "☰" !important;
+        display: block !important;
         font-size: 32px !important;
-        line-height: 1 !important;
         color: #00f3ff !important;
         text-shadow: 0 0 10px rgba(0, 243, 255, 0.5), 0 0 15px rgba(0, 243, 255, 0.3) !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
         visibility: visible !important;
         transition: all 0.3s ease-in-out;
     }
 
-    /* 4. L'effet au survol / toucher */
-    [data-testid="collapsedControl"] button:hover::before,
-    [data-testid="stSidebarCollapseButton"]:hover::before {
-        color: #b026ff !important; /* Passe au violet cyberpunk */
+    /* 4. L'effet néon au toucher */
+    [data-testid="collapsedControl"] button:hover::after,
+    [data-testid="stSidebarCollapseButton"]:hover::after {
+        color: #b026ff !important;
         transform: scale(1.1);
         text-shadow: 0 0 15px rgba(176, 38, 255, 0.6) !important;
     }
@@ -1060,6 +1057,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
