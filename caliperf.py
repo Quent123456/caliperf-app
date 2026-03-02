@@ -222,43 +222,44 @@ st.markdown("""
         border-color: #d475ff;
     }
 
-    /* --- REMPLACEMENT DE L'ICÔNE DE LA SIDEBAR (HAMBURGER MENU) --- */
+    /* --- REMPLACEMENT DE L'ICÔNE DE LA SIDEBAR (CORRECTION TEXTE) --- */
     
-    /* 1. Bouton quand la sidebar est fermée (en haut à gauche) */
-    [data-testid="collapsedControl"] svg {
-        display: none !important; /* On cache la double flèche par défaut */
+    /* 1. On cache le texte brut et les SVG natifs de Streamlit */
+    [data-testid="collapsedControl"], 
+    [data-testid="stSidebarCollapseButton"] {
+        font-size: 0px !important; 
+        color: transparent !important;
     }
-    [data-testid="collapsedControl"]::before {
-        content: "☰"; /* Le caractère Unicode du menu Hamburger */
-        font-size: 28px;
-        color: #00f3ff; /* Bleu électrique */
-        text-shadow: 0 0 10px rgba(0, 243, 255, 0.5), 0 0 20px rgba(0, 243, 255, 0.3);
-        font-weight: bold;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: all 0.3s ease;
-    }
-    [data-testid="collapsedControl"]:hover::before {
-        transform: scale(1.1);
-        text-shadow: 0 0 15px rgba(0, 243, 255, 0.8), 0 0 25px rgba(0, 243, 255, 0.5);
+    [data-testid="collapsedControl"] svg,
+    [data-testid="stSidebarCollapseButton"] svg {
+        display: none !important;
     }
 
-    /* 2. Bouton quand la sidebar est ouverte (Croix de fermeture ou Hamburger) */
-    [data-testid="stSidebarCollapseButton"] svg {
-        display: none !important; /* On cache l'icône par défaut */
+    /* 2. Bouton pour OUVRIR la sidebar (Hamburger) */
+    [data-testid="collapsedControl"]::after {
+        content: "☰";
+        font-size: 32px !important; /* On redonne une taille normale à NOTRE icône */
+        color: #00f3ff !important;
+        text-shadow: 0 0 10px rgba(0, 243, 255, 0.5), 0 0 20px rgba(0, 243, 255, 0.3);
+        display: block;
+        transition: transform 0.3s ease;
     }
-    [data-testid="stSidebarCollapseButton"]::before {
-        content: "☰"; /* Tu peux remplacer par "✖" si tu préfères une croix pour fermer */
-        font-size: 24px;
-        color: #00f3ff;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: all 0.3s ease;
+    [data-testid="collapsedControl"]:hover::after {
+        transform: scale(1.1);
+        color: #b026ff !important;
     }
-    [data-testid="stSidebarCollapseButton"]:hover::before {
-        color: #b026ff; /* Devient violet fluo au survol pour le dynamisme */
+
+    /* 3. Bouton pour FERMER la sidebar (Croix ou Hamburger) */
+    [data-testid="stSidebarCollapseButton"]::after {
+        content: "☰"; /* Tu peux mettre "✖" si tu préfères une croix ! */
+        font-size: 28px !important;
+        color: #00f3ff !important;
+        display: block;
+        transition: transform 0.3s ease;
+    }
+    [data-testid="stSidebarCollapseButton"]:hover::after {
+        transform: scale(1.1);
+        color: #b026ff !important;
     }
 
     /* Cartes de métriques (Glassmorphism + Neon Border) */
@@ -1061,6 +1062,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
