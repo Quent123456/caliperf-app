@@ -188,27 +188,14 @@ st.markdown("""
         text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
     }
 
-    /* --- RÉPARATION DE L'ICÔNE SIDEBAR (QUAND FERMÉ) --- */
+    /* --- RÉPARATION DE L'ICÔNE SIDEBAR (EXCLUSION DU RAJDHANI) --- */
+    span.material-symbols-rounded, 
+    [data-testid="stSidebarCollapseButton"] span,
     [data-testid="collapsedControl"] span {
-        font-family: 'Material Symbols Rounded' !important; /* Force la police d'icônes */
-        font-size: 32px !important; /* Taille de l'icône */
-        text-shadow: 0 0 10px rgba(0, 243, 255, 0.5), 0 0 20px rgba(0, 243, 255, 0.3) !important; /* Glow néon */
-        color: #00f3ff !important; /* Couleur cyan */
-    }
-
-    /* --- REMPLACEMENT DU TEXTE PAR L'ICÔNE HAMBURGER (MENU FERMÉ) --- */
-    [data-testid="collapsedControl"] span {
-        visibility: hidden; /* Cache le texte brut sans prendre de place */
-    }
-    [data-testid="collapsedControl"]::before {
-        content: "☰" !important; /* Caractère hamburger */
-        visibility: visible; /* Affiche l'icône */
-        position: absolute; /* Positionne l'icône par-dessus */
-        left: 0; /* Aligne à gauche */
-        font-family: Arial, sans-serif !important; /* Police standard pour le caractère unicode */
-        font-size: 32px !important; /* Taille */
-        color: #00f3ff !important; /* Couleur cyan */
-        text-shadow: 0 0 10px rgba(0, 243, 255, 0.5), 0 0 20px rgba(0, 243, 255, 0.3) !important; /* Glow néon */
+        font-family: 'Material Symbols Rounded' !important;
+        font-size: 28px !important;
+        text-shadow: 0 0 10px rgba(0, 243, 255, 0.5) !important;
+        color: #00f3ff !important;
     }
 
     /* Boutons génériques (Glow Cyberpunk) */
@@ -1043,6 +1030,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
