@@ -224,36 +224,42 @@ st.markdown("""
 
     /* --- REMPLACEMENT DÉFINITIF DE L'ICÔNE (HAMBURGER) --- */
 
-    /* 1. On cache tout le contenu natif (le texte moche) mais on garde la zone cliquable */
-    [data-testid="collapsedControl"],
+    /* 1. On cible les boutons cliquables, on rend le texte invisible et on le réduit à 0px */
+    [data-testid="collapsedControl"] button,
     [data-testid="stSidebarCollapseButton"] {
-        visibility: hidden !important; 
-        position: relative !important;
+        font-size: 0px !important; 
+        color: transparent !important;
+        background: transparent !important;
     }
 
-    /* 2. On injecte notre menu et on le force à être VISIBLE */
-    [data-testid="collapsedControl"]::after,
-    [data-testid="stSidebarCollapseButton"]::after {
-        content: "☰";
-        visibility: visible !important;
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%); /* Centrage millimétré */
+    /* 2. On désactive les icônes SVG natives de Streamlit au cas où elles s'affichent */
+    [data-testid="collapsedControl"] svg,
+    [data-testid="stSidebarCollapseButton"] svg {
+        display: none !important;
+    }
+
+    /* 3. On injecte notre menu Hamburger DANS le bouton, pour qu'il reste cliquable */
+    [data-testid="collapsedControl"] button::before,
+    [data-testid="stSidebarCollapseButton"]::before {
+        content: "☰" !important;
         font-size: 32px !important;
+        line-height: 1 !important;
         color: #00f3ff !important;
-        text-shadow: 0 0 10px rgba(0, 243, 255, 0.5), 0 0 20px rgba(0, 243, 255, 0.3);
-        transition: all 0.3s ease;
+        text-shadow: 0 0 10px rgba(0, 243, 255, 0.5), 0 0 15px rgba(0, 243, 255, 0.3) !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        visibility: visible !important;
+        transition: all 0.3s ease-in-out;
     }
 
-    /* 3. L'effet néon au survol / clic */
-    [data-testid="collapsedControl"]:hover::after,
-    [data-testid="stSidebarCollapseButton"]:hover::after {
-        color: #b026ff !important;
-        transform: translate(-50%, -50%) scale(1.1);
-        text-shadow: 0 0 15px rgba(176, 38, 255, 0.6);
+    /* 4. L'effet au survol / toucher */
+    [data-testid="collapsedControl"] button:hover::before,
+    [data-testid="stSidebarCollapseButton"]:hover::before {
+        color: #b026ff !important; /* Passe au violet cyberpunk */
+        transform: scale(1.1);
+        text-shadow: 0 0 15px rgba(176, 38, 255, 0.6) !important;
     }
-
     /* Cartes de métriques (Glassmorphism + Neon Border) */
     .metric-card { 
         background: rgba(15, 5, 30, 0.6); 
@@ -1054,6 +1060,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
