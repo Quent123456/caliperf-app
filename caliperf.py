@@ -222,37 +222,39 @@ st.markdown("""
         border-color: #d475ff;
     }
 
-    /* --- OPTION NUCLÉAIRE : SUPPRESSION DÉFINITIVE DU TEXTE NATIF --- */
+    /* --- OPTION DÉFINITIVE : SUPPRESSION DU TEXTE SUR TOUS LES ÉTATS --- */
 
-    /* 1. On désintègre TOUT le contenu interne (adieu le span avec le texte dégueulasse) */
-    [data-testid="collapsedControl"] button *,
-    [data-testid="stSidebarCollapseButton"] * {
+    /* 1. On cache TOUT le contenu direct (SVG, texte, span) dans les zones de contrôle */
+    [data-testid="collapsedControl"] > *,
+    [data-testid="stSidebarCollapseButton"] > * {
         display: none !important;
     }
 
-    /* 2. On s'assure que les conteneurs n'ont plus aucune trace de texte fantôme */
-    [data-testid="collapsedControl"] button,
+    /* 2. On s'assure que le conteneur lui-même est invisible au niveau du texte natif */
+    [data-testid="collapsedControl"],
     [data-testid="stSidebarCollapseButton"] {
         color: transparent !important;
+        background-color: transparent !important;
         font-size: 0px !important;
-        background: transparent !important;
+        padding: 5px !important;
     }
 
     /* 3. On fait spawn notre propre icône Hamburger toute propre */
-    [data-testid="collapsedControl"] button::after,
-    [data-testid="stSidebarCollapseButton"]::after {
+    [data-testid="collapsedControl"]::before,
+    [data-testid="stSidebarCollapseButton"]::before {
         content: "☰" !important;
-        display: block !important;
-        font-size: 32px !important;
         color: #00f3ff !important;
+        font-size: 32px !important;
+        display: block !important;
         text-shadow: 0 0 10px rgba(0, 243, 255, 0.5), 0 0 15px rgba(0, 243, 255, 0.3) !important;
+        line-height: 1 !important;
         visibility: visible !important;
         transition: all 0.3s ease-in-out;
     }
 
     /* 4. L'effet néon au toucher */
-    [data-testid="collapsedControl"] button:hover::after,
-    [data-testid="stSidebarCollapseButton"]:hover::after {
+    [data-testid="collapsedControl"]:hover::before,
+    [data-testid="stSidebarCollapseButton"]:hover::before {
         color: #b026ff !important;
         transform: scale(1.1);
         text-shadow: 0 0 15px rgba(176, 38, 255, 0.6) !important;
@@ -1057,6 +1059,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
