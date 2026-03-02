@@ -796,7 +796,7 @@ elif page_choisie == "📊 Mon Suivi":
         else:
             st.warning("Aucun élève inscrit dans la base.")
             
-elif page_choisie == "⚡ Analyse Vitesse":
+elif page_choisie == "⚡ Analyse Vitesse (VBT)":
     st.header("⚡ Analyse Biomécanique IA (VBT)")
     st.markdown("L'IA détecte tes articulations. Analyse la vitesse absolue de ton mouvement (ex: montée des pieds en Planche Press).")
 
@@ -1022,6 +1022,7 @@ elif page_choisie == "⚡ Analyse Vitesse":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
