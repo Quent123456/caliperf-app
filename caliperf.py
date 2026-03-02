@@ -222,41 +222,53 @@ st.markdown("""
         border-color: #d475ff;
     }
 
-    /* --- OPTION DÉFINITIVE : SUPPRESSION DU TEXTE SUR TOUS LES ÉTATS --- */
-
-    /* 1. On cache TOUT le contenu direct (SVG, texte, span) dans les zones de contrôle */
-    [data-testid="collapsedControl"] > *,
-    [data-testid="stSidebarCollapseButton"] > * {
+    /* --- L'ÉRADICATION DU TEXTE FANTÔME (HAMBURGER MENU) --- */
+    
+    /* 1. On cible spécifiquement la balise Google Material pour la désintégrer */
+    [data-testid="collapsedControl"] span.material-symbols-rounded,
+    [data-testid="stSidebarCollapseButton"] span.material-symbols-rounded,
+    [data-testid="collapsedControl"] svg,
+    [data-testid="stSidebarCollapseButton"] svg {
         display: none !important;
+        opacity: 0 !important;
+        font-size: 0px !important;
+        color: transparent !important;
     }
 
-    /* 2. On s'assure que le conteneur lui-même est invisible au niveau du texte natif */
-    [data-testid="collapsedControl"],
-    [data-testid="stSidebarCollapseButton"] {
+    /* 2. On rend le vrai bouton de Streamlit 100% transparent */
+    [data-testid="collapsedControl"] button,
+    [data-testid="stSidebarCollapseButton"] button {
         color: transparent !important;
         background-color: transparent !important;
-        font-size: 0px !important;
-        padding: 5px !important;
+        border: none !important;
     }
 
-    /* 3. On fait spawn notre propre icône Hamburger toute propre */
-    [data-testid="collapsedControl"]::before,
-    [data-testid="stSidebarCollapseButton"]::before {
+    /* 3. On crée un bloc de référence pour ancrer notre icône */
+    [data-testid="collapsedControl"],
+    [data-testid="stSidebarCollapseButton"] {
+        position: relative !important;
+    }
+
+    /* 4. On dessine ton beau menu Hamburger par-dessus, centré et indépendant */
+    [data-testid="collapsedControl"]::after,
+    [data-testid="stSidebarCollapseButton"]::after {
         content: "☰" !important;
-        color: #00f3ff !important;
+        position: absolute !important;
+        top: 50% !important;
+        left: 50% !important;
+        transform: translate(-50%, -50%) !important;
         font-size: 32px !important;
-        display: block !important;
-        text-shadow: 0 0 10px rgba(0, 243, 255, 0.5), 0 0 15px rgba(0, 243, 255, 0.3) !important;
-        line-height: 1 !important;
-        visibility: visible !important;
-        transition: all 0.3s ease-in-out;
+        color: #00f3ff !important;
+        text-shadow: 0 0 10px rgba(0, 243, 255, 0.5), 0 0 20px rgba(0, 243, 255, 0.3) !important;
+        pointer-events: none !important; /* Le clic traverse l'icône pour activer le bouton caché en dessous */
+        transition: all 0.3s ease !important;
     }
 
-    /* 4. L'effet néon au toucher */
-    [data-testid="collapsedControl"]:hover::before,
-    [data-testid="stSidebarCollapseButton"]:hover::before {
+    /* 5. L'effet néon au survol */
+    [data-testid="collapsedControl"]:hover::after,
+    [data-testid="stSidebarCollapseButton"]:hover::after {
         color: #b026ff !important;
-        transform: scale(1.1);
+        transform: translate(-50%, -50%) scale(1.15) !important;
         text-shadow: 0 0 15px rgba(176, 38, 255, 0.6) !important;
     }
     /* Cartes de métriques (Glassmorphism + Neon Border) */
@@ -1059,6 +1071,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
