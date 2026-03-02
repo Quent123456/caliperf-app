@@ -143,7 +143,7 @@ def capture_hold(video_key):
         timer['start'] = time.time() if timer['run'] else 0
         timer['acc'] = 0.0
 
-# --- CSS / STYLE ATMOSPHÉRIQUE NOIR & BLEU ÉLECTRIQUE (Style de référence) ---
+# --- CSS / STYLE ATMOSPHÉRIQUE NOIR & BLEU ÉLECTRIQUE ---
 st.markdown("""
     <style>
     /* Importation des polices futuristes depuis Google Fonts */
@@ -222,55 +222,6 @@ st.markdown("""
         border-color: #d475ff;
     }
 
-    /* --- L'ÉRADICATION DU TEXTE FANTÔME (HAMBURGER MENU) --- */
-    
-    /* 1. On cible spécifiquement la balise Google Material pour la désintégrer */
-    [data-testid="collapsedControl"] span.material-symbols-rounded,
-    [data-testid="stSidebarCollapseButton"] span.material-symbols-rounded,
-    [data-testid="collapsedControl"] svg,
-    [data-testid="stSidebarCollapseButton"] svg {
-        display: none !important;
-        opacity: 0 !important;
-        font-size: 0px !important;
-        color: transparent !important;
-    }
-
-    /* 2. On rend le vrai bouton de Streamlit 100% transparent */
-    [data-testid="collapsedControl"] button,
-    [data-testid="stSidebarCollapseButton"] button {
-        color: transparent !important;
-        background-color: transparent !important;
-        border: none !important;
-    }
-
-    /* 3. On crée un bloc de référence pour ancrer notre icône */
-    [data-testid="collapsedControl"],
-    [data-testid="stSidebarCollapseButton"] {
-        position: relative !important;
-    }
-
-    /* 4. On dessine ton beau menu Hamburger par-dessus, centré et indépendant */
-    [data-testid="collapsedControl"]::after,
-    [data-testid="stSidebarCollapseButton"]::after {
-        content: "☰" !important;
-        position: absolute !important;
-        top: 50% !important;
-        left: 50% !important;
-        transform: translate(-50%, -50%) !important;
-        font-size: 32px !important;
-        color: #00f3ff !important;
-        text-shadow: 0 0 10px rgba(0, 243, 255, 0.5), 0 0 20px rgba(0, 243, 255, 0.3) !important;
-        pointer-events: none !important; /* Le clic traverse l'icône pour activer le bouton caché en dessous */
-        transition: all 0.3s ease !important;
-    }
-
-    /* 5. L'effet néon au survol */
-    [data-testid="collapsedControl"]:hover::after,
-    [data-testid="stSidebarCollapseButton"]:hover::after {
-        color: #b026ff !important;
-        transform: translate(-50%, -50%) scale(1.15) !important;
-        text-shadow: 0 0 15px rgba(176, 38, 255, 0.6) !important;
-    }
     /* Cartes de métriques (Glassmorphism + Neon Border) */
     .metric-card { 
         background: rgba(15, 5, 30, 0.6); 
@@ -1071,6 +1022,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
