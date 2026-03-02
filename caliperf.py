@@ -222,44 +222,36 @@ st.markdown("""
         border-color: #d475ff;
     }
 
-    /* --- REMPLACEMENT DE L'ICÔNE DE LA SIDEBAR (CORRECTION TEXTE) --- */
-    
-    /* 1. On cache le texte brut et les SVG natifs de Streamlit */
-    [data-testid="collapsedControl"], 
+    /* --- REMPLACEMENT DÉFINITIF DE L'ICÔNE (HAMBURGER) --- */
+
+    /* 1. On cache tout le contenu natif (le texte moche) mais on garde la zone cliquable */
+    [data-testid="collapsedControl"],
     [data-testid="stSidebarCollapseButton"] {
-        font-size: 0px !important; 
-        color: transparent !important;
-    }
-    [data-testid="collapsedControl"] svg,
-    [data-testid="stSidebarCollapseButton"] svg {
-        display: none !important;
+        visibility: hidden !important; 
+        position: relative !important;
     }
 
-    /* 2. Bouton pour OUVRIR la sidebar (Hamburger) */
-    [data-testid="collapsedControl"]::after {
+    /* 2. On injecte notre menu et on le force à être VISIBLE */
+    [data-testid="collapsedControl"]::after,
+    [data-testid="stSidebarCollapseButton"]::after {
         content: "☰";
-        font-size: 32px !important; /* On redonne une taille normale à NOTRE icône */
+        visibility: visible !important;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%); /* Centrage millimétré */
+        font-size: 32px !important;
         color: #00f3ff !important;
         text-shadow: 0 0 10px rgba(0, 243, 255, 0.5), 0 0 20px rgba(0, 243, 255, 0.3);
-        display: block;
-        transition: transform 0.3s ease;
-    }
-    [data-testid="collapsedControl"]:hover::after {
-        transform: scale(1.1);
-        color: #b026ff !important;
+        transition: all 0.3s ease;
     }
 
-    /* 3. Bouton pour FERMER la sidebar (Croix ou Hamburger) */
-    [data-testid="stSidebarCollapseButton"]::after {
-        content: "☰"; /* Tu peux mettre "✖" si tu préfères une croix ! */
-        font-size: 28px !important;
-        color: #00f3ff !important;
-        display: block;
-        transition: transform 0.3s ease;
-    }
+    /* 3. L'effet néon au survol / clic */
+    [data-testid="collapsedControl"]:hover::after,
     [data-testid="stSidebarCollapseButton"]:hover::after {
-        transform: scale(1.1);
         color: #b026ff !important;
+        transform: translate(-50%, -50%) scale(1.1);
+        text-shadow: 0 0 15px rgba(176, 38, 255, 0.6);
     }
 
     /* Cartes de métriques (Glassmorphism + Neon Border) */
@@ -1062,6 +1054,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
