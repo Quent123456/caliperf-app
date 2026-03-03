@@ -447,133 +447,140 @@ elif page_choisie == "🎥 Espace Vidéo":
 
         st.divider()
         
-        uploaded_file = st.file_uploader("📥 Charger la vidéo à analyser (1 à la fois)", type=['mp4', 'mov', 'avi'], accept_multiple_files=False)
+        # --- MODIFICATION ICI : accept_multiple_files=True ---
+        uploaded_files = st.file_uploader("📥 Charger les vidéos à analyser (Multiples possibles)", type=['mp4', 'mov', 'avi'], accept_multiple_files=True)
 
-        if uploaded_file:
-            real_name = uploaded_file.name
-            if real_name in st.session_state.processed_files:
-                st.success(f"✅ {real_name} déjà traitée !")
-            else:
-                st.info(f"⏳ Analyse en cours : {real_name}")
-            
-            if real_name not in st.session_state.timers:
-                st.session_state.timers[real_name] = {'start': 0, 'acc': 0.0, 'run': False}
-            timer = st.session_state.timers[real_name]
-
-            c_vid, c_tools = st.columns([1.5, 1])
-            with c_vid: st.video(uploaded_file)
-            with c_tools:
-                st.subheader("⏱️ Chrono")
-                curr = timer['acc'] + (time.time() - timer['start'] if timer['run'] else 0)
-                st.markdown(f'<div class="big-time">{curr:.2f} s</div>', unsafe_allow_html=True)
+        if uploaded_files:
+            # On boucle sur chaque vidéo chargée
+            for uploaded_file in uploaded_files:
+                real_name = uploaded_file.name
                 
-                # --- AFFICHAGE DU CHRONO ---
-                b1, b2 = st.columns(2)
-                with b1: st.button("⏸️ PAUSE" if timer['run'] else "▶️ START", key=f"btn_{real_name}", on_click=toggle_timer, args=(real_name,), use_container_width=True)
-                with b2: st.button("🗑️ RAZ", key=f"rst_{real_name}", on_click=reset_timer, args=(real_name,), use_container_width=True)
-
-                st.write("---")
+                # On détermine si l'expander doit être ouvert par défaut (ouvert si non traité, fermé si déjà traité)
+                is_processed = real_name in st.session_state.processed_files
                 
-                # --- FORMULAIRE ET SÉLECTION DE L'ATHLÈTE ---
-                s_keys = list(st.session_state.students_data.keys())
-                
-                if s_keys:
-                    s_student = st.selectbox("Athlète", s_keys, key=f"sel_athlete_{real_name}")
+                with st.expander(f"🎬 Vidéo : {real_name}", expanded=not is_processed):
                     
-                    with st.form(key=f"f_{real_name}", clear_on_submit=True):
-                        c_rpe, c_info = st.columns([2, 1])
-                        with c_rpe:
-                            rpe = st.slider("Intensité globale (RPE)", 1, 10, 7)
-                        with c_info:
-                            # On se base directement sur le temps du chrono
-                            total_time_calc = curr
-                            st.info(f"⏱️ Temps chrono : {total_time_calc:.2f} s")
+                    if is_processed:
+                        st.success(f"✅ {real_name} déjà traitée !")
+                    else:
+                        st.info(f"⏳ Analyse en cours : {real_name}")
+                    
+                    if real_name not in st.session_state.timers:
+                        st.session_state.timers[real_name] = {'start': 0, 'acc': 0.0, 'run': False}
+                    timer = st.session_state.timers[real_name]
 
-                        st.write("---")
-                        st.markdown("🔥 **Construction du Combo**")
-                        st.caption("Définis chaque étape. Pour l'isométrie (Statique), indique la durée en secondes dans 'Val'.")
+                    c_vid, c_tools = st.columns([1.5, 1])
+                    with c_vid: st.video(uploaded_file)
+                    with c_tools:
+                        st.subheader("⏱️ Chrono")
+                        curr = timer['acc'] + (time.time() - timer['start'] if timer['run'] else 0)
+                        st.markdown(f'<div class="big-time">{curr:.2f} s</div>', unsafe_allow_html=True)
+                        
+                        # --- AFFICHAGE DU CHRONO ---
+                        b1, b2 = st.columns(2)
+                        with b1: st.button("⏸️ PAUSE" if timer['run'] else "▶️ START", key=f"btn_{real_name}", on_click=toggle_timer, args=(real_name,), use_container_width=True)
+                        with b2: st.button("🗑️ RAZ", key=f"rst_{real_name}", on_click=reset_timer, args=(real_name,), use_container_width=True)
 
-                        athlete_figures = st.session_state.students_data[s_student].get('Figures', {"Mouvement basique": 1})
-                        options_figures = ["-- Aucune --"] + list(athlete_figures.keys())
+                    st.write("---")
+                    
+                    # --- FORMULAIRE ET SÉLECTION DE L'ATHLÈTE ---
+                    s_keys = list(st.session_state.students_data.keys())
+                    
+                    if s_keys:
+                        s_student = st.selectbox("Athlète", s_keys, key=f"sel_athlete_{real_name}")
                         
-                        combo_selections = []
-                        
-                        # --- LES 5 LIGNES DYNAMIQUES DU COMBO ---
-                        for i in range(5):
-                            c_cat, c_fig, c_type, c_val = st.columns([1.2, 2, 1.2, 1])
+                        with st.form(key=f"f_{real_name}", clear_on_submit=True):
+                            c_rpe, c_info = st.columns([2, 1])
+                            with c_rpe:
+                                rpe = st.slider("Intensité globale (RPE)", 1, 10, 7, key=f"rpe_{real_name}")
+                            with c_info:
+                                # On se base directement sur le temps du chrono
+                                total_time_calc = curr
+                                st.info(f"⏱️ Temps chrono : {total_time_calc:.2f} s")
+
+                            st.write("---")
+                            st.markdown("🔥 **Construction du Combo**")
+                            st.caption("Définis chaque étape. Pour l'isométrie (Statique), indique la durée en secondes dans 'Val'.")
+
+                            athlete_figures = st.session_state.students_data[s_student].get('Figures', {"Mouvement basique": 1})
+                            options_figures = ["-- Aucune --"] + list(athlete_figures.keys())
                             
-                            with c_cat:
-                                cat = st.selectbox("Catégorie", ["Push", "Pull", "Mixte"], key=f"cat_{real_name}_{s_student}_{i}", label_visibility="collapsed")
+                            combo_selections = []
                             
-                            with c_fig:
-                                default_idx = 1 if i == 0 else 0 
-                                fig = st.selectbox("Figure", options_figures, index=default_idx, key=f"fig_{real_name}_{s_student}_{i}", label_visibility="collapsed")
-                            
-                            with c_type:
-                                etype = st.selectbox("Type", ["Dynamique", "Statique"], key=f"etype_{real_name}_{s_student}_{i}", label_visibility="collapsed")
-                            
-                            with c_val:
-                                val = st.number_input("Val (reps/sec)", min_value=0.1, step=0.5, value=1.0, key=f"val_{real_name}_{s_student}_{i}", label_visibility="collapsed")
+                            # --- LES 5 LIGNES DYNAMIQUES DU COMBO ---
+                            for i in range(5):
+                                c_cat, c_fig, c_type, c_val = st.columns([1.2, 2, 1.2, 1])
                                 
-                            combo_selections.append({"Cat": cat, "Figure": fig, "Type": etype, "Valeur": val})
-
-                        st.write("---")
-
-                        if st.form_submit_button("☁️ ENVOYER DONNÉES", type="primary", use_container_width=True):
-                            total_coeff = 0
-                            noms_figures_realisees = []
-
-                            for item in combo_selections:
-                                fig_name = item["Figure"]
-                                if fig_name != "-- Aucune --":
-                                    cat = item["Cat"]
-                                    etype = item["Type"]
-                                    val = item["Valeur"]
+                                with c_cat:
+                                    cat = st.selectbox("Catégorie", ["Push", "Pull", "Mixte"], key=f"cat_{real_name}_{s_student}_{i}", label_visibility="collapsed")
+                                
+                                with c_fig:
+                                    default_idx = 1 if i == 0 else 0 
+                                    fig = st.selectbox("Figure", options_figures, index=default_idx, key=f"fig_{real_name}_{s_student}_{i}", label_visibility="collapsed")
+                                
+                                with c_type:
+                                    etype = st.selectbox("Type", ["Dynamique", "Statique"], key=f"etype_{real_name}_{s_student}_{i}", label_visibility="collapsed")
+                                
+                                with c_val:
+                                    val = st.number_input("Val (reps/sec)", min_value=0.1, step=0.5, value=1.0, key=f"val_{real_name}_{s_student}_{i}", label_visibility="collapsed")
                                     
-                                    diff = athlete_figures.get(fig_name, 1)
-                                    multiplicateur_unitaire = 1.0 + (diff - 1) * 0.25
-                                    
-                                    if etype == "Statique":
-                                        reps_virtuelles = val 
-                                        bonus_intensite = 1.0 if rpe < 8 else (rpe / 7.0) 
-                                        total_coeff += (multiplicateur_unitaire * reps_virtuelles * bonus_intensite)
-                                        noms_figures_realisees.append(f"[{cat}] {fig_name} ({val}s)")
-                                    else:
-                                        total_coeff += (multiplicateur_unitaire * val)
-                                        noms_figures_realisees.append(f"[{cat}] {int(val)}x {fig_name}")
+                                combo_selections.append({"Cat": cat, "Figure": fig, "Type": etype, "Valeur": val})
 
-                            if not noms_figures_realisees:
-                                st.error("⚠️ Tu dois sélectionner au moins une figure !")
-                            else:
-                                nom_exo_final = " + ".join(noms_figures_realisees)
-                                charge = total_time_calc * rpe * total_coeff
+                            st.write("---")
 
-                                if charge > 0:
-                                    new_training = {
-                                        "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                                        "Nom": s_student,
-                                        "Exercice": nom_exo_final,
-                                        "TST": round(total_time_calc, 2), # Nombre pur
-                                        "RPE": int(rpe),                  # Nombre pur
-                                        "Charge": round(charge, 2)        # Nombre pur
-                                    }
-                                    
-                                    # --- NOUVEAU : Le spinner avec la bonne indentation ---
-                                    with st.spinner("⏳ Enregistrement dans le Cloud..."):
-                                        if add_training_data(new_training):
-                                            st.toast(f"✅ Combo enregistré ! (Charge: {charge:.1f} | Coeff: x{total_coeff:.2f})")
-                                            st.session_state.processed_files.add(real_name)
-                                            time.sleep(1)
-                                            st.rerun()
-                                        else: 
-                                            st.error("Erreur lors de l'enregistrement dans Google Sheets")
-                                            
+                            if st.form_submit_button("☁️ ENVOYER DONNÉES", type="primary", use_container_width=True):
+                                total_coeff = 0
+                                noms_figures_realisees = []
+
+                                for item in combo_selections:
+                                    fig_name = item["Figure"]
+                                    if fig_name != "-- Aucune --":
+                                        cat = item["Cat"]
+                                        etype = item["Type"]
+                                        val = item["Valeur"]
+                                        
+                                        diff = athlete_figures.get(fig_name, 1)
+                                        multiplicateur_unitaire = 1.0 + (diff - 1) * 0.25
+                                        
+                                        if etype == "Statique":
+                                            reps_virtuelles = val 
+                                            bonus_intensite = 1.0 if rpe < 8 else (rpe / 7.0) 
+                                            total_coeff += (multiplicateur_unitaire * reps_virtuelles * bonus_intensite)
+                                            noms_figures_realisees.append(f"[{cat}] {fig_name} ({val}s)")
+                                        else:
+                                            total_coeff += (multiplicateur_unitaire * val)
+                                            noms_figures_realisees.append(f"[{cat}] {int(val)}x {fig_name}")
+
+                                if not noms_figures_realisees:
+                                    st.error("⚠️ Tu dois sélectionner au moins une figure !")
                                 else:
-                                    st.warning("⚠️ La charge calculée est de 0 (le chrono était peut-être à 0) !")
-                                    
-                            
-                else:
-                    st.warning("Aucun élève enregistré.")
+                                    nom_exo_final = " + ".join(noms_figures_realisees)
+                                    charge = total_time_calc * rpe * total_coeff
+
+                                    if charge > 0:
+                                        new_training = {
+                                            "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                            "Nom": s_student,
+                                            "Exercice": nom_exo_final,
+                                            "TST": round(total_time_calc, 2), 
+                                            "RPE": int(rpe),                  
+                                            "Charge": round(charge, 2)        
+                                        }
+                                        
+                                        with st.spinner("⏳ Enregistrement dans le Cloud..."):
+                                            if add_training_data(new_training):
+                                                st.toast(f"✅ Combo enregistré ! (Charge: {charge:.1f} | Coeff: x{total_coeff:.2f})")
+                                                st.session_state.processed_files.add(real_name)
+                                                time.sleep(1)
+                                                st.rerun()
+                                            else: 
+                                                st.error("Erreur lors de l'enregistrement dans Google Sheets")
+                                                
+                                    else:
+                                        st.warning("⚠️ La charge calculée est de 0 (le chrono était peut-être à 0) !")
+                                        
+                    else:
+                        st.warning("Aucun élève enregistré.")
         else:
             st.info("📂 En attente de vidéos à analyser...")
     # --- MODE ÉLÈVE ---
@@ -1030,6 +1037,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
