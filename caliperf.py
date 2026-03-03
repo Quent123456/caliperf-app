@@ -781,12 +781,14 @@ elif page_choisie == "📊 Mon Suivi":
                         </div>""", unsafe_allow_html=True)
 
                     with st.expander(f"📈 Stats de {name}"):
-                            # On charge uniquement les données de cet élève
-s_df = fetch_training_data(name) 
-
-if not s_df.empty and 'TST' in s_df.columns and 'Charge' in s_df.columns:
-    # Pense à préparer la date ici car on a enlevé le code global
-    s_df['Date'] = pd.to_datetime(s_df['Timestamp'], errors='coerce').dt.date
+                            # Remarque bien le décalage (indentation) ici 👇
+                            s_df = fetch_training_data(name) 
+                            
+                            if not s_df.empty and 'TST' in s_df.columns and 'Charge' in s_df.columns:
+                                s_df['Date'] = pd.to_datetime(s_df['Timestamp'], errors='coerce').dt.date
+                                
+                                # ... Tout le reste de ton code pour les graphiques (daily, fig_c, fig_v...) 
+                                # doit aussi rester aligné au moins à ce niveau !
                             if not df_history.empty and 'TST' in df_history.columns and 'Charge' in df_history.columns:
                                 s_df = df_history[df_history['Nom'] == name].copy()
                                 if not s_df.empty:
@@ -1261,6 +1263,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
