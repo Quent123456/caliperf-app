@@ -1009,38 +1009,39 @@ elif page_choisie == "📊 Mon Suivi":
                                     df_historique = s_df.sort_values(by="Date", ascending=False)
                                     
                                     for _, row in df_historique.iterrows():
-                                        st.markdown(f"### 🗓️ Séance du {row['Date']}")
+                                        # 1. Nettoyage de la date (on enlève le 00:00:00)
+                                        date_propre = str(row['Date'])[:10]
+                                        st.markdown(f"### 🗓️ SÉANCE DU {date_propre}")
                                         
-                                        # On lit le JSON pour extraire le détail
-                                        if pd.notna(row.get('Details')) and str(row['Details']).strip() != "":
+                                        raw_details = row.get('Details')
+                                        
+                                        # 2. On vérifie si on a bien des données dans la colonne Details
+                                        if pd.notna(raw_details) and str(raw_details).strip() not in ["", "None", "nan"]:
                                             try:
-                                                details_json = json.loads(str(row['Details']))
+                                                # On tente de décoder le JSON
+                                                details_json = json.loads(str(raw_details))
                                                 
-                                                # 1. Calcul du nombre d'exercices
-                                                nb_exos = len(details_json)
-                                                
-                                                # 2. Affichage des totaux de la séance
-                                                st.caption(f"🏋️ **Nombre d'exos :** {nb_exos} | ⚡ **Charge Totale :** {row.get('Charge', 0)} | ⏱️ **TST Total :** {row.get('TST', 0)}s | 🧠 **RPE Global :** {row.get('RPE', 0)}")
-                                                
-                                                # 3. Tableau détaillé (TST par exo, RPE par exo, Charge par exo)
-                                                df_show = pd.DataFrame(details_json)
-                                                
-                                                # On renomme légèrement les colonnes pour que ce soit plus joli à l'écran
-                                                df_show = df_show.rename(columns={
-                                                    "Exercice": "Exercice", 
-                                                    "TST": "TST (s)", 
-                                                    "RPE": "RPE / 10", 
-                                                    "Charge": "Charge (Unité)"
-                                                })
-                                                
-                                                st.dataframe(df_show[['Exercice', 'TST (s)', 'RPE / 10', 'Charge (Unité)']], use_container_width=True, hide_index=True)
-                                                
-                                            except Exception:
-                                                # Cas d'erreur de lecture du JSON
+                                                if isinstance(details_json, list) and len(details_json) > 0:
+                                                    nb_exos = len(details_json)
+                                                    st.caption(f"🏋️ **Nombre d'exos :** {nb_exos} | ⚡ **Charge Totale :** {row.get('Charge', 0)} | ⏱️ **TST Total :** {row.get('TST', 0)}s | 🧠 **RPE Moyen :** {row.get('RPE', 0)}")
+                                                    
+                                                    df_show = pd.DataFrame(details_json)
+                                                    # On renomme pour faire propre
+                                                    df_show = df_show.rename(columns={"TST": "TST (s)", "Charge": "Charge (Unité)"})
+                                                    
+                                                    # Affichage du beau tableau
+                                                    st.dataframe(df_show, use_container_width=True, hide_index=True)
+                                                else:
+                                                    st.info(f"Détails : {row.get('Exercice', 'N/A')}")
+                                                    
+                                            except json.JSONDecodeError:
+                                                # C'EST LÀ QUE TON CODE PLANTAIT AVANT !
                                                 st.caption(f"⚡ Charge Totale : {row.get('Charge', 0)} | ⏱️ TST : {row.get('TST', 0)}s")
-                                                st.info(f"Détails bruts : {row.get('Exercice', 'N/A')}")
+                                                st.error("⚠️ Bug Coach : Le format JSON dans Google Sheets est invalide pour cette séance.")
+                                                st.code(raw_details, language="json") # Affiche la donnée brute pour t'aider à débugger
+                                                st.info(f"Résumé : {row.get('Exercice', 'N/A')}")
                                         else:
-                                            # Rétrocompatibilité avec les vieilles séances sans JSON
+                                            # Si la case 'Details' est complètement vide (anciennes séances)
                                             st.caption(f"⚡ Charge Totale : {row.get('Charge', 0)} | ⏱️ TST : {row.get('TST', 0)}s")
                                             st.info(f"Détails : {row.get('Exercice', 'N/A')}")
                                             
@@ -1279,6 +1280,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
