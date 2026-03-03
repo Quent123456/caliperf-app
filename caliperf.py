@@ -837,8 +837,8 @@ elif page_choisie == "📊 Mon Suivi":
                             else: 
                                 st.info("ℹ️ Les données sont en cours d'initialisation.")
 
-                        with st.expander(f"📚 Gérer les figures de {name}"):
-                            render_figure_manager(name)
+                    with st.expander(f"📚 Gérer les figures de {name}"):
+                        render_figure_manager(name)
 
                 st.write("---")
                 st.subheader("🚨 Zone de Danger : Gérer les élèves")
@@ -1264,6 +1264,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
