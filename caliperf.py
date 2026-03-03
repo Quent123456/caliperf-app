@@ -64,6 +64,124 @@ def add_new_user(user_dict):
         st.error(f"Erreur de sauvegarde : {e}")
         return False
 
+# --- 2. FONCTIONS DE GESTION DES DONNÉES (VERSION CLOUD) ---
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+@st.cache_data(ttl=300) # Garde en cache pendant 5 minutes
+def get_users_data():
+    """Récupère les données de l'onglet 'Users'"""
+    try:
+        return conn.read(worksheet="Users", ttl=0)
+    except Exception:
+        return pd.DataFrame()
+
+def add_new_user(user_dict):
+    # ... (ton code existant) ...
+    pass
+
+# COLLES LA FONCTION ICI, BIEN COLLÉE À GAUCHE :
+def add_training_data(training_dict):
+    """Ajoute ou met à jour l'entraînement du jour dans le Google Sheet avec détails"""
+    try:
+        try:
+            # On lit l'onglet existant
+            df_actuel = conn.read(worksheet="Trainings", ttl=0)
+        except Exception:
+            # Si vide ou erreur, on crée la structure de base
+            df_actuel = pd.DataFrame(columns=["Timestamp", "Nom", "Exercice", "TST", "RPE", "Charge", "Details"])
+
+        # 1. S'assurer que la colonne Details existe (rétrocompatibilité avec les anciens fichiers)
+        if "Details" not in df_actuel.columns:
+            df_actuel["Details"] = None
+
+        # On extrait la date (YYYY-MM-DD) depuis le Timestamp
+        date_str = training_dict["Timestamp"][:10]  
+        nom = training_dict["Nom"]
+
+        # 2. Préparation des détails de CET exercice spécifique
+        charge_individuelle = round(float(training_dict["TST"]) * int(training_dict["RPE"]), 2)
+        nouveau_detail = {
+            "Exercice": training_dict["Exercice"],
+            "TST": float(training_dict["TST"]),
+            "RPE": int(training_dict["RPE"]),
+            "Charge": charge_individuelle
+        }
+
+        if not df_actuel.empty and "Timestamp" in df_actuel.columns:
+            df_actuel['Date_temp'] = df_actuel['Timestamp'].astype(str).str[:10]
+            mask = (df_actuel['Nom'] == nom) & (df_actuel['Date_temp'] == date_str)
+
+            if mask.any():
+                # --- UNE LIGNE EXISTE DÉJÀ POUR AUJOURD'HUI ---
+                idx = df_actuel[mask].index[0]
+
+                old_tst = float(df_actuel.loc[idx, "TST"]) if pd.notna(df_actuel.loc[idx, "TST"]) else 0.0
+                old_rpe = int(df_actuel.loc[idx, "RPE"]) if pd.notna(df_actuel.loc[idx, "RPE"]) else 0
+                old_exo = str(df_actuel.loc[idx, "Exercice"])
+
+                # --- GESTION DES DÉTAILS (Le sous-tableau) ---
+                old_details_str = df_actuel.loc[idx, "Details"]
+                try:
+                    if pd.notna(old_details_str) and str(old_details_str).strip() != "":
+                        liste_details = json.loads(str(old_details_str))
+                    else:
+                        # Si c'est une ancienne ligne qui n'avait pas encore de JSON
+                        liste_details = [{
+                            "Exercice": old_exo, 
+                            "TST": old_tst, 
+                            "RPE": old_rpe, 
+                            "Charge": round(old_tst * old_rpe, 2)
+                        }]
+                except Exception:
+                    liste_details = []
+                
+                # On ajoute la nouvelle vidéo à la liste
+                liste_details.append(nouveau_detail)
+
+                # Calcul des nouveaux totaux globaux
+                new_tst = old_tst + float(training_dict["TST"])
+                new_rpe = old_rpe + int(training_dict["RPE"])
+                new_charge = new_tst * new_rpe
+                
+                if training_dict["Exercice"] != "Repos":
+                    new_exo = old_exo + " | " + str(training_dict["Exercice"])
+                else:
+                    new_exo = old_exo
+
+                # Mise à jour
+                df_actuel.loc[idx, "Exercice"] = new_exo
+                df_actuel.loc[idx, "TST"] = round(new_tst, 2)
+                df_actuel.loc[idx, "RPE"] = new_rpe
+                df_actuel.loc[idx, "Charge"] = round(new_charge, 2)
+                df_actuel.loc[idx, "Timestamp"] = training_dict["Timestamp"]
+                df_actuel.loc[idx, "Details"] = json.dumps(liste_details) # On sauvegarde le JSON
+
+                df_actuel = df_actuel.drop(columns=['Date_temp'])
+                conn.update(worksheet="Trainings", data=df_actuel)
+                st.cache_data.clear()
+                return True
+            else:
+                df_actuel = df_actuel.drop(columns=['Date_temp'])
+
+        # --- AUCUNE LIGNE POUR AUJOURD'HUI ---
+        training_dict["Charge"] = charge_individuelle
+        training_dict["Details"] = json.dumps([nouveau_detail])
+        
+        new_row = pd.DataFrame([training_dict])
+        
+        if not df_actuel.empty:
+            df_updated = pd.concat([df_actuel, new_row], ignore_index=True)
+        else:
+            df_updated = new_row
+            
+        conn.update(worksheet="Trainings", data=df_updated)
+        st.cache_data.clear()
+        return True
+
+    except Exception as e:
+        st.error(f"Erreur de sauvegarde de l'entraînement : {e}")
+        return False
+        
 def add_training_data(training_dict):
     """Ajoute ou met à jour l'entraînement du jour dans le Google Sheet avec détails"""
     try:
@@ -865,107 +983,7 @@ elif page_choisie == "📊 Mon Suivi":
                                     with c2: sv = st.plotly_chart(fig_v, use_container_width=True, on_select="rerun", key=f"v_student_{selected_name}")
 
                                     sel = sc if sc and sc["selection"]["points"] else sv if sv and sv["selection"]["points"] else None
-                                    def add_training_data(training_dict):
-    """Ajoute ou met à jour l'entraînement du jour dans le Google Sheet avec détails"""
-    try:
-        try:
-            # On lit l'onglet existant
-            df_actuel = conn.read(worksheet="Trainings", ttl=0)
-        except Exception:
-            # Si vide ou erreur, on crée la structure de base
-            df_actuel = pd.DataFrame(columns=["Timestamp", "Nom", "Exercice", "TST", "RPE", "Charge", "Details"])
-
-        # 1. S'assurer que la colonne Details existe (rétrocompatibilité avec les anciens fichiers)
-        if "Details" not in df_actuel.columns:
-            df_actuel["Details"] = None
-
-        # On extrait la date (YYYY-MM-DD) depuis le Timestamp
-        date_str = training_dict["Timestamp"][:10]  
-        nom = training_dict["Nom"]
-
-        # 2. Préparation des détails de CET exercice spécifique
-        charge_individuelle = round(float(training_dict["TST"]) * int(training_dict["RPE"]), 2)
-        nouveau_detail = {
-            "Exercice": training_dict["Exercice"],
-            "TST": float(training_dict["TST"]),
-            "RPE": int(training_dict["RPE"]),
-            "Charge": charge_individuelle
-        }
-
-        if not df_actuel.empty and "Timestamp" in df_actuel.columns:
-            df_actuel['Date_temp'] = df_actuel['Timestamp'].astype(str).str[:10]
-            mask = (df_actuel['Nom'] == nom) & (df_actuel['Date_temp'] == date_str)
-
-            if mask.any():
-                # --- UNE LIGNE EXISTE DÉJÀ POUR AUJOURD'HUI ---
-                idx = df_actuel[mask].index[0]
-
-                old_tst = float(df_actuel.loc[idx, "TST"]) if pd.notna(df_actuel.loc[idx, "TST"]) else 0.0
-                old_rpe = int(df_actuel.loc[idx, "RPE"]) if pd.notna(df_actuel.loc[idx, "RPE"]) else 0
-                old_exo = str(df_actuel.loc[idx, "Exercice"])
-
-                # --- GESTION DES DÉTAILS (Le sous-tableau) ---
-                old_details_str = df_actuel.loc[idx, "Details"]
-                try:
-                    if pd.notna(old_details_str) and str(old_details_str).strip() != "":
-                        liste_details = json.loads(str(old_details_str))
-                    else:
-                        # Si c'est une ancienne ligne qui n'avait pas encore de JSON
-                        liste_details = [{
-                            "Exercice": old_exo, 
-                            "TST": old_tst, 
-                            "RPE": old_rpe, 
-                            "Charge": round(old_tst * old_rpe, 2)
-                        }]
-                except Exception:
-                    liste_details = []
-                
-                # On ajoute la nouvelle vidéo à la liste
-                liste_details.append(nouveau_detail)
-
-                # Calcul des nouveaux totaux globaux
-                new_tst = old_tst + float(training_dict["TST"])
-                new_rpe = old_rpe + int(training_dict["RPE"])
-                new_charge = new_tst * new_rpe
-                
-                if training_dict["Exercice"] != "Repos":
-                    new_exo = old_exo + " | " + str(training_dict["Exercice"])
-                else:
-                    new_exo = old_exo
-
-                # Mise à jour
-                df_actuel.loc[idx, "Exercice"] = new_exo
-                df_actuel.loc[idx, "TST"] = round(new_tst, 2)
-                df_actuel.loc[idx, "RPE"] = new_rpe
-                df_actuel.loc[idx, "Charge"] = round(new_charge, 2)
-                df_actuel.loc[idx, "Timestamp"] = training_dict["Timestamp"]
-                df_actuel.loc[idx, "Details"] = json.dumps(liste_details) # On sauvegarde le JSON
-
-                df_actuel = df_actuel.drop(columns=['Date_temp'])
-                conn.update(worksheet="Trainings", data=df_actuel)
-                st.cache_data.clear()
-                return True
-            else:
-                df_actuel = df_actuel.drop(columns=['Date_temp'])
-
-        # --- AUCUNE LIGNE POUR AUJOURD'HUI ---
-        training_dict["Charge"] = charge_individuelle
-        training_dict["Details"] = json.dumps([nouveau_detail])
-        
-        new_row = pd.DataFrame([training_dict])
-        
-        if not df_actuel.empty:
-            df_updated = pd.concat([df_actuel, new_row], ignore_index=True)
-        else:
-            df_updated = new_row
-            
-        conn.update(worksheet="Trainings", data=df_updated)
-        st.cache_data.clear()
-        return True
-
-    except Exception as e:
-        st.error(f"Erreur de sauvegarde de l'entraînement : {e}")
-        return False
+                                    
                             
                             st.write("---")
                             render_figure_manager(selected_name)
@@ -1201,6 +1219,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
