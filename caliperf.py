@@ -642,26 +642,17 @@ elif page_choisie == "🎥 Espace Vidéo":
                     if s_keys:
                         s_student = st.selectbox("Athlète", s_keys, key=f"sel_athlete_{real_name}")
                         
-                        with st.form(key=f"f_{real_name}", clear_on_submit=True):
-                            c_rpe, c_info = st.columns([2, 1])
-                            with c_rpe:
-                                rpe = st.slider("Intensité globale (RPE)", 1, 10, 7, key=f"rpe_{real_name}")
-                            with c_info:
-                                # On se base directement sur le temps du chrono
-                                total_time_calc = curr
-                                st.info(f"⏱️ Temps chrono : {total_time_calc:.2f} s")
-
-                            st.write("---")
+                        st.write("---")
                         
                         # --- 1. GESTION DU NOMBRE DE LIGNES DYNAMIQUES (+/-) ---
                         num_lines_key = f"num_lines_{real_name}"
                         if num_lines_key not in st.session_state:
-                            st.session_state[num_lines_key] = 1 # 1 ligne par défaut
+                            st.session_state[num_lines_key] = 1
 
                         st.markdown("🔥 **Construction du Combo**")
                         st.caption("Définis chaque étape. Utilise les boutons ci-dessous pour ajouter ou retirer des lignes.")
 
-                        # Boutons placés HORS du formulaire pour fonctionner instantanément
+                        # Les boutons SONT EN DEHORS du formulaire
                         c_btn_add, c_btn_sub, _ = st.columns([1, 1, 2])
                         with c_btn_add:
                             if st.button("➕ Ajouter un exo", key=f"add_{real_name}"):
@@ -673,7 +664,7 @@ elif page_choisie == "🎥 Espace Vidéo":
                                     st.session_state[num_lines_key] -= 1
                                     st.rerun()
 
-                        # --- 2. LE FORMULAIRE D'ENREGISTREMENT ---
+                        # --- 2. LE SEUL ET UNIQUE FORMULAIRE D'ENREGISTREMENT ---
                         with st.form(key=f"f_{real_name}", clear_on_submit=True):
                             c_rpe, c_info = st.columns([2, 1])
                             with c_rpe:
@@ -689,10 +680,9 @@ elif page_choisie == "🎥 Espace Vidéo":
                             
                             combo_selections = []
                             
-                            # --- LES LIGNES DYNAMIQUES (Basées sur le + et -) ---
+                            # --- LIGNES DYNAMIQUES ---
                             for i in range(st.session_state[num_lines_key]):
                                 c_cat, c_fig, c_type, c_val = st.columns([1.2, 2, 1.2, 1])
-                                
                                 with c_cat:
                                     cat = st.selectbox("Catégorie", ["Push", "Pull", "Mixte"], key=f"cat_{real_name}_{s_student}_{i}", label_visibility="collapsed")
                                 with c_fig:
@@ -707,7 +697,7 @@ elif page_choisie == "🎥 Espace Vidéo":
 
                             st.write("---")
 
-                            # --- 3. LE BOUTON DE VALIDATION (Bien au chaud dans le formulaire) ---
+                            # --- 3. BOUTON VALIDATION (Bien à l'intérieur du form) ---
                             if st.form_submit_button("☁️ ENVOYER DONNÉES", type="primary", use_container_width=True):
                                 total_coeff = 0
                                 noms_figures_realisees = []
@@ -751,14 +741,11 @@ elif page_choisie == "🎥 Espace Vidéo":
                                             if add_training_data(new_training):
                                                 st.toast(f"✅ Combo enregistré ! (Charge: {charge:.1f} | Coeff: x{total_coeff:.2f})")
                                                 st.session_state.processed_files.add(real_name)
-                                                
-                                                # On réinitialise à 1 ligne pour la prochaine vidéo !
                                                 st.session_state[num_lines_key] = 1 
                                                 time.sleep(1)
                                                 st.rerun()
                                             else: 
                                                 st.error("Erreur lors de l'enregistrement dans Google Sheets")
-                                                
                                     else:
                                         st.warning("⚠️ La charge calculée est de 0 (le chrono était peut-être à 0) !")
                                         
@@ -1291,6 +1278,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
