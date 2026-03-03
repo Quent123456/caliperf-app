@@ -928,43 +928,40 @@ elif page_choisie == "📊 Mon Suivi":
                             
                             st.subheader("📈 Tes Graphiques")
 
-                            # Ici, pas de "with", donc on reste aligné avec le st.subheader 👇
-                            s_df = fetch_training_data(selected_name)
-                            
-                            if not s_df.empty and 'TST' in s_df.columns and 'Charge' in s_df.columns:
-                                s_df['Date'] = pd.to_datetime(s_df['Timestamp'], errors='coerce').dt.date
-                                
-                                # ... suite du code ...
                             # On récupère les données filtrées pour l'élève connecté
                             s_df = fetch_training_data(selected_name)
 
                             if not s_df.empty and 'TST' in s_df.columns and 'Charge' in s_df.columns:
                                 s_df['TST_Val'] = pd.to_numeric(s_df['TST'], errors='coerce').fillna(0)
                                 s_df['Date'] = pd.to_datetime(s_df['Timestamp'], errors='coerce').dt.date
-                                    
-                                    daily = s_df.groupby('Date').agg({'Charge':'sum', 'TST_Val':'sum', 'RPE':'mean'})
-                                    daily = daily.resample('D').asfreq().fillna({'Charge': 0, 'TST_Val': 0})
-                                    daily['MA_Ch'] = daily['Charge'].rolling(window=3, min_periods=1).mean()
-                                    daily['MA_Vol'] = daily['TST_Val'].rolling(window=3, min_periods=1).mean()
-                                    
-                                    daily = daily.reset_index()
-                                    daily_train = daily[daily['Charge'] > 0]
+                                
+                                # TOUT CE QUI SUIT EST ALIGNÉ SOUS LE 's_df' CI-DESSUS
+                                daily = s_df.groupby('Date').agg({'Charge':'sum', 'TST_Val':'sum', 'RPE':'mean'})
+                                daily = daily.resample('D').asfreq().fillna({'Charge': 0, 'TST_Val': 0})
+                                daily['MA_Ch'] = daily['Charge'].rolling(window=3, min_periods=1).mean()
+                                daily['MA_Vol'] = daily['TST_Val'].rolling(window=3, min_periods=1).mean()
+                                
+                                daily = daily.reset_index()
+                                daily_train = daily[daily['Charge'] > 0]
 
-                                    fig_c = go.Figure()
-                                    fig_c.add_trace(go.Scatter(x=daily_train['Date'], y=daily_train['Charge'], mode='markers', marker=dict(color=daily_train['RPE'], colorscale='RdYlGn_r', size=10), name='Séance'))
-                                    fig_c.add_trace(go.Scatter(x=daily['Date'], y=daily['MA_Ch'], mode='lines', line=dict(dash='dot', color='orange', width=2), name='Tendance 3J'))
-                                    fig_c.update_layout(title="Ta Charge d'entraînement", template="plotly_dark", height=300, margin=dict(t=30,b=10,l=10,r=10), showlegend=False)
-                                    
-                                    fig_v = go.Figure()
-                                    fig_v.add_trace(go.Bar(x=daily_train['Date'], y=daily_train['TST_Val'], marker=dict(color='#3366CC'), name='Vol'))
-                                    fig_v.add_trace(go.Scatter(x=daily['Date'], y=daily['MA_Vol'], mode='lines', line=dict(dash='dot', color='white'), name='Tend.'))
-                                    fig_v.update_layout(title="Ton Volume (TST / Reps)", template="plotly_dark", height=300, margin=dict(t=30,b=10,l=10,r=10), showlegend=False)
+                                fig_c = go.Figure()
+                                fig_c.add_trace(go.Scatter(x=daily_train['Date'], y=daily_train['Charge'], mode='markers', marker=dict(color=daily_train['RPE'], colorscale='RdYlGn_r', size=10), name='Séance'))
+                                fig_c.add_trace(go.Scatter(x=daily['Date'], y=daily['MA_Ch'], mode='lines', line=dict(dash='dot', color='orange', width=2), name='Tendance 3J'))
+                                fig_c.update_layout(title="Ta Charge d'entraînement", template="plotly_dark", height=300, margin=dict(t=30,b=10,l=10,r=10), showlegend=False)
+                                
+                                fig_v = go.Figure()
+                                fig_v.add_trace(go.Bar(x=daily_train['Date'], y=daily_train['TST_Val'], marker=dict(color='#3366CC'), name='Vol'))
+                                fig_v.add_trace(go.Scatter(x=daily['Date'], y=daily['MA_Vol'], mode='lines', line=dict(dash='dot', color='white'), name='Tend.'))
+                                fig_v.update_layout(title="Ton Volume (TST / Reps)", template="plotly_dark", height=300, margin=dict(t=30,b=10,l=10,r=10), showlegend=False)
 
-                                    c1, c2 = st.columns(2)
-                                    with c1: sc = st.plotly_chart(fig_c, use_container_width=True, on_select="rerun", key=f"c_student_{selected_name}")
-                                    with c2: sv = st.plotly_chart(fig_v, use_container_width=True, on_select="rerun", key=f"v_student_{selected_name}")
+                                c1, c2 = st.columns(2)
+                                with c1: sc = st.plotly_chart(fig_c, use_container_width=True, on_select="rerun", key=f"c_student_{selected_name}")
+                                with c2: sv = st.plotly_chart(fig_v, use_container_width=True, on_select="rerun", key=f"v_student_{selected_name}")
 
-                                    sel = sc if sc and sc["selection"]["points"] else sv if sv and sv["selection"]["points"] else None
+                                sel = sc if sc and sc["selection"]["points"] else sv if sv and sv["selection"]["points"] else None
+                                
+                                # --- AJOUT 2 : LE JOURNAL DÉTAILLÉ AVEC RECHERCHE PAR DATE ---
+                                # (Assure-toi que ce bloc est bien aligné au même niveau que le 'if not s_df.empty' ci-dessus, ou juste en dessous selon comment tu l'as structuré)
                                     
                                     # --- AJOUT 1 : DÉTAIL AU CLIC SUR LE GRAPHIQUE ---
                                     if sel:
@@ -1265,6 +1262,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
