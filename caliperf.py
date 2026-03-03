@@ -1055,6 +1055,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
 
     vbt_file = st.file_uploader("📥 Charger la vidéo", type=['mp4', 'mov'], key="vbt_uploader")
 
+    # TOUT DOIT ÊTRE ALIGNÉ SOUS CE IF 👇
     if vbt_file:
         if 'vbt_path' not in st.session_state or st.session_state.get('vbt_name') != vbt_file.name:
             tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
@@ -1067,9 +1068,10 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
         cap = cv2.VideoCapture(video_path)
         fps = cap.get(cv2.CAP_PROP_FPS)
         
-        # --- SÉCURITÉ FPS (Aligné exactement sous fps = ...) ---
+        # --- SÉCURITÉ FPS BIEN À L'ABRI ---
+        import numpy as np # On le remet ici au cas où il aurait sauté en haut du fichier
         if fps == 0 or np.isnan(fps):
-            fps = 30.0  # On force à 30 fps par défaut si OpenCV n'arrive pas à lire la vidéo
+            fps = 30.0
             
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         orig_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -1280,6 +1282,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
