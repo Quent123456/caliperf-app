@@ -658,26 +658,47 @@ elif page_choisie == "🎥 Espace Vidéo":
                             athlete_figures = st.session_state.students_data[s_student].get('Figures', {"Mouvement basique": 1})
                             options_figures = ["-- Aucune --"] + list(athlete_figures.keys())
                             
-                            combo_selections = []
+                            # --- CRÉATION DU TABLEAU DE COMBO DYNAMIQUE ---
                             
-                            # --- LES 5 LIGNES DYNAMIQUES DU COMBO ---
-                            for i in range(5):
-                                c_cat, c_fig, c_type, c_val = st.columns([1.2, 2, 1.2, 1])
-                                
-                                with c_cat:
-                                    cat = st.selectbox("Catégorie", ["Push", "Pull", "Mixte"], key=f"cat_{real_name}_{s_student}_{i}", label_visibility="collapsed")
-                                
-                                with c_fig:
-                                    default_idx = 1 if i == 0 else 0 
-                                    fig = st.selectbox("Figure", options_figures, index=default_idx, key=f"fig_{real_name}_{s_student}_{i}", label_visibility="collapsed")
-                                
-                                with c_type:
-                                    etype = st.selectbox("Type", ["Dynamique", "Statique"], key=f"etype_{real_name}_{s_student}_{i}", label_visibility="collapsed")
-                                
-                                with c_val:
-                                    val = st.number_input("Val (reps/sec)", min_value=0.1, step=0.5, value=1.0, key=f"val_{real_name}_{s_student}_{i}", label_visibility="collapsed")
-                                    
-                                combo_selections.append({"Cat": cat, "Figure": fig, "Type": etype, "Valeur": val})
+                            # 1. On prépare une ligne par défaut pour que le tableau ne soit pas vide
+                            default_fig = options_figures[1] if len(options_figures) > 1 else options_figures[0]
+                            initial_combo_data = pd.DataFrame(
+                                [{"Catégorie": "Push", "Figure": default_fig, "Type": "Dynamique", "Valeur": 1.0}]
+                            )
+
+                            # 2. On affiche le tableau interactif (l'utilisateur peut ajouter/supprimer des lignes)
+                            edited_combo_df = st.data_editor(
+                                initial_combo_data,
+                                num_rows="dynamic", # La magie opère ici : permet d'ajouter des lignes !
+                                column_config={
+                                    "Catégorie": st.column_config.SelectboxColumn(
+                                        "Catégorie", options=["Push", "Pull", "Mixte"], required=True
+                                    ),
+                                    "Figure": st.column_config.SelectboxColumn(
+                                        "Figure", options=options_figures, required=True
+                                    ),
+                                    "Type": st.column_config.SelectboxColumn(
+                                        "Type", options=["Dynamique", "Statique"], required=True
+                                    ),
+                                    "Valeur": st.column_config.NumberColumn(
+                                        "Val (reps/sec)", min_value=0.1, step=0.5, required=True
+                                    )
+                                },
+                                use_container_width=True,
+                                hide_index=True,
+                                key=f"combo_editor_{real_name}_{s_student}"
+                            )
+
+                            # 3. On reformate les données pour que ton calcul de charge fonctionne comme avant
+                            combo_selections = []
+                            for _, row in edited_combo_df.iterrows():
+                                if pd.notna(row["Figure"]) and row["Figure"] != "-- Aucune --":
+                                    combo_selections.append({
+                                        "Cat": row["Catégorie"], 
+                                        "Figure": row["Figure"], 
+                                        "Type": row["Type"], 
+                                        "Valeur": float(row["Valeur"])
+                                    })
 
                             st.write("---")
 
@@ -1045,6 +1066,8 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
 
         cap = cv2.VideoCapture(video_path)
         fps = cap.get(cv2.CAP_PROP_FPS)
+if fps == 0 or np.isnan(fps):
+    fps = 30.0 # Valeur de secours par défaut
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         orig_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         orig_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -1254,6 +1277,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
