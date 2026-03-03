@@ -780,7 +780,7 @@ elif page_choisie == "📊 Mon Suivi":
                             <p><b>📏 Morpho:</b> {info.get('Taille','?')}cm | {info.get('Poids','?')}kg</p>
                         </div>""", unsafe_allow_html=True)
 
-                        with st.expander(f"📈 Stats de {name}"):
+                    with st.expander(f"📈 Stats de {name}"):
                             # On charge uniquement les données de cet élève
 s_df = fetch_training_data(name) 
 
@@ -1261,6 +1261,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
