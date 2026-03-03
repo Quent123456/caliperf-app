@@ -1009,22 +1009,42 @@ elif page_choisie == "📊 Mon Suivi":
                                     df_historique = s_df.sort_values(by="Date", ascending=False)
                                     
                                     for _, row in df_historique.iterrows():
-                                        st.markdown(f"### 🗓️ {row['Date']}")
-                                        st.caption(f"⚡ Charge Totale : **{row.get('Charge', 0)}** | ⏱️ TST : **{row.get('TST', 0)}s** | 🧠 RPE Moyen : **{row.get('RPE', 0)}**")
+                                        st.markdown(f"### 🗓️ Séance du {row['Date']}")
                                         
-                                        # On tente de lire le JSON pour avoir le détail ligne par ligne
+                                        # On lit le JSON pour extraire le détail
                                         if pd.notna(row.get('Details')) and str(row['Details']).strip() != "":
                                             try:
                                                 details_json = json.loads(str(row['Details']))
+                                                
+                                                # 1. Calcul du nombre d'exercices
+                                                nb_exos = len(details_json)
+                                                
+                                                # 2. Affichage des totaux de la séance
+                                                st.caption(f"🏋️ **Nombre d'exos :** {nb_exos} | ⚡ **Charge Totale :** {row.get('Charge', 0)} | ⏱️ **TST Total :** {row.get('TST', 0)}s | 🧠 **RPE Global :** {row.get('RPE', 0)}")
+                                                
+                                                # 3. Tableau détaillé (TST par exo, RPE par exo, Charge par exo)
                                                 df_show = pd.DataFrame(details_json)
-                                                st.dataframe(df_show[['Exercice', 'TST', 'RPE', 'Charge']], use_container_width=True, hide_index=True)
+                                                
+                                                # On renomme légèrement les colonnes pour que ce soit plus joli à l'écran
+                                                df_show = df_show.rename(columns={
+                                                    "Exercice": "Exercice", 
+                                                    "TST": "TST (s)", 
+                                                    "RPE": "RPE / 10", 
+                                                    "Charge": "Charge (Unité)"
+                                                })
+                                                
+                                                st.dataframe(df_show[['Exercice', 'TST (s)', 'RPE / 10', 'Charge (Unité)']], use_container_width=True, hide_index=True)
+                                                
                                             except Exception:
-                                                st.info(f"Exercices : {row.get('Exercice', 'N/A')}")
+                                                # Cas d'erreur de lecture du JSON
+                                                st.caption(f"⚡ Charge Totale : {row.get('Charge', 0)} | ⏱️ TST : {row.get('TST', 0)}s")
+                                                st.info(f"Détails bruts : {row.get('Exercice', 'N/A')}")
                                         else:
-                                            # Rétrocompatibilité si d'anciennes séances n'ont pas de JSON
-                                            st.info(f"Exercices : {row.get('Exercice', 'N/A')}")
+                                            # Rétrocompatibilité avec les vieilles séances sans JSON
+                                            st.caption(f"⚡ Charge Totale : {row.get('Charge', 0)} | ⏱️ TST : {row.get('TST', 0)}s")
+                                            st.info(f"Détails : {row.get('Exercice', 'N/A')}")
+                                            
                                         st.divider()
-
                             st.write("---")
                             render_figure_manager(selected_name)
                             
@@ -1259,6 +1279,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
