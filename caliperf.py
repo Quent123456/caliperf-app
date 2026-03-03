@@ -253,6 +253,7 @@ def add_training_data(training_dict):
     except Exception as e:
         st.error(f"Erreur de sauvegarde de l'entraînement : {e}")
         return False
+        
 @st.cache_data(ttl=60)
 def fetch_training_data(nom_eleve=None):
     """Récupère l'historique et filtre directement pour un élève précis si demandé"""
@@ -1260,6 +1261,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
