@@ -935,11 +935,12 @@ elif page_choisie == "📊 Mon Suivi":
                                 s_df['Date'] = pd.to_datetime(s_df['Timestamp'], errors='coerce').dt.date
                                 
                                 # ... suite du code ...
-                            if not df_history.empty:
-                                s_df = df_history[df_history['Nom'] == selected_name].copy()
-                                if not s_df.empty:
-                                    s_df['TST_Val'] = pd.to_numeric(s_df['TST'], errors='coerce').fillna(0)
-                                    s_df['Date'] = pd.to_datetime(s_df['Date'])
+                            # On récupère les données filtrées pour l'élève connecté
+                            s_df = fetch_training_data(selected_name)
+
+                            if not s_df.empty and 'TST' in s_df.columns and 'Charge' in s_df.columns:
+                                s_df['TST_Val'] = pd.to_numeric(s_df['TST'], errors='coerce').fillna(0)
+                                s_df['Date'] = pd.to_datetime(s_df['Timestamp'], errors='coerce').dt.date
                                     
                                     daily = s_df.groupby('Date').agg({'Charge':'sum', 'TST_Val':'sum', 'RPE':'mean'})
                                     daily = daily.resample('D').asfreq().fillna({'Charge': 0, 'TST_Val': 0})
@@ -1264,6 +1265,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
