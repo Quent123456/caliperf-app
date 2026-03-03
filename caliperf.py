@@ -960,74 +960,66 @@ elif page_choisie == "📊 Mon Suivi":
 
                                 sel = sc if sc and sc["selection"]["points"] else sv if sv and sv["selection"]["points"] else None
                                 
-                                # --- AJOUT 2 : LE JOURNAL DÉTAILLÉ AVEC RECHERCHE PAR DATE ---
-                                # (Assure-toi que ce bloc est bien aligné au même niveau que le 'if not s_df.empty' ci-dessus, ou juste en dessous selon comment tu l'as structuré)
+                                # --- DÉTAIL AU CLIC (Aligné exactement sous 'sel = ...') ---
+                                if sel:
+                                    dt = sel["selection"]["points"][0]["x"]
+                                    st.markdown(f"**🔎 Détail de ta séance du {dt}**")
+                                    det = s_df[s_df['Date'].astype(str) == dt].copy()
                                     
-                                    # --- AJOUT 1 : DÉTAIL AU CLIC SUR LE GRAPHIQUE ---
-                                    if sel:
-                                        dt = sel["selection"]["points"][0]["x"]
-                                        st.markdown(f"**🔎 Détail de ta séance du {dt}**")
-                                        det = s_df[s_df['Date'].astype(str) == dt].copy()
-                                        
-                                        if not det.empty and 'Details' in det.columns and pd.notna(det.iloc[0]['Details']) and str(det.iloc[0]['Details']).strip() != "":
-                                            try:
-                                                liste_details = json.loads(str(det.iloc[0]['Details']))
-                                                df_details = pd.DataFrame(liste_details)
-                                                st.dataframe(df_details[['Exercice', 'TST', 'RPE', 'Charge']], use_container_width=True, hide_index=True)
-                                            except Exception:
-                                                st.dataframe(det[['Exercice','TST','RPE','Charge']], use_container_width=True, hide_index=True)
-                                        else:
+                                    if not det.empty and 'Details' in det.columns and pd.notna(det.iloc[0]['Details']) and str(det.iloc[0]['Details']).strip() != "":
+                                        try:
+                                            liste_details = json.loads(str(det.iloc[0]['Details']))
+                                            df_details = pd.DataFrame(liste_details)
+                                            df_details = df_details.rename(columns={"TST": "TST (s)", "Charge": "Charge (Unité)"})
+                                            st.dataframe(df_details[['Exercice', 'TST (s)', 'RPE', 'Charge (Unité)']], use_container_width=True, hide_index=True)
+                                        except Exception:
                                             st.dataframe(det[['Exercice','TST','RPE','Charge']], use_container_width=True, hide_index=True)
+                                    else:
+                                        st.dataframe(det[['Exercice','TST','RPE','Charge']], use_container_width=True, hide_index=True)
 
-                            # --- AJOUT 2 : LE JOURNAL DÉTAILLÉ AVEC RECHERCHE PAR DATE ---
-                            st.write("---")
-                            st.subheader("📓 Journal détaillé de tes séances")
-                            
-                            if not s_df.empty:
-                                # 1. On récupère toutes les dates uniques, triées de la plus récente à la plus ancienne
+                                # --- LE JOURNAL DÉTAILLÉ AVEC RECHERCHE PAR DATE ---
+                                st.write("---")
+                                st.subheader("📓 Journal détaillé de tes séances")
+                                
+                                # 1. On récupère toutes les dates uniques, triées
                                 dates_disponibles = sorted(s_df['Date'].astype(str).unique(), reverse=True)
                                 
                                 # 2. Création du menu déroulant
                                 date_choisie = st.selectbox("📅 Sélectionne une date pour voir les détails :", dates_disponibles)
                                 
-                                # 3. On filtre les données pour ne garder QUE la séance de cette date
+                                # 3. Filtre
                                 df_jour = s_df[s_df['Date'].astype(str) == date_choisie]
+                                st.write("")
                                 
-                                st.write("") # Petit espace esthétique
-                                
-                                # 4. On affiche les détails (seulement pour la date filtrée)
+                                # 4. Affichage
                                 for _, row in df_jour.iterrows():
                                     st.markdown(f"### 🎯 Bilan du {date_choisie}")
-                                    
                                     raw_details = row.get('Details')
                                     
-                                    # Vérification et lecture du JSON (comme on l'a sécurisé avant)
                                     if pd.notna(raw_details) and str(raw_details).strip() not in ["", "None", "nan"]:
                                         try:
                                             details_json = json.loads(str(raw_details))
-                                            
                                             if isinstance(details_json, list) and len(details_json) > 0:
                                                 nb_exos = len(details_json)
                                                 st.caption(f"🏋️ **Nombre d'exos :** {nb_exos} | ⚡ **Charge Totale :** {row.get('Charge', 0)} | ⏱️ **TST Total :** {row.get('TST', 0)}s | 🧠 **RPE Global :** {row.get('RPE', 0)}")
                                                 
                                                 df_show = pd.DataFrame(details_json)
                                                 df_show = df_show.rename(columns={"TST": "TST (s)", "Charge": "Charge (Unité)"})
-                                                
                                                 st.dataframe(df_show, use_container_width=True, hide_index=True)
                                             else:
                                                 st.info(f"Détails : {row.get('Exercice', 'N/A')}")
-                                                
-                                        except Exception: # Simplifié pour l'élève (pas de message d'erreur effrayant)
+                                        except Exception:
                                             st.caption(f"⚡ Charge Totale : {row.get('Charge', 0)} | ⏱️ TST : {row.get('TST', 0)}s")
                                             st.info(f"Résumé de la séance : {row.get('Exercice', 'N/A')}")
                                     else:
-                                        # Si c'est une très vieille séance sans données détaillées
                                         st.caption(f"⚡ Charge Totale : {row.get('Charge', 0)} | ⏱️ TST : {row.get('TST', 0)}s")
                                         st.info(f"Résumé de la séance : {row.get('Exercice', 'N/A')}")
                                         
                                     st.divider()
+                                    
                             else:
-                                st.info("ℹ️ Aucune séance n'est encore enregistrée.")
+                                st.info("ℹ️ Aucune séance n'est encore enregistrée. Il faut que ton coach analyse tes vidéos !")
+                                
                             st.write("---")
                             render_figure_manager(selected_name)
                             
@@ -1262,6 +1254,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
