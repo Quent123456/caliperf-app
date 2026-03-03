@@ -65,15 +65,68 @@ def add_new_user(user_dict):
         return False
 
 def add_training_data(training_dict):
-    """Ajoute une ligne d'entraînement dans l'onglet 'Trainings' du Google Sheet"""
+    """Ajoute ou met à jour l'entraînement du jour dans le Google Sheet"""
     try:
         try:
-            # On essaie de lire l'onglet existant
+            # On lit l'onglet existant
             df_actuel = conn.read(worksheet="Trainings", ttl=0)
         except Exception:
-            # Si l'onglet est vide, on crée une base vide
+            # Si vide ou erreur, on crée la structure
             df_actuel = pd.DataFrame(columns=["Timestamp", "Nom", "Exercice", "TST", "RPE", "Charge"])
+
+        # On extrait la date (YYYY-MM-DD) depuis le Timestamp
+        date_str = training_dict["Timestamp"][:10]  
+        nom = training_dict["Nom"]
+
+        if not df_actuel.empty and "Timestamp" in df_actuel.columns:
+            # On crée une colonne temporaire pour isoler la date sans l'heure
+            df_actuel['Date_temp'] = df_actuel['Timestamp'].astype(str).str[:10]
             
+            # On cherche s'il y a déjà une ligne pour CE nom et CETTE date
+            mask = (df_actuel['Nom'] == nom) & (df_actuel['Date_temp'] == date_str)
+
+            if mask.any():
+                # --- UNE LIGNE EXISTE DÉJÀ POUR AUJOURD'HUI ---
+                idx = df_actuel[mask].index[0] # On prend l'index de la ligne existante
+
+                # Récupération des anciennes valeurs
+                old_tst = float(df_actuel.loc[idx, "TST"]) if pd.notna(df_actuel.loc[idx, "TST"]) else 0.0
+                old_rpe = int(df_actuel.loc[idx, "RPE"]) if pd.notna(df_actuel.loc[idx, "RPE"]) else 0
+                old_exo = str(df_actuel.loc[idx, "Exercice"])
+
+                # Calcul des nouveaux totaux
+                new_tst = old_tst + float(training_dict["TST"])
+                new_rpe = old_rpe + int(training_dict["RPE"])
+                
+                # Ton équation : Total Charge = Total TST * Total RPE
+                new_charge = new_tst * new_rpe
+                
+                # On assemble les noms des exercices pour ne pas perdre le détail
+                if training_dict["Exercice"] != "Repos":
+                    new_exo = old_exo + " | " + str(training_dict["Exercice"])
+
+                # Mise à jour de la ligne dans le DataFrame
+                df_actuel.loc[idx, "Exercice"] = new_exo
+                df_actuel.loc[idx, "TST"] = round(new_tst, 2)
+                df_actuel.loc[idx, "RPE"] = new_rpe
+                df_actuel.loc[idx, "Charge"] = round(new_charge, 2)
+                df_actuel.loc[idx, "Timestamp"] = training_dict["Timestamp"] # On actualise l'heure du dernier ajout
+
+                # On nettoie la colonne temporaire
+                df_actuel = df_actuel.drop(columns=['Date_temp'])
+                
+                # On envoie la mise à jour sur le Cloud
+                conn.update(worksheet="Trainings", data=df_actuel)
+                st.cache_data.clear()
+                return True
+            else:
+                # S'il n'y a pas de ligne pour aujourd'hui, on nettoie juste la colonne temp
+                df_actuel = df_actuel.drop(columns=['Date_temp'])
+
+        # --- AUCUNE LIGNE POUR AUJOURD'HUI (Ou fichier vide) ---
+        # On recalcule la charge pour être fidèle à ta formule dès la première vidéo
+        training_dict["Charge"] = round(float(training_dict["TST"]) * int(training_dict["RPE"]), 2)
+        
         new_row = pd.DataFrame([training_dict])
         
         if not df_actuel.empty:
@@ -84,28 +137,10 @@ def add_training_data(training_dict):
         conn.update(worksheet="Trainings", data=df_updated)
         st.cache_data.clear()
         return True
+
     except Exception as e:
         st.error(f"Erreur de sauvegarde de l'entraînement : {e}")
         return False
-
-def save_figures_to_cloud(fullname, figures_dict):
-    """Sauvegarde le dictionnaire de figures d'un élève dans le Google Sheet"""
-    try:
-        df = get_users_data()
-        if not df.empty and "Fullname" in df.columns:
-            if "Figures" not in df.columns:
-                df["Figures"] = "{}"
-            
-            json_str = json.dumps(figures_dict)
-            df.loc[df["Fullname"] == fullname, "Figures"] = json_str
-            
-            conn.update(worksheet="Users", data=df)
-            st.cache_data.clear()
-            return True
-    except Exception as e:
-        st.error(f"Erreur de sauvegarde Cloud : {e}")
-        return False
-
 @st.cache_data(ttl=60)
 def fetch_training_data():
     """Récupère l'historique des entraînements sans passer par un CSV public"""
@@ -1037,6 +1072,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
