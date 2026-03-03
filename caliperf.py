@@ -1000,52 +1000,55 @@ elif page_choisie == "📊 Mon Suivi":
                                         else:
                                             st.dataframe(det[['Exercice','TST','RPE','Charge']], use_container_width=True, hide_index=True)
 
-                            # --- AJOUT 2 : LE JOURNAL DÉTAILLÉ DE TOUTES LES SÉANCES ---
+                            # --- AJOUT 2 : LE JOURNAL DÉTAILLÉ AVEC RECHERCHE PAR DATE ---
                             st.write("---")
-                            st.subheader("📓 Journal détaillé des entraînements")
-                            with st.expander("Voir tout mon historique détaillé 👇"):
-                                if not s_df.empty:
-                                    # Trier du plus récent au plus ancien
-                                    df_historique = s_df.sort_values(by="Date", ascending=False)
+                            st.subheader("📓 Journal détaillé de tes séances")
+                            
+                            if not s_df.empty:
+                                # 1. On récupère toutes les dates uniques, triées de la plus récente à la plus ancienne
+                                dates_disponibles = sorted(s_df['Date'].astype(str).unique(), reverse=True)
+                                
+                                # 2. Création du menu déroulant
+                                date_choisie = st.selectbox("📅 Sélectionne une date pour voir les détails :", dates_disponibles)
+                                
+                                # 3. On filtre les données pour ne garder QUE la séance de cette date
+                                df_jour = s_df[s_df['Date'].astype(str) == date_choisie]
+                                
+                                st.write("") # Petit espace esthétique
+                                
+                                # 4. On affiche les détails (seulement pour la date filtrée)
+                                for _, row in df_jour.iterrows():
+                                    st.markdown(f"### 🎯 Bilan du {date_choisie}")
                                     
-                                    for _, row in df_historique.iterrows():
-                                        # 1. Nettoyage de la date (on enlève le 00:00:00)
-                                        date_propre = str(row['Date'])[:10]
-                                        st.markdown(f"### 🗓️ SÉANCE DU {date_propre}")
-                                        
-                                        raw_details = row.get('Details')
-                                        
-                                        # 2. On vérifie si on a bien des données dans la colonne Details
-                                        if pd.notna(raw_details) and str(raw_details).strip() not in ["", "None", "nan"]:
-                                            try:
-                                                # On tente de décoder le JSON
-                                                details_json = json.loads(str(raw_details))
-                                                
-                                                if isinstance(details_json, list) and len(details_json) > 0:
-                                                    nb_exos = len(details_json)
-                                                    st.caption(f"🏋️ **Nombre d'exos :** {nb_exos} | ⚡ **Charge Totale :** {row.get('Charge', 0)} | ⏱️ **TST Total :** {row.get('TST', 0)}s | 🧠 **RPE Moyen :** {row.get('RPE', 0)}")
-                                                    
-                                                    df_show = pd.DataFrame(details_json)
-                                                    # On renomme pour faire propre
-                                                    df_show = df_show.rename(columns={"TST": "TST (s)", "Charge": "Charge (Unité)"})
-                                                    
-                                                    # Affichage du beau tableau
-                                                    st.dataframe(df_show, use_container_width=True, hide_index=True)
-                                                else:
-                                                    st.info(f"Détails : {row.get('Exercice', 'N/A')}")
-                                                    
-                                            except json.JSONDecodeError:
-                                                # C'EST LÀ QUE TON CODE PLANTAIT AVANT !
-                                                st.caption(f"⚡ Charge Totale : {row.get('Charge', 0)} | ⏱️ TST : {row.get('TST', 0)}s")
-                                                st.error("⚠️ Bug Coach : Le format JSON dans Google Sheets est invalide pour cette séance.")
-                                                st.code(raw_details, language="json") # Affiche la donnée brute pour t'aider à débugger
-                                                st.info(f"Résumé : {row.get('Exercice', 'N/A')}")
-                                        else:
-                                            # Si la case 'Details' est complètement vide (anciennes séances)
-                                            st.caption(f"⚡ Charge Totale : {row.get('Charge', 0)} | ⏱️ TST : {row.get('TST', 0)}s")
-                                            st.info(f"Détails : {row.get('Exercice', 'N/A')}")
+                                    raw_details = row.get('Details')
+                                    
+                                    # Vérification et lecture du JSON (comme on l'a sécurisé avant)
+                                    if pd.notna(raw_details) and str(raw_details).strip() not in ["", "None", "nan"]:
+                                        try:
+                                            details_json = json.loads(str(raw_details))
                                             
-                                        st.divider()
+                                            if isinstance(details_json, list) and len(details_json) > 0:
+                                                nb_exos = len(details_json)
+                                                st.caption(f"🏋️ **Nombre d'exos :** {nb_exos} | ⚡ **Charge Totale :** {row.get('Charge', 0)} | ⏱️ **TST Total :** {row.get('TST', 0)}s | 🧠 **RPE Global :** {row.get('RPE', 0)}")
+                                                
+                                                df_show = pd.DataFrame(details_json)
+                                                df_show = df_show.rename(columns={"TST": "TST (s)", "Charge": "Charge (Unité)"})
+                                                
+                                                st.dataframe(df_show, use_container_width=True, hide_index=True)
+                                            else:
+                                                st.info(f"Détails : {row.get('Exercice', 'N/A')}")
+                                                
+                                        except Exception: # Simplifié pour l'élève (pas de message d'erreur effrayant)
+                                            st.caption(f"⚡ Charge Totale : {row.get('Charge', 0)} | ⏱️ TST : {row.get('TST', 0)}s")
+                                            st.info(f"Résumé de la séance : {row.get('Exercice', 'N/A')}")
+                                    else:
+                                        # Si c'est une très vieille séance sans données détaillées
+                                        st.caption(f"⚡ Charge Totale : {row.get('Charge', 0)} | ⏱️ TST : {row.get('TST', 0)}s")
+                                        st.info(f"Résumé de la séance : {row.get('Exercice', 'N/A')}")
+                                        
+                                    st.divider()
+                            else:
+                                st.info("ℹ️ Aucune séance n'est encore enregistrée.")
                             st.write("---")
                             render_figure_manager(selected_name)
                             
@@ -1280,6 +1283,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
