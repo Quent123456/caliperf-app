@@ -681,7 +681,7 @@ elif page_choisie == "🎥 Espace Vidéo":
                                         "Type", options=["Dynamique", "Statique"], required=True
                                     ),
                                     "Valeur": st.column_config.NumberColumn(
-                                        "Val (reps/sec)", min_value=0.1, step=0.5, required=True
+                                        val = st.number_input("Val (reps/sec)", min_value=0.5, step=0.5, value=1.0, key=f"val_{real_name}_{s_student}_{i}", label_visibility="collapsed")
                                     )
                                 },
                                 use_container_width=True,
@@ -1282,6 +1282,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
