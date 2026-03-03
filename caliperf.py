@@ -726,7 +726,7 @@ elif page_choisie == "📊 Mon Suivi":
                                     with c2: sv = st.plotly_chart(fig_v, use_container_width=True, on_select="rerun", key=f"v_{name}")
 
                                     sel = sc if sc and sc["selection"]["points"] else sv if sv and sv["selection"]["points"] else None
-                                    def add_training_data(training_dict):
+def add_training_data(training_dict):
     """Ajoute ou met à jour l'entraînement du jour dans le Google Sheet avec détails"""
     try:
         try:
@@ -826,7 +826,7 @@ elif page_choisie == "📊 Mon Suivi":
 
     except Exception as e:
         st.error(f"Erreur de sauvegarde de l'entraînement : {e}")
-        return False
+        return False                                    
 
                         with st.expander(f"📚 Gérer les figures de {name}"):
                             render_figure_manager(name)
@@ -1284,6 +1284,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
