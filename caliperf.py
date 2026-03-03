@@ -927,13 +927,14 @@ elif page_choisie == "📊 Mon Suivi":
                             </div>""", unsafe_allow_html=True)
                             
                             st.subheader("📈 Tes Graphiques")
-                            # On charge uniquement les données de l'élève connecté
-s_df = fetch_training_data(selected_name)
 
-if not s_df.empty and 'TST' in s_df.columns and 'Charge' in s_df.columns:
-    # Pense à préparer la date ici aussi
-    s_df['Date'] = pd.to_datetime(s_df['Timestamp'], errors='coerce').dt.date
-
+                            # Ici, pas de "with", donc on reste aligné avec le st.subheader 👇
+                            s_df = fetch_training_data(selected_name)
+                            
+                            if not s_df.empty and 'TST' in s_df.columns and 'Charge' in s_df.columns:
+                                s_df['Date'] = pd.to_datetime(s_df['Timestamp'], errors='coerce').dt.date
+                                
+                                # ... suite du code ...
                             if not df_history.empty:
                                 s_df = df_history[df_history['Nom'] == selected_name].copy()
                                 if not s_df.empty:
@@ -1263,6 +1264,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
