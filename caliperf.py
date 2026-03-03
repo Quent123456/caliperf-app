@@ -1067,7 +1067,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
         cap = cv2.VideoCapture(video_path)
         fps = cap.get(cv2.CAP_PROP_FPS)
 if fps == 0 or np.isnan(fps):
-    fps = 30.0 # Valeur de secours par défaut
+        fps = 30.0 # Valeur de secours par défaut
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         orig_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         orig_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -1277,6 +1277,7 @@ if fps == 0 or np.isnan(fps):
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
