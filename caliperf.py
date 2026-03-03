@@ -933,7 +933,7 @@ elif page_choisie == "📊 Mon Suivi":
 
                             if not s_df.empty and 'TST' in s_df.columns and 'Charge' in s_df.columns:
                                 s_df['TST_Val'] = pd.to_numeric(s_df['TST'], errors='coerce').fillna(0)
-                                s_df['Date'] = pd.to_datetime(s_df['Timestamp'], errors='coerce').dt.date
+                                s_df['Date'] = pd.to_datetime(s_df['Timestamp'], errors='coerce').dt.normalize()
                                 
                                 # TOUT CE QUI SUIT EST ALIGNÉ SOUS LE 's_df' CI-DESSUS
                                 daily = s_df.groupby('Date').agg({'Charge':'sum', 'TST_Val':'sum', 'RPE':'mean'})
@@ -1254,6 +1254,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
