@@ -754,12 +754,22 @@ fig_c.update_layout(title="Charge & Intensité d'entraînement", template="plotl
                                         det = s_df[s_df['Date'].astype(str)==dt].copy()
                                         
                                         if 'Details' in det.columns and pd.notna(det.iloc[0]['Details']) and str(det.iloc[0]['Details']).strip() != "":
-                                            try:
-                                                liste_details = json.loads(str(det.iloc[0]['Details']))
-                                                df_details = pd.DataFrame(liste_details)
-                                                st.dataframe(df_details[['Exercice', 'TST', 'RPE', 'Charge']], use_container_width=True, hide_index=True)
-                                            except Exception:
-                                                st.dataframe(det[['Exercice','TST','RPE','Charge']], use_container_width=True, hide_index=True)
+    try:
+        liste_details = json.loads(str(det.iloc[0]['Details']))
+        df_details = pd.DataFrame(liste_details)
+        
+        # --- C'EST ICI QU'ON RENOMME LES COLONNES ---
+        df_details = df_details.rename(columns={
+            "TST": "TST (s)", 
+            "Charge": "Charge (Unité)",
+            "RPE": "Score d'Intensité"
+        })
+        
+        st.dataframe(df_details[['Exercice', 'TST (s)', "Score d'Intensité", 'Charge (Unité)']], use_container_width=True, hide_index=True)
+    except Exception:
+        # En cas d'erreur de format
+        det_renamed = det.rename(columns={"RPE": "Score d'Intensité"})
+        st.dataframe(det_renamed[['Exercice','TST',"Score d'Intensité",'Charge']], use_container_width=True, hide_index=True)
                                         else:
                                             st.dataframe(det[['Exercice','TST','RPE','Charge']], use_container_width=True, hide_index=True)
                                 else: 
@@ -946,7 +956,7 @@ fig_c.update_layout(title="Charge & Intensité d'entraînement", template="plotl
                                             details_json = json.loads(str(raw_details))
                                             if isinstance(details_json, list) and len(details_json) > 0:
                                                 nb_exos = len(details_json)
-                                                st.caption(f"🏋️ **Nombre d'exos :** {nb_exos} | ⚡ **Charge Totale :** {row.get('Charge', 0)} | ⏱️ **TST Total :** {row.get('TST', 0)}s | 🧠 **RPE Global :** {row.get('RPE', 0)}")
+                                                st.caption(f"🏋️ **Nombre d'exos :** {nb_exos} | ⚡ **Charge Totale :** {row.get('Charge', 0)} | ⏱️ **TST Total :** {row.get('TST', 0)}s | 🧠 **Score d'Intensité :** {row.get('RPE', 0)}")
                                                 
                                                 df_show = pd.DataFrame(details_json)
                                                 df_show = df_show.rename(columns={"TST": "TST (s)", "Charge": "Charge (Unité)"})
@@ -1206,6 +1216,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
