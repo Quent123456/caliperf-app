@@ -3,11 +3,8 @@ pandas
 requests
 plotly
 st-gsheets-connection
-opencv-contrib-python-headless
+Pillow
+numpy
+opencv-python-headless
 streamlit-image-coordinates
-mediapipe==0.10.14
-
-
-
-
-
+mediapipe
