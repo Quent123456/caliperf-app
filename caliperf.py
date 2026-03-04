@@ -525,7 +525,16 @@ elif page_choisie == "🎥 Espace Vidéo":
                     with c_tools:
                         st.subheader("⏱️ Chrono")
                         curr = timer['acc'] + (time.time() - timer['start'] if timer['run'] else 0)
-                        st.markdown(f'<div class="big-time">{curr:.2f} s</div>', unsafe_allow_html=True)
+                        
+                        # -- NOUVEAU : Calcul des minutes, secondes et centièmes --
+                        mins = int(curr // 60)
+                        secs = int(curr % 60)
+                        cents = int((curr - int(curr)) * 100)
+                        
+                        # Formatage style vrai chrono (ex: 01:25.43)
+                        chrono_str = f"{mins:02d}:{secs:02d}.{cents:02d}"
+                        
+                        st.markdown(f'<div class="big-time">{chrono_str}</div>', unsafe_allow_html=True)
                         
                         # --- AFFICHAGE DU CHRONO ---
                         b1, b2 = st.columns(2)
@@ -1205,6 +1214,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
