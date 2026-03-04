@@ -769,19 +769,25 @@ if sel:
         
         st.dataframe(df_details[['Exercice', 'TST (s)', "Score d'Intensité", 'Charge (Unité)']], use_container_width=True, hide_index=True)
        except Exception:
-        # En cas d'erreur de format
-        det_renamed = det.rename(columns={"RPE": "Score d'Intensité"})
-        st.dataframe(det_renamed[['Exercice','TST',"Score d'Intensité",'Charge']], use_container_width=True, hide_index=True)
-                                        else:
-                                            st.dataframe(det[['Exercice','TST','RPE','Charge']], use_container_width=True, hide_index=True)
-                                else: 
-                                    st.info("Pas de données.")
-                            else: 
-                                st.info("ℹ️ Les données sont en cours d'initialisation.")
-
-                    with st.expander(f"📚 Gérer les figures de {name}"):
-                        render_figure_manager(name)
-
+                                    # En cas d'erreur de format
+                                    det_renamed = det.rename(columns={"RPE": "Score d'Intensité"})
+                                    st.dataframe(det_renamed[['Exercice', 'TST', "Score d'Intensité", 'Charge']], use_container_width=True, hide_index=True)
+                                
+                            # 👇 1er else : Aligné avec le "if 'Details' in det.columns..."
+                            else:
+                                st.dataframe(det[['Exercice', 'TST', 'RPE', 'Charge']], use_container_width=True, hide_index=True)
+                                
+                    # 👇 2ème else : Aligné avec le "if sel:" ou la vérification des données
+                    else:
+                        st.info("Pas de données.")
+                        
+                # 👇 3ème else : Aligné avec le tout premier "if not s_df.empty:"
+                else:
+                    st.info("ℹ️ Les données sont en cours d'initialisation.")
+                
+                # 👇 L'expander doit s'aligner avec le "if not s_df.empty" (il sort de la logique des graphiques)
+                with st.expander(f"📚 Gérer les figures de {name}"):
+                    render_figure_manager(name)
                 st.write("---")
                 st.subheader("🚨 Zone de Danger : Gérer les élèves")
                 
@@ -1218,6 +1224,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
