@@ -696,93 +696,79 @@ elif page_choisie == "📊 Mon Suivi":
                         </div>""", unsafe_allow_html=True)
 
                     with st.expander(f"📈 Stats de {name}"):
-                            # Remarque bien le décalage (indentation) ici 👇
-                            s_df = fetch_training_data(name) 
-                            
-                            if not s_df.empty and 'TST' in s_df.columns and 'Charge' in s_df.columns:
-                                s_df['Date'] = pd.to_datetime(s_df['Timestamp'], errors='coerce').dt.date
-                                
-                                # ... Tout le reste de ton code pour les graphiques (daily, fig_c, fig_v...) 
-                                # doit aussi rester aligné au moins à ce niveau !
-                            if not df_history.empty and 'TST' in df_history.columns and 'Charge' in df_history.columns:
-                                s_df = df_history[df_history['Nom'] == name].copy()
-                                if not s_df.empty:
-                                    s_df['TST_Val'] = pd.to_numeric(s_df['TST'], errors='coerce').fillna(0)
-                                    s_df['Date'] = pd.to_datetime(s_df['Date'])
-                                    
-                                    daily = s_df.groupby('Date').agg({'Charge':'sum', 'TST_Val':'sum', 'RPE':'mean'})
-                                    daily = daily.resample('D').asfreq().fillna({'Charge': 0, 'TST_Val': 0})
-                                    daily['MA_Ch'] = daily['Charge'].rolling(window=3, min_periods=1).mean()
-                                    daily['MA_Vol'] = daily['TST_Val'].rolling(window=3, min_periods=1).mean()
-                                    
-                                    daily = daily.reset_index()
-                                    daily_train = daily[daily['Charge'] > 0]
-
-                                    # --- On aligne tout sur la même verticale ---
-fig_c = go.Figure()
-
-# On ajoute le hovertemplate et la colorbar
-fig_c.add_trace(go.Scatter(
-    x=daily_train['Date'], 
-    y=daily_train['Charge'], 
-    mode='markers', 
-    marker=dict(
-        color=daily_train['RPE'], 
-        colorscale='RdYlGn_r', 
-        size=12,
-        colorbar=dict(title="Score d'Intensité") # Affiche la barre de couleur
-    ), 
-    name='Séance',
-    hovertemplate="<b>Date:</b> %{x}<br><b>Charge:</b> %{y}<br><b>Score d'Intensité:</b> %{marker.color}<extra></extra>"
-))
-
-fig_c.add_trace(go.Scatter(x=daily['Date'], y=daily['MA_Ch'], mode='lines', line=dict(dash='dot', color='orange', width=2), name='Tendance 3J'))
-fig_c.update_layout(title="Charge & Intensité d'entraînement", template="plotly_dark", height=300, margin=dict(t=30,b=10,l=10,r=10), showlegend=False)
-
-fig_v = go.Figure()
-fig_v.add_trace(go.Bar(x=daily_train['Date'], y=daily_train['TST_Val'], marker=dict(color='#3366CC'), name='Vol'))
-fig_v.add_trace(go.Scatter(x=daily['Date'], y=daily['MA_Vol'], mode='lines', line=dict(dash='dot', color='white'), name='Tend.'))
-fig_v.update_layout(title="Volume", template="plotly_dark", height=250, margin=dict(t=30,b=10,l=10,r=10), showlegend=False)
-
-# On aligne parfaitement ici !
-c1, c2 = st.columns(2)
-with c1: sc = st.plotly_chart(fig_c, use_container_width=True, on_select="rerun", key=f"c_{name}")
-with c2: sv = st.plotly_chart(fig_v, use_container_width=True, on_select="rerun", key=f"v_{name}")
-
-sel = sc if sc and sc["selection"]["points"] else sv if sv and sv["selection"]["points"] else None
-if sel:
-    dt = sel["selection"]["points"][0]["x"]
-    st.markdown(f"**🔎 Détail des exercices du {dt}**")
-    det = s_df[s_df['Date'].astype(str)==dt].copy()
-                                        
-    if 'Details' in det.columns and pd.notna(det.iloc[0]['Details']) and str(det.iloc[0]['Details']).strip() != "":
-       try:
-        liste_details = json.loads(str(det.iloc[0]['Details']))
-        df_details = pd.DataFrame(liste_details)
-        
-        # --- C'EST ICI QU'ON RENOMME LES COLONNES ---
-        df_details = df_details.rename(columns={
-            "TST": "TST (s)", 
-            "Charge": "Charge (Unité)",
-            "RPE": "Score d'Intensité"
-        })
-        
-        st.dataframe(df_details[['Exercice', 'TST (s)', "Score d'Intensité", 'Charge (Unité)']], use_container_width=True, hide_index=True)
-       except Exception:
-        det_renamed = det.rename(columns={"RPE": "Score d'Intensité"})
-        st.dataframe(det_renamed[['Exercice', 'TST', "Score d'Intensité", 'Charge']], use_container_width=True, hide_index=True)
-                                
-else:
-st.dataframe(det[['Exercice', 'TST', 'RPE', 'Charge']], use_container_width=True, hide_index=True)
-                                
-else:
-st.info("Pas de données.")
+                        s_df = fetch_training_data(name) 
                         
-else:
-st.info("ℹ️ Les données sont en cours d'initialisation.")
-                
-                with st.expander(f"📚 Gérer les figures de {name}"):
-                    render_figure_manager(name)
+                        if not s_df.empty and 'TST' in s_df.columns and 'Charge' in s_df.columns:
+                            s_df['Date'] = pd.to_datetime(s_df['Timestamp'], errors='coerce').dt.normalize()
+                            s_df['TST_Val'] = pd.to_numeric(s_df['TST'], errors='coerce').fillna(0)
+                            
+                            daily = s_df.groupby('Date').agg({'Charge':'sum', 'TST_Val':'sum', 'RPE':'mean'})
+                            daily = daily.resample('D').asfreq().fillna({'Charge': 0, 'TST_Val': 0})
+                            daily['MA_Ch'] = daily['Charge'].rolling(window=3, min_periods=1).mean()
+                            daily['MA_Vol'] = daily['TST_Val'].rolling(window=3, min_periods=1).mean()
+                            
+                            daily = daily.reset_index()
+                            daily_train = daily[daily['Charge'] > 0]
+
+                            fig_c = go.Figure()
+                            # On ajoute le hovertemplate et la colorbar
+                            fig_c.add_trace(go.Scatter(
+                                x=daily_train['Date'], 
+                                y=daily_train['Charge'], 
+                                mode='markers', 
+                                marker=dict(
+                                    color=daily_train['RPE'], 
+                                    colorscale='RdYlGn_r', 
+                                    size=12,
+                                    colorbar=dict(title="Score d'Intensité") 
+                                ), 
+                                name='Séance',
+                                hovertemplate="<b>Date:</b> %{x}<br><b>Charge:</b> %{y}<br><b>Score d'Intensité:</b> %{marker.color}<extra></extra>"
+                            ))
+
+                            fig_c.add_trace(go.Scatter(x=daily['Date'], y=daily['MA_Ch'], mode='lines', line=dict(dash='dot', color='orange', width=2), name='Tendance 3J'))
+                            fig_c.update_layout(title="Charge & Intensité d'entraînement", template="plotly_dark", height=300, margin=dict(t=30,b=10,l=10,r=10), showlegend=False)
+
+                            fig_v = go.Figure()
+                            fig_v.add_trace(go.Bar(x=daily_train['Date'], y=daily_train['TST_Val'], marker=dict(color='#3366CC'), name='Vol'))
+                            fig_v.add_trace(go.Scatter(x=daily['Date'], y=daily['MA_Vol'], mode='lines', line=dict(dash='dot', color='white'), name='Tend.'))
+                            fig_v.update_layout(title="Volume", template="plotly_dark", height=250, margin=dict(t=30,b=10,l=10,r=10), showlegend=False)
+
+                            c1, c2 = st.columns(2)
+                            with c1: sc = st.plotly_chart(fig_c, use_container_width=True, on_select="rerun", key=f"c_{name}")
+                            with c2: sv = st.plotly_chart(fig_v, use_container_width=True, on_select="rerun", key=f"v_{name}")
+
+                            sel = sc if sc and sc["selection"]["points"] else sv if sv and sv["selection"]["points"] else None
+                            if sel:
+                                dt = sel["selection"]["points"][0]["x"]
+                                st.markdown(f"**🔎 Détail des exercices du {dt}**")
+                                det = s_df[s_df['Date'].astype(str)==dt].copy()
+                                                                        
+                                if 'Details' in det.columns and pd.notna(det.iloc[0]['Details']) and str(det.iloc[0]['Details']).strip() != "":
+                                    try:
+                                        liste_details = json.loads(str(det.iloc[0]['Details']))
+                                        df_details = pd.DataFrame(liste_details)
+                                        
+                                        # --- C'EST ICI QU'ON RENOMME LES COLONNES ---
+                                        df_details = df_details.rename(columns={
+                                            "TST": "TST (s)", 
+                                            "Charge": "Charge (Unité)",
+                                            "RPE": "Score d'Intensité"
+                                        })
+                                        
+                                        st.dataframe(df_details[['Exercice', 'TST (s)', "Score d'Intensité", 'Charge (Unité)']], use_container_width=True, hide_index=True)
+                                    except Exception:
+                                        det_renamed = det.rename(columns={"RPE": "Score d'Intensité"})
+                                        st.dataframe(det_renamed[['Exercice', 'TST', "Score d'Intensité", 'Charge']], use_container_width=True, hide_index=True)
+                                else:
+                                    det_renamed = det.rename(columns={"RPE": "Score d'Intensité"})
+                                    st.dataframe(det_renamed[['Exercice', 'TST', "Score d'Intensité", 'Charge']], use_container_width=True, hide_index=True)
+                        else:
+                            st.info("Pas de données.")
+                    
+                    with st.expander(f"📚 Gérer les figures de {name}"):
+                        render_figure_manager(name)
+                        
                 st.write("---")
                 st.subheader("🚨 Zone de Danger : Gérer les élèves")
                 
@@ -1219,6 +1205,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
