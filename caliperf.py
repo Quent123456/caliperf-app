@@ -667,7 +667,7 @@ elif page_choisie == "🎥 Espace Vidéo":
         col_send1, col_send2 = st.columns([1, 2])
         with col_send1:
             st.info("👇 Clique ici pour déposer tes fichiers")
-            st.link_button("📂 Ouvrir le dossier de dépôt", UPLOAD_LINK, type="primary", use_container_width=True)
+            st.link_button("📂 Ouvrir le dossier de dépôt", "https://drive.google.com/drive/folders/1TfAzaLBYD424Zq2wq8t1MyievSMx6v0l?usp=drive_link", type="primary", use_container_width=True)
         with col_send2:
             st.caption("Une fois tes vidéos déposées, préviens ton coach ! Il les récupérera pour les analyser ici même.")
 
@@ -1214,6 +1214,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
