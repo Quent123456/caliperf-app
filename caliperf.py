@@ -750,12 +750,12 @@ with c1: sc = st.plotly_chart(fig_c, use_container_width=True, on_select="rerun"
 with c2: sv = st.plotly_chart(fig_v, use_container_width=True, on_select="rerun", key=f"v_{name}")
 
 sel = sc if sc and sc["selection"]["points"] else sv if sv and sv["selection"]["points"] else None
-                                    if sel:
-                                        dt = sel["selection"]["points"][0]["x"]
-                                        st.markdown(f"**🔎 Détail des exercices du {dt}**")
-                                        det = s_df[s_df['Date'].astype(str)==dt].copy()
+if sel:
+dt = sel["selection"]["points"][0]["x"]
+st.markdown(f"**🔎 Détail des exercices du {dt}**")
+det = s_df[s_df['Date'].astype(str)==dt].copy()
                                         
-                                        if 'Details' in det.columns and pd.notna(det.iloc[0]['Details']) and str(det.iloc[0]['Details']).strip() != "":
+if 'Details' in det.columns and pd.notna(det.iloc[0]['Details']) and str(det.iloc[0]['Details']).strip() != "":
     try:
         liste_details = json.loads(str(det.iloc[0]['Details']))
         df_details = pd.DataFrame(liste_details)
@@ -1218,6 +1218,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
