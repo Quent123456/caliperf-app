@@ -864,7 +864,6 @@ elif page_choisie == "📊 Mon Suivi":
                                 s_df['TST_Val'] = pd.to_numeric(s_df['TST'], errors='coerce').fillna(0)
                                 s_df['Date'] = pd.to_datetime(s_df['Timestamp'], errors='coerce').dt.normalize()
                                 
-                                # TOUT CE QUI SUIT EST ALIGNÉ SOUS LE 's_df' CI-DESSUS
                                 daily = s_df.groupby('Date').agg({'Charge':'sum', 'TST_Val':'sum', 'RPE':'mean'})
                                 daily = daily.resample('D').asfreq().fillna({'Charge': 0, 'TST_Val': 0})
                                 daily['MA_Ch'] = daily['Charge'].rolling(window=3, min_periods=1).mean()
@@ -874,24 +873,23 @@ elif page_choisie == "📊 Mon Suivi":
                                 daily_train = daily[daily['Charge'] > 0]
 
                                 fig_c = go.Figure()
+                                # On ajoute le hovertemplate et la colorbar
+                                fig_c.add_trace(go.Scatter(
+                                    x=daily_train['Date'], 
+                                    y=daily_train['Charge'], 
+                                    mode='markers', 
+                                    marker=dict(
+                                        color=daily_train['RPE'], 
+                                        colorscale='RdYlGn_r', 
+                                        size=12,
+                                        colorbar=dict(title="Score d'Intensité") 
+                                    ), 
+                                    name='Séance',
+                                    hovertemplate="<b>Date:</b> %{x}<br><b>Charge:</b> %{y}<br><b>Score d'Intensité:</b> %{marker.color}<extra></extra>"
+                                ))
 
-# On ajoute le hovertemplate et la colorbar
-fig_c.add_trace(go.Scatter(
-    x=daily_train['Date'], 
-    y=daily_train['Charge'], 
-    mode='markers', 
-    marker=dict(
-        color=daily_train['RPE'], 
-        colorscale='RdYlGn_r', 
-        size=12,
-        colorbar=dict(title="Score d'Intensité") # Affiche la barre de couleur
-    ), 
-    name='Séance',
-    hovertemplate="<b>Date:</b> %{x}<br><b>Charge:</b> %{y}<br><b>Score d'Intensité:</b> %{marker.color}<extra></extra>"
-))
-
-fig_c.add_trace(go.Scatter(x=daily['Date'], y=daily['MA_Ch'], mode='lines', line=dict(dash='dot', color='orange', width=2), name='Tendance 3J'))
-fig_c.update_layout(title="Charge & Intensité d'entraînement", template="plotly_dark", height=300, margin=dict(t=30,b=10,l=10,r=10), showlegend=False)
+                                fig_c.add_trace(go.Scatter(x=daily['Date'], y=daily['MA_Ch'], mode='lines', line=dict(dash='dot', color='orange', width=2), name='Tendance 3J'))
+                                fig_c.update_layout(title="Charge & Intensité d'entraînement", template="plotly_dark", height=300, margin=dict(t=30,b=10,l=10,r=10), showlegend=False)
                                 
                                 fig_v = go.Figure()
                                 fig_v.add_trace(go.Bar(x=daily_train['Date'], y=daily_train['TST_Val'], marker=dict(color='#3366CC'), name='Vol'))
@@ -904,7 +902,7 @@ fig_c.update_layout(title="Charge & Intensité d'entraînement", template="plotl
 
                                 sel = sc if sc and sc["selection"]["points"] else sv if sv and sv["selection"]["points"] else None
                                 
-                                # --- DÉTAIL AU CLIC (Aligné exactement sous 'sel = ...') ---
+                                # --- DÉTAIL AU CLIC ---
                                 if sel:
                                     dt = sel["selection"]["points"][0]["x"]
                                     st.markdown(f"**🔎 Détail de ta séance du {dt}**")
@@ -914,12 +912,14 @@ fig_c.update_layout(title="Charge & Intensité d'entraînement", template="plotl
                                         try:
                                             liste_details = json.loads(str(det.iloc[0]['Details']))
                                             df_details = pd.DataFrame(liste_details)
-                                            df_details = df_details.rename(columns={"TST": "TST (s)", "Charge": "Charge (Unité)"})
-                                            st.dataframe(df_details[['Exercice', 'TST (s)', 'RPE', 'Charge (Unité)']], use_container_width=True, hide_index=True)
+                                            df_details = df_details.rename(columns={"TST": "TST (s)", "Charge": "Charge (Unité)", "RPE": "Score d'Intensité"})
+                                            st.dataframe(df_details[['Exercice', 'TST (s)', "Score d'Intensité", 'Charge (Unité)']], use_container_width=True, hide_index=True)
                                         except Exception:
-                                            st.dataframe(det[['Exercice','TST','RPE','Charge']], use_container_width=True, hide_index=True)
+                                            det_renamed = det.rename(columns={"RPE": "Score d'Intensité"})
+                                            st.dataframe(det_renamed[['Exercice', 'TST', "Score d'Intensité", 'Charge']], use_container_width=True, hide_index=True)
                                     else:
-                                        st.dataframe(det[['Exercice','TST','RPE','Charge']], use_container_width=True, hide_index=True)
+                                        det_renamed = det.rename(columns={"RPE": "Score d'Intensité"})
+                                        st.dataframe(det_renamed[['Exercice', 'TST', "Score d'Intensité", 'Charge']], use_container_width=True, hide_index=True)
 
                                 # --- LE JOURNAL DÉTAILLÉ AVEC RECHERCHE PAR DATE ---
                                 st.write("---")
@@ -948,7 +948,7 @@ fig_c.update_layout(title="Charge & Intensité d'entraînement", template="plotl
                                                 st.caption(f"🏋️ **Nombre d'exos :** {nb_exos} | ⚡ **Charge Totale :** {row.get('Charge', 0)} | ⏱️ **TST Total :** {row.get('TST', 0)}s | 🧠 **Score d'Intensité :** {row.get('RPE', 0)}")
                                                 
                                                 df_show = pd.DataFrame(details_json)
-                                                df_show = df_show.rename(columns={"TST": "TST (s)", "Charge": "Charge (Unité)"})
+                                                df_show = df_show.rename(columns={"TST": "TST (s)", "Charge": "Charge (Unité)", "RPE": "Score d'Intensité"})
                                                 st.dataframe(df_show, use_container_width=True, hide_index=True)
                                             else:
                                                 st.info(f"Détails : {row.get('Exercice', 'N/A')}")
@@ -1205,6 +1205,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
