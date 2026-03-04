@@ -756,7 +756,7 @@ if sel:
     det = s_df[s_df['Date'].astype(str)==dt].copy()
                                         
     if 'Details' in det.columns and pd.notna(det.iloc[0]['Details']) and str(det.iloc[0]['Details']).strip() != "":
-    try:
+       try:
         liste_details = json.loads(str(det.iloc[0]['Details']))
         df_details = pd.DataFrame(liste_details)
         
@@ -1218,6 +1218,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
