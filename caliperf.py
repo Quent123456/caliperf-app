@@ -18,32 +18,26 @@ from streamlit_image_coordinates import streamlit_image_coordinates
 
 # --- CONFIGURATION DE LA PAGE ---
 st.set_page_config(page_title="Caliperf - Coach Pro", layout="wide", page_icon="💪")
-# --- CONFIGURATION DE LA PAGE ---
-st.set_page_config(page_title="Caliperf - Coach Pro", layout="wide", page_icon="💪")
-
 # --- 1. CHARGEMENT SÉCURISÉ DES CONFIGURATIONS ---
 try:
     ADMIN_PWD = st.secrets["general"]["admin_password"]
-    LINK_UNIQUE = st.secrets["general"]["google_form_url"]
-    DELETE_SCRIPT_URL = st.secrets["general"]["delete_script_url"]
-    ENTRIES = st.secrets["google_entries"]
-    CSV_URL_SECRET = st.secrets["general"].get("csv_url", "")
-    UPLOAD_LINK = st.secrets["general"].get("upload_link", "https://drive.google.com/") 
+    # ... tes autres secrets ...
 except Exception as e:
     st.error(f"⚠️ Erreur critique de configuration : {e}")
     st.stop()
 
-DB_FILE = "caliperf_db.json"
-
-# --- 2. FONCTIONS DE GESTION DES DONNÉES (VERSION CLOUD) ---
+# --- 2. FONCTIONS DE GESTION DES DONNÉES (VERSION CLOUD CENTRALISÉE) ---
+# On initialise la connexion UNE SEULE FOIS
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-@st.cache_data(ttl=300) # Garde en cache pendant 5 minutes
+@st.cache_data(ttl=300) # Garde en cache 5 min. Le clear() sera appelé lors d'une modif.
 def get_users_data():
     """Récupère les données de l'onglet 'Users'"""
     try:
-        return conn.read(worksheet="Users", ttl=0) # Le ttl=0 ici force la lecture, mais la fonction entière est gérée par st.cache_data
-    except Exception:
+        # On utilise le cache de st.cache_data, pas besoin de forcer ttl=0 ici en permanence
+        return conn.read(worksheet="Users") 
+    except Exception as e:
+        st.error(f"Erreur lecture Users: {e}")
         return pd.DataFrame()
 
 def add_new_user(user_dict):
@@ -58,121 +52,17 @@ def add_new_user(user_dict):
             df_updated = new_row
             
         conn.update(worksheet="Users", data=df_updated)
-        st.cache_data.clear()
+        st.cache_data.clear() # On vide le cache pour forcer l'actualisation
         return True
     except Exception as e:
-        st.error(f"Erreur de sauvegarde : {e}")
+        st.error(f"Erreur de sauvegarde utilisateur : {e}")
         return False
 
-# --- 2. FONCTIONS DE GESTION DES DONNÉES (VERSION CLOUD) ---
-conn = st.connection("gsheets", type=GSheetsConnection)
-
-@st.cache_data(ttl=300) # Garde en cache pendant 5 minutes
-def get_users_data():
-    """Récupère les données de l'onglet 'Users'"""
-    try:
-        return conn.read(worksheet="Users", ttl=0)
-    except Exception:
-        return pd.DataFrame()
-
-def add_new_user(user_dict):
-    # ... (ton code existant) ...
-    pass
-
-# COLLES LA FONCTION ICI, BIEN COLLÉE À GAUCHE :
 def add_training_data(training_dict):
-    """Ajoute ou met à jour l'entraînement dans l'onglet spécifique de l'élève"""
-    nom = training_dict["Nom"]
-    nom_onglet = f"Tr_{nom}" # Crée un nom d'onglet dynamique, ex: "Tr_Jean Dupont"
-
+    """Ajoute ou met à jour l'entraînement du jour dans le Google Sheet central 'Trainings'"""
     try:
         try:
-            # On lit l'onglet spécifique de l'élève
-            df_actuel = conn.read(worksheet=nom_onglet, ttl=0)
-        except Exception:
-            # Si l'onglet n'existe pas encore (nouvel élève), on crée la structure
-            df_actuel = pd.DataFrame(columns=["Timestamp", "Nom", "Exercice", "TST", "RPE", "Charge", "Details"])
-
-        if "Details" not in df_actuel.columns:
-            df_actuel["Details"] = None
-
-        date_str = training_dict["Timestamp"][:10]  
-
-        charge_individuelle = round(float(training_dict["TST"]) * int(training_dict["RPE"]), 2)
-        nouveau_detail = {
-            "Exercice": training_dict["Exercice"],
-            "TST": float(training_dict["TST"]),
-            "RPE": int(training_dict["RPE"]),
-            "Charge": charge_individuelle
-        }
-
-        if not df_actuel.empty and "Timestamp" in df_actuel.columns:
-            df_actuel['Date_temp'] = df_actuel['Timestamp'].astype(str).str[:10]
-            mask = (df_actuel['Nom'] == nom) & (df_actuel['Date_temp'] == date_str)
-
-            if mask.any():
-                # --- LIGNE EXISTANTE ---
-                idx = df_actuel[mask].index[0]
-
-                old_tst = float(df_actuel.loc[idx, "TST"]) if pd.notna(df_actuel.loc[idx, "TST"]) else 0.0
-                old_rpe = int(df_actuel.loc[idx, "RPE"]) if pd.notna(df_actuel.loc[idx, "RPE"]) else 0
-                old_exo = str(df_actuel.loc[idx, "Exercice"])
-
-                old_details_str = df_actuel.loc[idx, "Details"]
-                try:
-                    if pd.notna(old_details_str) and str(old_details_str).strip() != "":
-                        liste_details = json.loads(str(old_details_str))
-                    else:
-                        liste_details = [{"Exercice": old_exo, "TST": old_tst, "RPE": old_rpe, "Charge": round(old_tst * old_rpe, 2)}]
-                except Exception:
-                    liste_details = []
-                
-                liste_details.append(nouveau_detail)
-
-                new_tst = old_tst + float(training_dict["TST"])
-                new_rpe = old_rpe + int(training_dict["RPE"])
-                new_charge = new_tst * new_rpe
-                
-                new_exo = old_exo + " | " + str(training_dict["Exercice"]) if training_dict["Exercice"] != "Repos" else old_exo
-
-                df_actuel.loc[idx, "Exercice"] = new_exo
-                df_actuel.loc[idx, "TST"] = round(new_tst, 2)
-                df_actuel.loc[idx, "RPE"] = new_rpe
-                df_actuel.loc[idx, "Charge"] = round(new_charge, 2)
-                df_actuel.loc[idx, "Timestamp"] = training_dict["Timestamp"]
-                df_actuel.loc[idx, "Details"] = json.dumps(liste_details)
-
-                df_actuel = df_actuel.drop(columns=['Date_temp'])
-                
-                # ON MET À JOUR L'ONGLET DE L'ÉLÈVE
-                conn.update(worksheet=nom_onglet, data=df_actuel)
-                st.cache_data.clear()
-                return True
-            else:
-                df_actuel = df_actuel.drop(columns=['Date_temp'])
-
-        # --- NOUVELLE LIGNE ---
-        training_dict["Charge"] = charge_individuelle
-        training_dict["Details"] = json.dumps([nouveau_detail])
-        new_row = pd.DataFrame([training_dict])
-        
-        df_updated = pd.concat([df_actuel, new_row], ignore_index=True) if not df_actuel.empty else new_row
-            
-        # ON MET À JOUR L'ONGLET DE L'ÉLÈVE
-        conn.update(worksheet=nom_onglet, data=df_updated)
-        st.cache_data.clear()
-        return True
-
-    except Exception as e:
-        st.error(f"Erreur de sauvegarde de l'entraînement : {e}")
-        return False
-        
-def add_training_data(training_dict):
-    """Ajoute ou met à jour l'entraînement du jour dans le Google Sheet central"""
-    try:
-        try:
-            # On lit l'onglet central existant
-            df_actuel = conn.read(worksheet="Trainings", ttl=0)
+            df_actuel = conn.read(worksheet="Trainings", ttl=0) # ttl=0 pour être sûr d'avoir la dernière version avant d'écrire
         except Exception:
             df_actuel = pd.DataFrame(columns=["Timestamp", "Nom", "Exercice", "TST", "RPE", "Charge", "Details"])
 
@@ -181,8 +71,8 @@ def add_training_data(training_dict):
 
         date_str = training_dict["Timestamp"][:10]  
         nom = training_dict["Nom"]
-
         charge_individuelle = round(float(training_dict["TST"]) * int(training_dict["RPE"]), 2)
+        
         nouveau_detail = {
             "Exercice": training_dict["Exercice"],
             "TST": float(training_dict["TST"]),
@@ -196,12 +86,12 @@ def add_training_data(training_dict):
 
             if mask.any():
                 idx = df_actuel[mask].index[0]
-
+                
                 old_tst = float(df_actuel.loc[idx, "TST"]) if pd.notna(df_actuel.loc[idx, "TST"]) else 0.0
                 old_rpe = int(df_actuel.loc[idx, "RPE"]) if pd.notna(df_actuel.loc[idx, "RPE"]) else 0
                 old_exo = str(df_actuel.loc[idx, "Exercice"])
-
                 old_details_str = df_actuel.loc[idx, "Details"]
+                
                 try:
                     if pd.notna(old_details_str) and str(old_details_str).strip() != "":
                         liste_details = json.loads(str(old_details_str))
@@ -213,13 +103,10 @@ def add_training_data(training_dict):
                 liste_details.append(nouveau_detail)
 
                 new_tst = old_tst + float(training_dict["TST"])
-                new_rpe = old_rpe + int(training_dict["RPE"])
+                new_rpe = old_rpe + int(training_dict["RPE"]) # Attention: sommer les RPE n'a pas toujours de sens physio, une moyenne serait peut-être mieux ?
                 new_charge = new_tst * new_rpe
                 
-                if training_dict["Exercice"] != "Repos":
-                    new_exo = old_exo + " | " + str(training_dict["Exercice"])
-                else:
-                    new_exo = old_exo
+                new_exo = old_exo + " | " + str(training_dict["Exercice"]) if training_dict["Exercice"] != "Repos" else old_exo
 
                 df_actuel.loc[idx, "Exercice"] = new_exo
                 df_actuel.loc[idx, "TST"] = round(new_tst, 2)
@@ -235,16 +122,12 @@ def add_training_data(training_dict):
             else:
                 df_actuel = df_actuel.drop(columns=['Date_temp'])
 
-        # Aucune ligne pour aujourd'hui
+        # Si aucune ligne pour aujourd'hui
         training_dict["Charge"] = charge_individuelle
         training_dict["Details"] = json.dumps([nouveau_detail])
-        
         new_row = pd.DataFrame([training_dict])
         
-        if not df_actuel.empty:
-            df_updated = pd.concat([df_actuel, new_row], ignore_index=True)
-        else:
-            df_updated = new_row
+        df_updated = pd.concat([df_actuel, new_row], ignore_index=True) if not df_actuel.empty else new_row
             
         conn.update(worksheet="Trainings", data=df_updated)
         st.cache_data.clear()
@@ -253,20 +136,35 @@ def add_training_data(training_dict):
     except Exception as e:
         st.error(f"Erreur de sauvegarde de l'entraînement : {e}")
         return False
-        
+
 @st.cache_data(ttl=60)
 def fetch_training_data(nom_eleve=None):
     """Récupère l'historique et filtre directement pour un élève précis si demandé"""
     try:
-        df = conn.read(worksheet="Trainings", ttl=0)
-        
-        # Si un élève est précisé, on filtre le tableau pour ne garder que lui
+        df = conn.read(worksheet="Trainings")
         if nom_eleve and not df.empty and "Nom" in df.columns:
             df = df[df["Nom"] == nom_eleve]
-            
         return df
     except Exception as e:
+        st.error(f"Erreur lors de la récupération des données : {e}")
         return pd.DataFrame()
+
+def save_figures_to_cloud(athlete_name, new_figures_dict):
+    """Met à jour le dictionnaire de figures d'un élève dans l'onglet Users"""
+    try:
+        df_users = get_users_data()
+        if not df_users.empty and "Fullname" in df_users.columns:
+            mask = df_users["Fullname"] == athlete_name
+            if mask.any():
+                idx = df_users[mask].index[0]
+                df_users.loc[idx, "Figures"] = json.dumps(new_figures_dict)
+                conn.update(worksheet="Users", data=df_users)
+                st.cache_data.clear()
+                return True
+        return False
+    except Exception as e:
+        st.error(f"Erreur lors de la sauvegarde des figures : {e}")
+        return False
 
 # --- 3. GESTION DU CHRONO ---
 def toggle_timer(video_key):
@@ -1278,6 +1176,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
