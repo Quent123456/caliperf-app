@@ -719,9 +719,24 @@ elif page_choisie == "📊 Mon Suivi":
                                     daily_train = daily[daily['Charge'] > 0]
 
                                     fig_c = go.Figure()
-                                    fig_c.add_trace(go.Scatter(x=daily_train['Date'], y=daily_train['Charge'], mode='markers', marker=dict(color=daily_train['RPE'], colorscale='RdYlGn_r', size=10), name='Séance'))
-                                    fig_c.add_trace(go.Scatter(x=daily['Date'], y=daily['MA_Ch'], mode='lines', line=dict(dash='dot', color='orange', width=2), name='Tendance 3J'))
-                                    fig_c.update_layout(title="Charge", template="plotly_dark", height=250, margin=dict(t=30,b=10,l=10,r=10), showlegend=False)
+
+# On ajoute le hovertemplate et la colorbar
+fig_c.add_trace(go.Scatter(
+    x=daily_train['Date'], 
+    y=daily_train['Charge'], 
+    mode='markers', 
+    marker=dict(
+        color=daily_train['RPE'], 
+        colorscale='RdYlGn_r', 
+        size=12,
+        colorbar=dict(title="Score d'Intensité") # Affiche la barre de couleur
+    ), 
+    name='Séance',
+    hovertemplate="<b>Date:</b> %{x}<br><b>Charge:</b> %{y}<br><b>Score d'Intensité:</b> %{marker.color}<extra></extra>"
+))
+
+fig_c.add_trace(go.Scatter(x=daily['Date'], y=daily['MA_Ch'], mode='lines', line=dict(dash='dot', color='orange', width=2), name='Tendance 3J'))
+fig_c.update_layout(title="Charge & Intensité d'entraînement", template="plotly_dark", height=300, margin=dict(t=30,b=10,l=10,r=10), showlegend=False)
                                     
                                     fig_v = go.Figure()
                                     fig_v.add_trace(go.Bar(x=daily_train['Date'], y=daily_train['TST_Val'], marker=dict(color='#3366CC'), name='Vol'))
@@ -1176,6 +1191,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
