@@ -768,7 +768,7 @@ if sel:
         })
         
         st.dataframe(df_details[['Exercice', 'TST (s)', "Score d'Intensité", 'Charge (Unité)']], use_container_width=True, hide_index=True)
-    except Exception:
+       except Exception:
         # En cas d'erreur de format
         det_renamed = det.rename(columns={"RPE": "Score d'Intensité"})
         st.dataframe(det_renamed[['Exercice','TST',"Score d'Intensité",'Charge']], use_container_width=True, hide_index=True)
@@ -1218,6 +1218,7 @@ elif page_choisie == "⚡ Analyse Vitesse (VBT)":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("⚠️ L'IA n'a pas réussi à voir ton corps entier sur cette séquence.")
+
 
 
 
