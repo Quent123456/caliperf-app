@@ -929,7 +929,68 @@ elif page_choisie == "📊 Mon Suivi":
                                     else:
                                         det_renamed = det.rename(columns={"RPE": "Score d'Intensité"})
                                         st.dataframe(det_renamed[['Exercice', 'TST', "Score d'Intensité", 'Charge']], use_container_width=True, hide_index=True)
+                                # ==========================================
+                                # --- NOUVEAU : SECTION BILAN MENSUEL ---
+                                # ==========================================
+                                st.write("---")
+                                st.subheader("🗓️ Bilan Mensuel")
+                                
+                                # On crée une colonne 'Mois' au format YYYY-MM
+                                s_df['Mois'] = s_df['Date'].dt.strftime('%Y-%m')
+                                
+                                # On groupe les données par mois en additionnant la Charge et le TST
+                                df_mensuel = s_df.groupby('Mois').agg(
+                                    Charge_Totale=('Charge', 'sum'),
+                                    Volume_Total=('TST_Val', 'sum'),
+                                    Nb_Seances=('Date', 'nunique') # Compte le nombre de jours d'entraînement différents
+                                ).reset_index()
 
+                                if not df_mensuel.empty:
+                                    # Récupération du dernier mois enregistré
+                                    mois_actuel = df_mensuel.iloc[-1]
+                                    
+                                    st.markdown(f"**⚡ Bilan en cours ({mois_actuel['Mois']})**")
+                                    
+                                    # Affichage des métriques avec le design de tes cartes
+                                    cm1, cm2, cm3 = st.columns(3)
+                                    with cm1:
+                                        st.markdown(f"<div class='metric-card'><h4>🗓️ Séances</h4><h2>{int(mois_actuel['Nb_Seances'])}</h2></div>", unsafe_allow_html=True)
+                                    with cm2:
+                                        st.markdown(f"<div class='metric-card'><h4>⏱️ Volume (TST)</h4><h2>{round(mois_actuel['Volume_Total'], 1)}</h2></div>", unsafe_allow_html=True)
+                                    with cm3:
+                                        st.markdown(f"<div class='metric-card'><h4>🔥 Charge</h4><h2>{round(mois_actuel['Charge_Totale'], 1)}</h2></div>", unsafe_allow_html=True)
+                                    
+                                    st.write("")
+                                    
+                                    # Graphique d'évolution mensuelle (Charge en barres, Volume en ligne)
+                                    fig_bilan = go.Figure()
+                                    fig_bilan.add_trace(go.Bar(
+                                        x=df_mensuel['Mois'], 
+                                        y=df_mensuel['Charge_Totale'], 
+                                        name='Charge Totale', 
+                                        marker_color='rgba(176, 38, 255, 0.7)' # Ton violet cyberpunk
+                                    ))
+                                    fig_bilan.add_trace(go.Scatter(
+                                        x=df_mensuel['Mois'], 
+                                        y=df_mensuel['Volume_Total'], 
+                                        mode='lines+markers', 
+                                        name='Volume Total', 
+                                        line=dict(color='#00f3ff', width=3), # Ton bleu électrique
+                                        marker=dict(size=8, color='#00f3ff')
+                                    ))
+                                    
+                                    fig_bilan.update_layout(
+                                        title="Progression au fil des mois", 
+                                        template="plotly_dark",
+                                        plot_bgcolor='rgba(0,0,0,0)',
+                                        paper_bgcolor='rgba(0,0,0,0)',
+                                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                                    )
+                                    
+                                    st.plotly_chart(fig_bilan, use_container_width=True)
+                                else:
+                                    st.info("⏳ Pas encore assez de données pour afficher le bilan mensuel.")
+                                # ==========================================
                                 # --- LE JOURNAL DÉTAILLÉ AVEC RECHERCHE PAR DATE ---
                                 st.write("---")
                                 st.subheader("📓 Journal détaillé de tes séances")
