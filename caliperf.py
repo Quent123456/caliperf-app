@@ -865,7 +865,7 @@ elif page_choisie == "📊 Mon Suivi":
                             </div>""", unsafe_allow_html=True)
                             
                             st.subheader("📈 Tes Graphiques")
-st.write("---")
+                            st.write("---")
                             
                             # On récupère les données filtrées pour l'élève connecté UNE SEULE FOIS pour tous les onglets
                             s_df = fetch_training_data(selected_name)
