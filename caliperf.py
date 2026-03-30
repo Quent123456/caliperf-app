@@ -865,193 +865,127 @@ elif page_choisie == "📊 Mon Suivi":
                             </div>""", unsafe_allow_html=True)
                             
                             st.subheader("📈 Tes Graphiques")
-
-                            # On récupère les données filtrées pour l'élève connecté
+st.write("---")
+                            
+                            # On récupère les données filtrées pour l'élève connecté UNE SEULE FOIS pour tous les onglets
                             s_df = fetch_training_data(selected_name)
 
                             if not s_df.empty and 'TST' in s_df.columns and 'Charge' in s_df.columns:
                                 s_df['TST_Val'] = pd.to_numeric(s_df['TST'], errors='coerce').fillna(0)
                                 s_df['Date'] = pd.to_datetime(s_df['Timestamp'], errors='coerce').dt.normalize()
                                 
-                                daily = s_df.groupby('Date').agg({'Charge':'sum', 'TST_Val':'sum', 'RPE':'mean'})
-                                daily = daily.resample('D').asfreq().fillna({'Charge': 0, 'TST_Val': 0})
-                                daily['MA_Ch'] = daily['Charge'].rolling(window=3, min_periods=1).mean()
-                                daily['MA_Vol'] = daily['TST_Val'].rolling(window=3, min_periods=1).mean()
-                                
-                                daily = daily.reset_index()
-                                daily_train = daily[daily['Charge'] > 0]
+                                # ==========================================
+                                # CRÉATION DES ONGLETS
+                                # ==========================================
+                                tab_jour, tab_mois, tab_journal = st.tabs(["📈 Quotidien", "🗓️ Mensuel", "📓 Journal"])
 
-                                fig_c = go.Figure()
-                                # On ajoute le hovertemplate et la colorbar
-                                fig_c.add_trace(go.Scatter(
-                                    x=daily_train['Date'], 
-                                    y=daily_train['Charge'], 
-                                    mode='markers', 
-                                    marker=dict(
-                                        color=daily_train['RPE'], 
-                                        colorscale='RdYlGn_r', 
-                                        size=12,
-                                        colorbar=dict(title="Score d'Intensité") 
-                                    ), 
-                                    name='Séance',
-                                    hovertemplate="<b>Date:</b> %{x}<br><b>Charge:</b> %{y}<br><b>Score d'Intensité:</b> %{marker.color}<extra></extra>"
-                                ))
-
-                                fig_c.add_trace(go.Scatter(x=daily['Date'], y=daily['MA_Ch'], mode='lines', line=dict(dash='dot', color='orange', width=2), name='Tendance 3J'))
-                                fig_c.update_layout(title="Charge & Intensité d'entraînement", template="plotly_dark", height=300, margin=dict(t=30,b=10,l=10,r=10), showlegend=False)
-                                
-                                fig_v = go.Figure()
-                                fig_v.add_trace(go.Bar(x=daily_train['Date'], y=daily_train['TST_Val'], marker=dict(color='#3366CC'), name='Vol'))
-                                fig_v.add_trace(go.Scatter(x=daily['Date'], y=daily['MA_Vol'], mode='lines', line=dict(dash='dot', color='white'), name='Tend.'))
-                                fig_v.update_layout(title="Ton Volume (TST / Reps)", template="plotly_dark", height=300, margin=dict(t=30,b=10,l=10,r=10), showlegend=False)
-
-                                c1, c2 = st.columns(2)
-                                with c1: sc = st.plotly_chart(fig_c, use_container_width=True, on_select="rerun", key=f"c_student_{selected_name}")
-                                with c2: sv = st.plotly_chart(fig_v, use_container_width=True, on_select="rerun", key=f"v_student_{selected_name}")
-
-                                sel = sc if sc and sc["selection"]["points"] else sv if sv and sv["selection"]["points"] else None
-                                
-                                # --- DÉTAIL AU CLIC ---
-                                if sel:
-                                    dt = sel["selection"]["points"][0]["x"]
-                                    st.markdown(f"**🔎 Détail de ta séance du {dt}**")
-                                    det = s_df[s_df['Date'].astype(str) == dt].copy()
+                                # ------------------------------------------
+                                # ONGLET 1 : GRAPHIQUES QUOTIDIENS
+                                # ------------------------------------------
+                                with tab_jour:
+                                    st.subheader("Évolution au jour le jour")
+                                    daily = s_df.groupby('Date').agg({'Charge':'sum', 'TST_Val':'sum', 'RPE':'mean'})
+                                    daily = daily.resample('D').asfreq().fillna({'Charge': 0, 'TST_Val': 0})
+                                    daily['MA_Ch'] = daily['Charge'].rolling(window=3, min_periods=1).mean()
+                                    daily['MA_Vol'] = daily['TST_Val'].rolling(window=3, min_periods=1).mean()
                                     
-                                    if not det.empty and 'Details' in det.columns and pd.notna(det.iloc[0]['Details']) and str(det.iloc[0]['Details']).strip() != "":
-                                        try:
-                                            liste_details = json.loads(str(det.iloc[0]['Details']))
-                                            df_details = pd.DataFrame(liste_details)
-                                            df_details = df_details.rename(columns={"TST": "TST (s)", "Charge": "Charge (Unité)", "RPE": "Score d'Intensité"})
-                                            st.dataframe(df_details[['Exercice', 'TST (s)', "Score d'Intensité", 'Charge (Unité)']], use_container_width=True, hide_index=True)
-                                        except Exception:
-                                            det_renamed = det.rename(columns={"RPE": "Score d'Intensité"})
-                                            st.dataframe(det_renamed[['Exercice', 'TST', "Score d'Intensité", 'Charge']], use_container_width=True, hide_index=True)
+                                    daily = daily.reset_index()
+                                    daily_train = daily[daily['Charge'] > 0]
+
+                                    fig_c = go.Figure()
+                                    fig_c.add_trace(go.Scatter(
+                                        x=daily_train['Date'], y=daily_train['Charge'], mode='markers', 
+                                        marker=dict(color=daily_train['RPE'], colorscale='RdYlGn_r', size=12, colorbar=dict(title="Score d'Intensité")), 
+                                        name='Séance', hovertemplate="<b>Date:</b> %{x}<br><b>Charge:</b> %{y}<br><b>Score d'Intensité:</b> %{marker.color}<extra></extra>"
+                                    ))
+                                    fig_c.add_trace(go.Scatter(x=daily['Date'], y=daily['MA_Ch'], mode='lines', line=dict(dash='dot', color='orange', width=2), name='Tendance 3J'))
+                                    fig_c.update_layout(title="Charge & Intensité", template="plotly_dark", height=300, margin=dict(t=30,b=10,l=10,r=10), showlegend=False)
+                                    
+                                    fig_v = go.Figure()
+                                    fig_v.add_trace(go.Bar(x=daily_train['Date'], y=daily_train['TST_Val'], marker=dict(color='#3366CC'), name='Vol'))
+                                    fig_v.add_trace(go.Scatter(x=daily['Date'], y=daily['MA_Vol'], mode='lines', line=dict(dash='dot', color='white'), name='Tend.'))
+                                    fig_v.update_layout(title="Volume (TST / Reps)", template="plotly_dark", height=300, margin=dict(t=30,b=10,l=10,r=10), showlegend=False)
+
+                                    c1, c2 = st.columns(2)
+                                    with c1: sc = st.plotly_chart(fig_c, use_container_width=True, on_select="rerun", key=f"c_student_{selected_name}")
+                                    with c2: sv = st.plotly_chart(fig_v, use_container_width=True, on_select="rerun", key=f"v_student_{selected_name}")
+
+                                    sel = sc if sc and sc["selection"]["points"] else sv if sv and sv["selection"]["points"] else None
+                                    
+                                    if sel:
+                                        dt = sel["selection"]["points"][0]["x"]
+                                        st.markdown(f"**🔎 Détail de ta séance du {dt}**")
+                                        det = s_df[s_df['Date'].astype(str) == dt].copy()
+                                        
+                                        if not det.empty and 'Details' in det.columns and pd.notna(det.iloc[0]['Details']) and str(det.iloc[0]['Details']).strip() != "":
+                                            try:
+                                                liste_details = json.loads(str(det.iloc[0]['Details']))
+                                                df_details = pd.DataFrame(liste_details).rename(columns={"TST": "TST (s)", "Charge": "Charge (Unité)", "RPE": "Score d'Intensité"})
+                                                st.dataframe(df_details[['Exercice', 'TST (s)', "Score d'Intensité", 'Charge (Unité)']], use_container_width=True, hide_index=True)
+                                            except Exception:
+                                                det_renamed = det.rename(columns={"RPE": "Score d'Intensité"})
+                                                st.dataframe(det_renamed[['Exercice', 'TST', "Score d'Intensité", 'Charge']], use_container_width=True, hide_index=True)
+
+                                # ------------------------------------------
+                                # ONGLET 2 : BILAN MENSUEL SÉLECTIF
+                                # ------------------------------------------
+                                with tab_mois:
+                                    s_df['Mois'] = s_df['Date'].dt.strftime('%Y-%m')
+                                    df_mensuel = s_df.groupby('Mois').agg(
+                                        Charge_Totale=('Charge', 'sum'), Volume_Total=('TST_Val', 'sum'), Nb_Seances=('Date', 'nunique')
+                                    ).reset_index()
+
+                                    if not df_mensuel.empty:
+                                        noms_mois = {"01": "Janvier", "02": "Février", "03": "Mars", "04": "Avril", "05": "Mai", "06": "Juin", "07": "Juillet", "08": "Août", "09": "Septembre", "10": "Octobre", "11": "Novembre", "12": "Décembre"}
+                                        mois_dispos = df_mensuel['Mois'].sort_values(ascending=False).tolist()
+                                        
+                                        mois_choisi = st.selectbox("📅 Analyser le mois de :", mois_dispos, format_func=lambda x: f"{noms_mois[x.split('-')[1]]} {x.split('-')[0]}")
+                                        data_mois = df_mensuel[df_mensuel['Mois'] == mois_choisi].iloc[0]
+                                        
+                                        cm1, cm2, cm3 = st.columns(3)
+                                        with cm1: st.markdown(f"<div class='metric-card'><h4>🗓️ Séances</h4><h2>{int(data_mois['Nb_Seances'])}</h2></div>", unsafe_allow_html=True)
+                                        with cm2: st.markdown(f"<div class='metric-card'><h4>⏱️ Volume</h4><h2>{round(data_mois['Volume_Total'], 1)} s</h2></div>", unsafe_allow_html=True)
+                                        with cm3: st.markdown(f"<div class='metric-card'><h4>🔥 Charge</h4><h2>{round(data_mois['Charge_Totale'], 1)}</h2></div>", unsafe_allow_html=True)
+                                        
+                                        st.write("")
+                                        fig_bilan = go.Figure()
+                                        fig_bilan.add_trace(go.Bar(x=df_mensuel['Mois'], y=df_mensuel['Charge_Totale'], name='Charge Totale', marker_color='rgba(176, 38, 255, 0.7)'))
+                                        fig_bilan.add_trace(go.Scatter(x=df_mensuel['Mois'], y=df_mensuel['Volume_Total'], mode='lines+markers', name='Volume Total', line=dict(color='#00f3ff', width=3), marker=dict(size=8, color='#00f3ff')))
+                                        textes_axe_x = [f"{noms_mois[m.split('-')[1]]} {m.split('-')[0]}" for m in df_mensuel['Mois']]
+                                        fig_bilan.update_layout(title="Évolution Globale", template="plotly_dark", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), xaxis=dict(tickmode='array', tickvals=df_mensuel['Mois'], ticktext=textes_axe_x))
+                                        st.plotly_chart(fig_bilan, use_container_width=True)
                                     else:
-                                        det_renamed = det.rename(columns={"RPE": "Score d'Intensité"})
-                                        st.dataframe(det_renamed[['Exercice', 'TST', "Score d'Intensité", 'Charge']], use_container_width=True, hide_index=True)
-                                # ==========================================
-                                # --- SECTION BILAN MENSUEL SÉLECTIF ---
-                                # ==========================================
-                                st.write("---")
-                                st.subheader("🗓️ Bilan Mensuel")
-                                
-                                # On crée une colonne 'Mois' au format YYYY-MM
-                                s_df['Mois'] = s_df['Date'].dt.strftime('%Y-%m')
-                                
-                                # On groupe les données par mois
-                                df_mensuel = s_df.groupby('Mois').agg(
-                                    Charge_Totale=('Charge', 'sum'),
-                                    Volume_Total=('TST_Val', 'sum'),
-                                    Nb_Seances=('Date', 'nunique') # Compte le nombre de jours d'entraînement
-                                ).reset_index()
+                                        st.info("⏳ Pas encore assez de données.")
 
-                                if not df_mensuel.empty:
-                                    # Dictionnaire pour un affichage propre en français
-                                    noms_mois = {
-                                        "01": "Janvier", "02": "Février", "03": "Mars", "04": "Avril", 
-                                        "05": "Mai", "06": "Juin", "07": "Juillet", "08": "Août", 
-                                        "09": "Septembre", "10": "Octobre", "11": "Novembre", "12": "Décembre"
-                                    }
+                                # ------------------------------------------
+                                # ONGLET 3 : LE JOURNAL DÉTAILLÉ
+                                # ------------------------------------------
+                                with tab_journal:
+                                    dates_disponibles = sorted(s_df['Date'].astype(str).unique(), reverse=True)
+                                    date_choisie = st.selectbox("📅 Parcourir les archives :", dates_disponibles)
+                                    df_jour = s_df[s_df['Date'].astype(str) == date_choisie]
                                     
-                                    # Liste des mois disponibles, triés du plus récent au plus ancien
-                                    mois_dispos = df_mensuel['Mois'].sort_values(ascending=False).tolist()
-                                    
-                                    # Le menu déroulant pour choisir le mois
-                                    mois_choisi = st.selectbox(
-                                        "📅 Sélectionne le mois à analyser :", 
-                                        mois_dispos,
-                                        # format_func transforme "2024-03" en "Mars 2024" visuellement
-                                        format_func=lambda x: f"{noms_mois[x.split('-')[1]]} {x.split('-')[0]}"
-                                    )
-                                    
-                                    # On isole les données du mois sélectionné
-                                    data_mois = df_mensuel[df_mensuel['Mois'] == mois_choisi].iloc[0]
-                                    
-                                    # Affichage des métriques dynamiques
-                                    cm1, cm2, cm3 = st.columns(3)
-                                    with cm1:
-                                        st.markdown(f"<div class='metric-card'><h4>🗓️ Séances</h4><h2>{int(data_mois['Nb_Seances'])}</h2></div>", unsafe_allow_html=True)
-                                    with cm2:
-                                        st.markdown(f"<div class='metric-card'><h4>⏱️ Volume (TST)</h4><h2>{round(data_mois['Volume_Total'], 1)} s</h2></div>", unsafe_allow_html=True)
-                                    with cm3:
-                                        st.markdown(f"<div class='metric-card'><h4>🔥 Charge</h4><h2>{round(data_mois['Charge_Totale'], 1)}</h2></div>", unsafe_allow_html=True)
-                                    
-                                    st.write("")
-                                    
-                                    # Le graphique garde tout l'historique pour mettre le mois en perspective
-                                    fig_bilan = go.Figure()
-                                    fig_bilan.add_trace(go.Bar(
-                                        x=df_mensuel['Mois'], 
-                                        y=df_mensuel['Charge_Totale'], 
-                                        name='Charge Totale', 
-                                        marker_color='rgba(176, 38, 255, 0.7)' # Ton violet cyberpunk
-                                    ))
-                                    fig_bilan.add_trace(go.Scatter(
-                                        x=df_mensuel['Mois'], 
-                                        y=df_mensuel['Volume_Total'], 
-                                        mode='lines+markers', 
-                                        name='Volume Total', 
-                                        line=dict(color='#00f3ff', width=3), # Ton bleu électrique
-                                        marker=dict(size=8, color='#00f3ff')
-                                    ))
-                                    
-                                    # On modifie l'axe X du graphique pour qu'il affiche aussi "Mars 2024"
-                                    textes_axe_x = [f"{noms_mois[m.split('-')[1]]} {m.split('-')[0]}" for m in df_mensuel['Mois']]
-                                    
-                                    fig_bilan.update_layout(
-                                        title="Évolution Globale (Tous les mois)", 
-                                        template="plotly_dark",
-                                        plot_bgcolor='rgba(0,0,0,0)',
-                                        paper_bgcolor='rgba(0,0,0,0)',
-                                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                                        xaxis=dict(tickmode='array', tickvals=df_mensuel['Mois'], ticktext=textes_axe_x)
-                                    )
-                                    
-                                    st.plotly_chart(fig_bilan, use_container_width=True)
-                                else:
-                                    st.info("⏳ Pas encore assez de données pour afficher le bilan mensuel.")
-                                # ==========================================
-                                # ==========================================
-                                # --- LE JOURNAL DÉTAILLÉ AVEC RECHERCHE PAR DATE ---
-                                st.write("---")
-                                st.subheader("📓 Journal détaillé de tes séances")
-                                
-                                # 1. On récupère toutes les dates uniques, triées
-                                dates_disponibles = sorted(s_df['Date'].astype(str).unique(), reverse=True)
-                                
-                                # 2. Création du menu déroulant
-                                date_choisie = st.selectbox("📅 Sélectionne une date pour voir les détails :", dates_disponibles)
-                                
-                                # 3. Filtre
-                                df_jour = s_df[s_df['Date'].astype(str) == date_choisie]
-                                st.write("")
-                                
-                                # 4. Affichage
-                                for _, row in df_jour.iterrows():
-                                    st.markdown(f"### 🎯 Bilan du {date_choisie}")
-                                    raw_details = row.get('Details')
-                                    
-                                    if pd.notna(raw_details) and str(raw_details).strip() not in ["", "None", "nan"]:
-                                        try:
-                                            details_json = json.loads(str(raw_details))
-                                            if isinstance(details_json, list) and len(details_json) > 0:
-                                                nb_exos = len(details_json)
-                                                st.caption(f"🏋️ **Nombre d'exos :** {nb_exos} | ⚡ **Charge Totale :** {row.get('Charge', 0)} | ⏱️ **TST Total :** {row.get('TST', 0)}s | 🧠 **Score d'Intensité :** {row.get('RPE', 0)}")
-                                                
-                                                df_show = pd.DataFrame(details_json)
-                                                df_show = df_show.rename(columns={"TST": "TST (s)", "Charge": "Charge (Unité)", "RPE": "Score d'Intensité"})
-                                                st.dataframe(df_show, use_container_width=True, hide_index=True)
-                                            else:
-                                                st.info(f"Détails : {row.get('Exercice', 'N/A')}")
-                                        except Exception:
+                                    for _, row in df_jour.iterrows():
+                                        st.markdown(f"### 🎯 Bilan du {date_choisie}")
+                                        raw_details = row.get('Details')
+                                        
+                                        if pd.notna(raw_details) and str(raw_details).strip() not in ["", "None", "nan"]:
+                                            try:
+                                                details_json = json.loads(str(raw_details))
+                                                if isinstance(details_json, list) and len(details_json) > 0:
+                                                    st.caption(f"🏋️ **Nombre d'exos :** {len(details_json)} | ⚡ **Charge Totale :** {row.get('Charge', 0)} | ⏱️ **TST Total :** {row.get('TST', 0)}s | 🧠 **Score d'Intensité :** {row.get('RPE', 0)}")
+                                                    df_show = pd.DataFrame(details_json).rename(columns={"TST": "TST (s)", "Charge": "Charge (Unité)", "RPE": "Score d'Intensité"})
+                                                    st.dataframe(df_show, use_container_width=True, hide_index=True)
+                                                else:
+                                                    st.info(f"Détails : {row.get('Exercice', 'N/A')}")
+                                            except Exception:
+                                                st.caption(f"⚡ Charge Totale : {row.get('Charge', 0)} | ⏱️ TST : {row.get('TST', 0)}s")
+                                                st.info(f"Résumé de la séance : {row.get('Exercice', 'N/A')}")
+                                        else:
                                             st.caption(f"⚡ Charge Totale : {row.get('Charge', 0)} | ⏱️ TST : {row.get('TST', 0)}s")
                                             st.info(f"Résumé de la séance : {row.get('Exercice', 'N/A')}")
-                                    else:
-                                        st.caption(f"⚡ Charge Totale : {row.get('Charge', 0)} | ⏱️ TST : {row.get('TST', 0)}s")
-                                        st.info(f"Résumé de la séance : {row.get('Exercice', 'N/A')}")
-                                        
-                                    st.divider()
-                                    
+                                        st.divider()
+
                             else:
                                 st.info("ℹ️ Aucune séance n'est encore enregistrée. Il faut que ton coach analyse tes vidéos !")
                                 
