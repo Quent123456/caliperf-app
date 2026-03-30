@@ -930,7 +930,7 @@ elif page_choisie == "📊 Mon Suivi":
                                         det_renamed = det.rename(columns={"RPE": "Score d'Intensité"})
                                         st.dataframe(det_renamed[['Exercice', 'TST', "Score d'Intensité", 'Charge']], use_container_width=True, hide_index=True)
                                 # ==========================================
-                                # --- NOUVEAU : SECTION BILAN MENSUEL ---
+                                # --- SECTION BILAN MENSUEL SÉLECTIF ---
                                 # ==========================================
                                 st.write("---")
                                 st.subheader("🗓️ Bilan Mensuel")
@@ -938,31 +938,47 @@ elif page_choisie == "📊 Mon Suivi":
                                 # On crée une colonne 'Mois' au format YYYY-MM
                                 s_df['Mois'] = s_df['Date'].dt.strftime('%Y-%m')
                                 
-                                # On groupe les données par mois en additionnant la Charge et le TST
+                                # On groupe les données par mois
                                 df_mensuel = s_df.groupby('Mois').agg(
                                     Charge_Totale=('Charge', 'sum'),
                                     Volume_Total=('TST_Val', 'sum'),
-                                    Nb_Seances=('Date', 'nunique') # Compte le nombre de jours d'entraînement différents
+                                    Nb_Seances=('Date', 'nunique') # Compte le nombre de jours d'entraînement
                                 ).reset_index()
 
                                 if not df_mensuel.empty:
-                                    # Récupération du dernier mois enregistré
-                                    mois_actuel = df_mensuel.iloc[-1]
+                                    # Dictionnaire pour un affichage propre en français
+                                    noms_mois = {
+                                        "01": "Janvier", "02": "Février", "03": "Mars", "04": "Avril", 
+                                        "05": "Mai", "06": "Juin", "07": "Juillet", "08": "Août", 
+                                        "09": "Septembre", "10": "Octobre", "11": "Novembre", "12": "Décembre"
+                                    }
                                     
-                                    st.markdown(f"**⚡ Bilan en cours ({mois_actuel['Mois']})**")
+                                    # Liste des mois disponibles, triés du plus récent au plus ancien
+                                    mois_dispos = df_mensuel['Mois'].sort_values(ascending=False).tolist()
                                     
-                                    # Affichage des métriques avec le design de tes cartes
+                                    # Le menu déroulant pour choisir le mois
+                                    mois_choisi = st.selectbox(
+                                        "📅 Sélectionne le mois à analyser :", 
+                                        mois_dispos,
+                                        # format_func transforme "2024-03" en "Mars 2024" visuellement
+                                        format_func=lambda x: f"{noms_mois[x.split('-')[1]]} {x.split('-')[0]}"
+                                    )
+                                    
+                                    # On isole les données du mois sélectionné
+                                    data_mois = df_mensuel[df_mensuel['Mois'] == mois_choisi].iloc[0]
+                                    
+                                    # Affichage des métriques dynamiques
                                     cm1, cm2, cm3 = st.columns(3)
                                     with cm1:
-                                        st.markdown(f"<div class='metric-card'><h4>🗓️ Séances</h4><h2>{int(mois_actuel['Nb_Seances'])}</h2></div>", unsafe_allow_html=True)
+                                        st.markdown(f"<div class='metric-card'><h4>🗓️ Séances</h4><h2>{int(data_mois['Nb_Seances'])}</h2></div>", unsafe_allow_html=True)
                                     with cm2:
-                                        st.markdown(f"<div class='metric-card'><h4>⏱️ Volume (TST)</h4><h2>{round(mois_actuel['Volume_Total'], 1)}</h2></div>", unsafe_allow_html=True)
+                                        st.markdown(f"<div class='metric-card'><h4>⏱️ Volume (TST)</h4><h2>{round(data_mois['Volume_Total'], 1)} s</h2></div>", unsafe_allow_html=True)
                                     with cm3:
-                                        st.markdown(f"<div class='metric-card'><h4>🔥 Charge</h4><h2>{round(mois_actuel['Charge_Totale'], 1)}</h2></div>", unsafe_allow_html=True)
+                                        st.markdown(f"<div class='metric-card'><h4>🔥 Charge</h4><h2>{round(data_mois['Charge_Totale'], 1)}</h2></div>", unsafe_allow_html=True)
                                     
                                     st.write("")
                                     
-                                    # Graphique d'évolution mensuelle (Charge en barres, Volume en ligne)
+                                    # Le graphique garde tout l'historique pour mettre le mois en perspective
                                     fig_bilan = go.Figure()
                                     fig_bilan.add_trace(go.Bar(
                                         x=df_mensuel['Mois'], 
@@ -979,17 +995,22 @@ elif page_choisie == "📊 Mon Suivi":
                                         marker=dict(size=8, color='#00f3ff')
                                     ))
                                     
+                                    # On modifie l'axe X du graphique pour qu'il affiche aussi "Mars 2024"
+                                    textes_axe_x = [f"{noms_mois[m.split('-')[1]]} {m.split('-')[0]}" for m in df_mensuel['Mois']]
+                                    
                                     fig_bilan.update_layout(
-                                        title="Progression au fil des mois", 
+                                        title="Évolution Globale (Tous les mois)", 
                                         template="plotly_dark",
                                         plot_bgcolor='rgba(0,0,0,0)',
                                         paper_bgcolor='rgba(0,0,0,0)',
-                                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                                        xaxis=dict(tickmode='array', tickvals=df_mensuel['Mois'], ticktext=textes_axe_x)
                                     )
                                     
                                     st.plotly_chart(fig_bilan, use_container_width=True)
                                 else:
                                     st.info("⏳ Pas encore assez de données pour afficher le bilan mensuel.")
+                                # ==========================================
                                 # ==========================================
                                 # --- LE JOURNAL DÉTAILLÉ AVEC RECHERCHE PAR DATE ---
                                 st.write("---")
