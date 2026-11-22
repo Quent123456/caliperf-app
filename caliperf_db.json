@@ -1,0 +1,22 @@
+{
+  "version": 2,
+  "students": {
+    "Élève Démo": {
+      "link": "https://docs.google.com/forms/d/e/1FAIpQLSe-eaoZyDbe2ZTl_NfNKbkeDYKyEdRX_zchoK-Xjef7tGZGIA/formResponse",
+      "freq": "4x / semaine",
+      "goal": "Progression Muscle-up & Planche",
+      "created_at": "2026-11-22 21:06"
+    }
+  },
+  "evaluations": [],
+  "settings": {
+    "form_url": "https://docs.google.com/forms/d/e/1FAIpQLSe-eaoZyDbe2ZTl_NfNKbkeDYKyEdRX_zchoK-Xjef7tGZGIA/formResponse",
+    "entry_nom": "entry.1847695661",
+    "entry_exo": "entry.1595307876",
+    "entry_tst": "entry.549289703",
+    "entry_rpe": "entry.46344190",
+    "admin_pwd": "admin",
+    "auto_advance": true,
+    "send_to_google": true
+  }
+}
