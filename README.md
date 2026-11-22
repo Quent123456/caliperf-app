@@ -1,51 +1,37 @@
 # ⚡ Caliperf V2 - Studio de Vidéo-Coaching & Analyse TST
 
-Caliperf V2 est une application dédiée aux coachs sportifs (Calisthenics, Street Lifting, Force Athlétique, Musculation) pour accélérer et fiabiliser l'analyse vidéo des entraînements de leurs élèves.
+Caliperf V2 est une application haute vélocité dédiée aux coachs sportifs (Calisthenics, Street Lifting, Force Athlétique, Musculation) pour chronométrer le Temps Sous Tension (TST) et évaluer le RPE des athlètes avec un maximum de fluidité sur mobile et ordinateur.
 
 ---
 
-## 🚀 Nouveautés de la Version 2 (Ergonomie & Vitesse)
+## 🚀 Fonctionnalités Clés
 
-### 1. 🎬 Studio Vidéo Haute Vélocité
-- **Détection Automatique (Zero Clic)** : Analyse automatique du nom de fichier vidéo (ex: `Lucas_Dips_20kg.mp4`) pour pré-sélectionner instantanément l'athlète et l'exercice.
-- **Triple Méthode de Mesure du TST (Temps Sous Tension)** :
-  1. **Repères In/Out précis** : Pointez le début du set (ex: 3.5s) et la fin du set (ex: 28.0s) ➔ calcul automatique instantané ($24.5s$).
-  2. **Chronomètre dynamique** : Démarrage / pause avec ajustements fins (`+0.5s`, `-1.0s`, `+5s`, `RAZ`).
-  3. **Saisie directe** : Tapez directement la valeur si vous avez chronométré manuellement.
-- **Réglette RPE Interactive** : Échelle 1-10 avec zones d'effort codées par couleur (vert pour technique/récupération, bleu pour hypertrophie, orange pour intensité haute, rouge pour échec musculaire/PR).
-- **Enchaînement automatique** : Dès la validation, la séance est enregistrée et l'application passe automatiquement à la vidéo suivante de la file.
+### 1. 📱 Expérience Mobile Fluid Swipe (Glissement en continu)
+- **Transition tactile continue** : Glissez votre doigt sur l'écran pour voyager entre les sections (`Studio`, `Stats`, `Athlètes`, `Réglages`). La page suivante glisse progressivement sous votre doigt en temps réel avec une physique naturelle.
+- **Interface adaptée aux encoches (Safe Area)** : Le haut de l'écran est parfaitement dimensionné pour ne jamais être masqué par la barre d'état ou l'encoche de votre smartphone.
+- **Vidéo optimisée (40% de l'écran max)** : Permet de regarder l'athlète tout en manipulant le chronomètre et les repères sans défilement vertical inutile.
 
-### 2. 📊 Suivi & Progression Locale Intégrée
-- **Ne perdez plus aucune donnée** : Toutes les séances sont historisées localement dans `caliperf_db.json`.
-- **Graphiques de progression** : Visualisez l'évolution du TST au fil des semaines par exercice et par athlète (générés avec Plotly).
-- **Export en 1 clic** : Exportation de tout l'historique en fichier CSV / Excel.
+### 2. 🎯 Logique Pure : Temps Sous Tension (TST) & RPE
+- **Aucun multiplicateur complexe** : L'application se concentre sur les fondamentaux réels du coaching :
+  - **TST** : Temps Sous Tension précis au centième de seconde.
+  - **RPE** : Échelle de perception de l'effort de 1 à 10 avec indicateur visuel de réserve (RIR).
+  - **Répétitions & Tempo** : Calcul automatique du tempo moyen par répétition ($TST / Reps$).
 
-### 3. 🔗 Synchronisation Google Forms / Google Sheets Robuste
-- Synchronisation automatique avec votre formulaire Google (configurable dans l'onglet Paramètres).
-- **Mode résilient** : Si la connexion Internet échoue, les données restent enregistrées localement sans bloquer votre travail de coaching.
+### 3. 🤖 Module Auto-Track IA (Vision & Mouvement)
+- **Détection automatique par IA** : Grâce à l'intégration de Gemini Vision, l'application peut analyser la vidéo pour détecter automatiquement le début de l'effort, la fin du mouvement, le TST et le nombre de répétitions valides.
+- Prépare le terrain vers l'automatisation complète de vos analyses.
 
-### 4. 👥 Dossiers Athlètes
-- Fiches de suivi avec objectifs, fréquence hebdomadaire et compteur de séances validées.
-- Inscription rapide d'un nouvel athlète en 1 formulaire.
+### 4. 🌐 Enregistrement & Synchronisation
+- **Local d'abord** : Fonctionne 100% hors-ligne dans la salle de sport grâce à `caliperf_db.json`.
+- **Google Sheets Direct** : Synchronisation en direct via Webhook sans passer par un formulaire intermédiaire.
+- **Google Forms Legacy** : Prise en charge de votre ancien formulaire Google si vous souhaitez conserver votre flux existant.
+- **Export CSV** : Téléchargement de l'historique complet en 1 clic.
 
 ---
 
 ## 🛠️ Démarrage Rapide
 
-### Prérequis
-- Python 3.10+
-- Dépendances : `streamlit`, `pandas`, `requests`, `plotly`
-
-### Lancement
-```bash
+```powershell
 streamlit run caliperf.py
 ```
-
-L'application s'ouvrira automatiquement dans votre navigateur par défaut à l'adresse `http://localhost:8501`.
-
----
-
-## 🎨 Direction Artistique
-- Thème sombre athlétique à haut contraste (*Dark Athletic Kinetic*)
-- Accents Cyan Électrique (`#00f0ff`) et Vert Lime (`#10b981`)
-- Cartes en verre dépoli (*glassmorphism*) et affichage numérique d'inspiration chrono pro.
+Accès depuis votre navigateur : `http://localhost:8501`.

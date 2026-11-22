@@ -1,7 +1,7 @@
 """
 Caliperf V2 - Espace Coaching & Performance
-Application responsive Mobile-First & Desktop avec navigation tactile au swipe,
-calcul automatique de la Charge d'Entraînement (TST x RPE), et synchronisation moderne Google Sheets / Webhook.
+Application responsive Mobile-First & Desktop avec navigation tactile au swipe fluide (transition continue),
+mesure pure du TST & RPE (sans multiplicateurs), et module d'Auto-Track IA pour le comptage de reps et TST.
 """
 
 import os
@@ -22,6 +22,14 @@ try:
 except ImportError:
     HAS_PLOTLY = False
 
+# Import optionnel du SDK Gemini pour l'Auto-Track IA
+try:
+    from google import genai
+    from google.genai import types
+    HAS_GEMINI = True
+except ImportError:
+    HAS_GEMINI = False
+
 # ==============================================================================
 # 1. CONFIGURATION DE LA PAGE & VIEWPORT MOBILE
 # ==============================================================================
@@ -40,7 +48,7 @@ DEFAULT_ENTRY_TST = "entry.549289703"
 DEFAULT_ENTRY_RPE = "entry.46344190"
 
 # ==============================================================================
-# 2. GESTIONNAIRE DE BASE DE DONNÉES (AVEC CALCUL DE CHARGE TST x RPE)
+# 2. GESTIONNAIRE DE BASE DE DONNÉES (LOGIQUE PURE : TST & RPE)
 # ==============================================================================
 def get_default_db():
     return {
@@ -55,20 +63,21 @@ def get_default_db():
         },
         "evaluations": [],
         "settings": {
-            "sync_mode": "google_forms",  # "local_only", "google_forms", "gsheet_webhook"
+            "sync_mode": "google_forms",  # "google_forms", "gsheet_webhook", "local_only"
             "webhook_url": "",
             "form_url": DEFAULT_FORM_URL,
             "entry_nom": DEFAULT_ENTRY_NOM,
             "entry_exo": DEFAULT_ENTRY_EXO,
             "entry_tst": DEFAULT_ENTRY_TST,
             "entry_rpe": DEFAULT_ENTRY_RPE,
+            "gemini_api_key": os.getenv("GEMINI_API_KEY", ""),
             "admin_pwd": "admin",
             "auto_advance": True
         }
     }
 
 def load_db():
-    """Charge la base JSON avec migration automatique si ancien format."""
+    """Charge la base JSON avec migration automatique propre."""
     if not os.path.exists(DB_FILE):
         data = get_default_db()
         save_db(data)
@@ -96,11 +105,12 @@ def load_db():
         if "settings" not in raw:
             raw["settings"] = get_default_db()["settings"]
         else:
-            # Compatibilité anciens réglages
             if "sync_mode" not in raw["settings"]:
                 raw["settings"]["sync_mode"] = "google_forms"
             if "webhook_url" not in raw["settings"]:
                 raw["settings"]["webhook_url"] = ""
+            if "gemini_api_key" not in raw["settings"]:
+                raw["settings"]["gemini_api_key"] = os.getenv("GEMINI_API_KEY", "")
 
         return raw
 
@@ -133,7 +143,7 @@ if "stopwatches" not in st.session_state:
     st.session_state.stopwatches = {}
 
 # ==============================================================================
-# 3. CSS RESPONSIVE & MOBILE SAFE-AREA FIX
+# 3. DIRECTION ARTISTIQUE & DESIGN SYSTEM (DARK KINETIC FLUIDE)
 # ==============================================================================
 st.markdown("""
 <style>
@@ -146,23 +156,24 @@ st.markdown("""
     }
 
     [data-testid="stAppViewContainer"] {
-        background: radial-gradient(circle at 10% 12%, #0e172a 0%, #070d19 45%, #03050a 100%);
+        background: radial-gradient(circle at 15% 12%, #0e172a 0%, #070d19 45%, #03050a 100%);
         color: #f1f5f9;
+        overflow-x: hidden;
     }
 
-    /* FIX CRITIQUE DU HAUT D'ÉCRAN MOBILE (NOTCH & HEADER STREAMLIT) */
+    /* PADDING HAUT D'ÉCRAN SÉCURISÉ (NOTCH SMARTPHONE & HEADER STREAMLIT) */
     .block-container {
-        padding-top: calc(4.2rem + env(safe-area-inset-top, 0px)) !important;
+        padding-top: calc(4.4rem + env(safe-area-inset-top, 0px)) !important;
         padding-bottom: calc(2.5rem + env(safe-area-inset-bottom, 0px)) !important;
         padding-left: 0.85rem !important;
         padding-right: 0.85rem !important;
-        max-width: 1250px !important;
+        max-width: 1240px !important;
     }
 
     [data-testid="stHeader"] {
-        background: rgba(7, 13, 25, 0.88) !important;
-        backdrop-filter: blur(12px) !important;
-        height: 3.5rem !important;
+        background: rgba(7, 13, 25, 0.85) !important;
+        backdrop-filter: blur(14px) !important;
+        height: 3.6rem !important;
     }
 
     @media (min-width: 769px) {
@@ -173,13 +184,13 @@ st.markdown("""
         }
     }
 
-    /* LECTEUR VIDÉO RESPONSIVE (Ne bloque pas l'écran sur mobile) */
+    /* VIDÉO RESPONSIVE (40% max sur smartphone pour voir chrono + vidéo ensemble) */
     video {
         max-height: 40vh !important;
         width: 100% !important;
         object-fit: contain !important;
         background: #000 !important;
-        border-radius: 12px !important;
+        border-radius: 14px !important;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5) !important;
     }
 
@@ -189,16 +200,17 @@ st.markdown("""
         }
     }
 
-    /* ONGLETS / TABS TACTILES STYLE SEGMENTED CONTROL */
+    /* BARRE D'ONGLETS TACTILES STYLE SEGMENTED PILL CONTROLLER */
     .stTabs [data-baseweb="tab-list"] {
         gap: 6px !important;
-        background: rgba(15, 23, 42, 0.85) !important;
-        padding: 6px !important;
+        background: rgba(15, 23, 42, 0.88) !important;
+        padding: 5px !important;
         border-radius: 14px !important;
         border: 1px solid rgba(255, 255, 255, 0.1) !important;
         display: flex !important;
         margin-bottom: 1rem !important;
         overflow-x: auto !important;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3) !important;
     }
 
     .stTabs [data-baseweb="tab"] {
@@ -206,29 +218,44 @@ st.markdown("""
         min-height: 48px !important;
         border-radius: 10px !important;
         font-weight: 700 !important;
-        font-size: 0.95rem !important;
+        font-size: 0.92rem !important;
         color: #94a3b8 !important;
         background: transparent !important;
         border: none !important;
         text-align: center !important;
         white-space: nowrap !important;
-        transition: all 0.2s ease !important;
+        transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
     }
 
     .stTabs [aria-selected="true"] {
-        background: linear-gradient(135deg, #00f0ff, #0088ff) !important;
+        background: linear-gradient(135deg, #00f0ff, #0077ff) !important;
         color: #030712 !important;
         font-weight: 800 !important;
         box-shadow: 0 4px 16px rgba(0, 240, 255, 0.4) !important;
     }
 
-    /* CARTES & BADGES */
+    /* ANIMATION FLUIDE D'ENTRÉE DES PANNEAUX (SLIDE DOUX) */
+    [data-baseweb="tab-panel"] {
+        animation: tabPanelSlideFade 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+    @keyframes tabPanelSlideFade {
+        0% {
+            opacity: 0.2;
+            transform: translate3d(20px, 0, 0);
+        }
+        100% {
+            opacity: 1;
+            transform: translate3d(0, 0, 0);
+        }
+    }
+
+    /* CARTES & DESIGN GLASSMORPHISM */
     .cali-card {
         background: rgba(15, 23, 42, 0.8);
         border: 1px solid rgba(255, 255, 255, 0.09);
         border-radius: 14px;
         padding: 1rem 1.15rem;
-        backdrop-filter: blur(12px);
+        backdrop-filter: blur(14px);
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
         margin-bottom: 0.9rem;
     }
@@ -267,10 +294,10 @@ st.markdown("""
         display: inline-block;
     }
 
-    /* DIGITAL TIMER */
+    /* DIGITAL TIMER GÉANT */
     .digital-timer {
         font-family: 'JetBrains Mono', monospace;
-        font-size: 2.7rem;
+        font-size: 2.8rem;
         font-weight: 700;
         color: #00f0ff;
         text-shadow: 0 0 18px rgba(0, 240, 255, 0.45);
@@ -287,19 +314,7 @@ st.markdown("""
         letter-spacing: 0.05em;
     }
 
-    /* CHARGE D'ENTRAÎNEMENT CARTOUCHE */
-    .charge-card {
-        background: linear-gradient(135deg, rgba(0, 240, 255, 0.08), rgba(59, 130, 246, 0.12));
-        border: 1px solid rgba(0, 240, 255, 0.25);
-        border-radius: 10px;
-        padding: 8px 12px;
-        margin: 8px 0;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-
-    /* RPE INDICATOR */
+    /* RPE VISUAL INDICATOR */
     .rpe-indicator {
         padding: 8px 12px;
         border-radius: 9px;
@@ -315,7 +330,7 @@ st.markdown("""
     .rpe-opt { background: rgba(245, 158, 11, 0.15); border-left: 4px solid #f59e0b; color: #fde68a; }
     .rpe-max { background: rgba(239, 68, 68, 0.2); border-left: 4px solid #ef4444; color: #fca5a5; }
 
-    /* BOUTONS POUCE (TACTILE) */
+    /* BOUTONS POUCE (ZONES TACTILES >= 48px) */
     .stButton>button {
         border-radius: 9px !important;
         font-weight: 600 !important;
@@ -328,7 +343,7 @@ st.markdown("""
         transform: scale(0.97) !important;
     }
 
-    /* HEADER APP BANNER */
+    /* EN-TÊTE APP */
     .app-brand-banner {
         display: flex;
         justify-content: space-between;
@@ -339,80 +354,187 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 4. GESTIONNAIRE DE GESTE SWIPE MOBILE (JAVASCRIPT CLIENT-SIDE)
+# 4. GESTIONNAIRE DE GESTE SWIPE FLUIDE EN CONTINU (JAVASCRIPT CLIENT-SIDE)
 # ==============================================================================
-swipe_gesture_js = """
+# Ce script permet de glisser avec le doigt en voyant la page suivante glisser
+# progressivement sous l'écran en temps réel, sans transition brutale.
+fluid_swipe_js = """
 <script>
 (function() {
     try {
         const doc = (window.parent && window.parent.document) ? window.parent.document : document;
+        const win = (window.parent && window.parent.window) ? window.parent.window : window;
+
         let startX = 0;
         let startY = 0;
+        let currentX = 0;
+        let isDragging = false;
+        let isHorizontal = false;
+        let activeIdx = 0;
+        let nextIdx = -1;
+        let panels = [];
+        let tabButtons = [];
+        let activePanel = null;
+        let nextPanel = null;
         let startTime = 0;
 
-        function getTabButtons() {
-            return doc.querySelectorAll('button[data-baseweb="tab"], [role="tab"]');
+        function refreshElements() {
+            tabButtons = Array.from(doc.querySelectorAll('button[data-baseweb="tab"], [role="tab"]'));
+            panels = Array.from(doc.querySelectorAll('div[data-baseweb="tab-panel"]'));
+            activeIdx = tabButtons.findIndex(b => b.getAttribute('aria-selected') === 'true');
+            if (activeIdx === -1) activeIdx = 0;
         }
 
         doc.addEventListener('touchstart', function(e) {
-            if (!e.changedTouches || e.changedTouches.length === 0) return;
+            if (!e.touches || e.touches.length !== 1) return;
             const target = e.target;
-            // Ne pas intercepter si on touche un champ, slider, vidéo ou bouton de réglage
-            if (target.closest('input, textarea, select, video, [role="slider"], .stSlider, .stNumberInput, .stVideo')) {
+            if (target.closest('input, textarea, select, video, .stVideo, [role="slider"], .stSlider, .stNumberInput, pre, code')) {
                 return;
             }
-            startX = e.changedTouches[0].clientX;
-            startY = e.changedTouches[0].clientY;
+
+            refreshElements();
+            if (panels.length < 2 || activeIdx >= panels.length) return;
+
+            startX = e.touches[0].clientX;
+            startY = e.touches[0].clientY;
+            currentX = startX;
             startTime = Date.now();
+            isDragging = true;
+            isHorizontal = false;
+            activePanel = panels[activeIdx];
+            nextPanel = null;
+            nextIdx = -1;
         }, { passive: true });
+
+        doc.addEventListener('touchmove', function(e) {
+            if (!isDragging || !e.touches || e.touches.length !== 1) return;
+            currentX = e.touches[0].clientX;
+            const currentY = e.touches[0].clientY;
+            const diffX = currentX - startX;
+            const diffY = currentY - startY;
+
+            if (!isHorizontal) {
+                if (Math.abs(diffX) > 12 && Math.abs(diffX) > Math.abs(diffY) * 1.25) {
+                    isHorizontal = true;
+                } else if (Math.abs(diffY) > 12) {
+                    isDragging = false;
+                    return;
+                }
+            }
+
+            if (!isHorizontal || !activePanel) return;
+
+            if (diffX < 0 && activeIdx < panels.length - 1) {
+                nextIdx = activeIdx + 1;
+            } else if (diffX > 0 && activeIdx > 0) {
+                nextIdx = activeIdx - 1;
+            } else {
+                nextIdx = -1;
+            }
+
+            const screenW = win.innerWidth || doc.documentElement.clientWidth;
+            let appliedX = diffX;
+            if ((activeIdx === 0 && diffX > 0) || (activeIdx === panels.length - 1 && diffX < 0)) {
+                appliedX = diffX * 0.25;
+            }
+
+            activePanel.style.transition = 'none';
+            activePanel.style.transform = `translate3d(${appliedX}px, 0, 0)`;
+            activePanel.style.opacity = Math.max(0.4, 1 - Math.abs(appliedX) / (screenW * 1.6));
+
+            if (nextIdx >= 0 && nextIdx < panels.length) {
+                nextPanel = panels[nextIdx];
+                const incomingOffset = diffX < 0 ? (screenW + appliedX) : (-screenW + appliedX);
+                nextPanel.style.display = 'block';
+                nextPanel.style.position = 'fixed';
+                nextPanel.style.top = activePanel.offsetTop + 'px';
+                nextPanel.style.left = '0';
+                nextPanel.style.width = '100%';
+                nextPanel.style.zIndex = '999';
+                nextPanel.style.transition = 'none';
+                nextPanel.style.transform = `translate3d(${incomingOffset}px, 0, 0)`;
+                nextPanel.style.opacity = Math.min(1, Math.abs(appliedX) / (screenW * 0.7) + 0.3);
+            }
+        }, { passive: true });
+
+        function resetPanels() {
+            if (activePanel) {
+                activePanel.style.transform = '';
+                activePanel.style.opacity = '';
+                activePanel.style.transition = '';
+            }
+            if (nextPanel) {
+                nextPanel.style.transform = '';
+                nextPanel.style.opacity = '';
+                nextPanel.style.position = '';
+                nextPanel.style.top = '';
+                nextPanel.style.left = '';
+                nextPanel.style.width = '';
+                nextPanel.style.zIndex = '';
+                nextPanel.style.transition = '';
+                nextPanel.style.display = 'none';
+            }
+            isDragging = false;
+            isHorizontal = false;
+            nextPanel = null;
+        }
 
         doc.addEventListener('touchend', function(e) {
-            if (!e.changedTouches || e.changedTouches.length === 0) return;
-            const target = e.target;
-            if (target.closest('input, textarea, select, video, [role="slider"], .stSlider, .stNumberInput, .stVideo')) {
+            if (!isDragging || !isHorizontal) {
+                isDragging = false;
+                isHorizontal = false;
                 return;
             }
-            const endX = e.changedTouches[0].clientX;
-            const endY = e.changedTouches[0].clientY;
-            const elapsed = Date.now() - startTime;
 
-            const deltaX = endX - startX;
-            const deltaY = endY - startY;
+            const diffX = currentX - startX;
+            const duration = Date.now() - startTime;
+            const screenW = win.innerWidth || doc.documentElement.clientWidth;
+            const threshold = screenW * 0.18;
+            const velocity = Math.abs(diffX) / Math.max(duration, 1);
+            const isFlick = velocity > 0.32 && Math.abs(diffX) > 40;
 
-            // Swipe horizontal valide : distance >= 55px, temps < 800ms, direction nettement horizontale
-            if (elapsed < 800 && Math.abs(deltaX) > 55 && Math.abs(deltaX) > Math.abs(deltaY) * 1.4) {
-                const tabs = getTabButtons();
-                if (!tabs || tabs.length < 2) return;
+            if (nextPanel && (Math.abs(diffX) > threshold || isFlick) && nextIdx !== -1) {
+                activePanel.style.transition = 'transform 0.24s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.24s ease';
+                nextPanel.style.transition = 'transform 0.24s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.24s ease';
 
-                let activeIdx = 0;
-                for (let i = 0; i < tabs.length; i++) {
-                    if (tabs[i].getAttribute('aria-selected') === 'true' || tabs[i].classList.contains('active')) {
-                        activeIdx = i;
-                        break;
+                const exitX = diffX < 0 ? -screenW : screenW;
+                activePanel.style.transform = `translate3d(${exitX}px, 0, 0)`;
+                activePanel.style.opacity = '0.3';
+                nextPanel.style.transform = 'translate3d(0, 0, 0)';
+                nextPanel.style.opacity = '1';
+
+                setTimeout(function() {
+                    if (tabButtons[nextIdx]) {
+                        tabButtons[nextIdx].click();
+                        if (navigator.vibrate) navigator.vibrate(15);
                     }
+                    setTimeout(resetPanels, 50);
+                }, 240);
+            } else {
+                if (activePanel) {
+                    activePanel.style.transition = 'transform 0.2s ease, opacity 0.2s ease';
+                    activePanel.style.transform = 'translate3d(0, 0, 0)';
+                    activePanel.style.opacity = '1';
                 }
-
-                if (deltaX < 0 && activeIdx < tabs.length - 1) {
-                    // Glisser vers la gauche -> Onglet Suivant
-                    tabs[activeIdx + 1].click();
-                    if (navigator.vibrate) navigator.vibrate(18);
-                } else if (deltaX > 0 && activeIdx > 0) {
-                    // Glisser vers la droite -> Onglet Précédent
-                    tabs[activeIdx - 1].click();
-                    if (navigator.vibrate) navigator.vibrate(18);
+                if (nextPanel) {
+                    nextPanel.style.transition = 'transform 0.2s ease, opacity 0.2s ease';
+                    const exitTarget = diffX < 0 ? screenW : -screenW;
+                    nextPanel.style.transform = `translate3d(${exitTarget}px, 0, 0)`;
+                    nextPanel.style.opacity = '0';
                 }
+                setTimeout(resetPanels, 200);
             }
         }, { passive: true });
-    } catch(e) {
-        console.warn("Swipe gesture init info:", e);
+    } catch (err) {
+        console.warn("Caliperf smooth slider err:", err);
     }
 })();
 </script>
 """
-components.html(swipe_gesture_js, height=0)
+components.html(fluid_swipe_js, height=0)
 
 # ==============================================================================
-# 5. SYNCHRONISATION MODERNE (GOOGLE SHEETS WEBHOOK / GOOGLE FORMS)
+# 5. FONCTIONS MÉTIER (LOGIQUE PURE : TST & RPE)
 # ==============================================================================
 def detect_student_and_exercise(filename, student_list):
     clean_name = os.path.splitext(filename)[0].replace("_", " ").replace("-", " ")
@@ -432,12 +554,9 @@ def detect_student_and_exercise(filename, student_list):
 
     return detected_student, detected_exercise if detected_exercise else clean_name
 
-def dispatch_sync_evaluation(settings, student, exercise, tst_val, rpe_val, charge_val, notes, date_str):
+def dispatch_sync_evaluation(settings, student, exercise, tst_val, rpe_val, reps_val, notes, date_str):
     """
-    Envoi des données selon le mode configuré par le coach :
-    1. 'gsheet_webhook' : Webhook direct Google Sheets (JSON structuré avec calcul de Charge)
-    2. 'google_forms' : Formulaire Google Forms legacy
-    3. 'local_only' : Sauvegarde interne uniquement
+    Envoi épuré (TST et RPE purs, sans multiplicateur).
     """
     mode = settings.get("sync_mode", "google_forms")
 
@@ -451,7 +570,7 @@ def dispatch_sync_evaluation(settings, student, exercise, tst_val, rpe_val, char
             "exercise": exercise,
             "tst": tst_val,
             "rpe": rpe_val,
-            "charge": charge_val,
+            "reps": reps_val,
             "notes": notes
         }
         try:
@@ -476,9 +595,44 @@ def dispatch_sync_evaluation(settings, student, exercise, tst_val, rpe_val, char
 
     return True, "Mode local"
 
+def analyze_video_with_gemini(video_bytes, api_key):
+    """Analyse vidéo par Gemini Vision pour détecter automatiquement le TST et les répétitions."""
+    if not HAS_GEMINI:
+        return None, "Bibliothèque google-genai non disponible."
+    if not api_key:
+        return None, "Clé API Gemini manquante. Renseignez-la dans l'onglet Réglages."
+
+    try:
+        client = genai.Client(api_key=api_key)
+        prompt = (
+            "Analyse cette vidéo d'exercice de musculation/calisthenics. "
+            "1. Détecte le début précis du set (quand la première répétition démarre). "
+            "2. Détecte la fin précise du set (quand la dernière répétition se termine). "
+            "3. Calcule le Temps Sous Tension (TST) en secondes. "
+            "4. Compte le nombre de répétitions complètes valides. "
+            "Réponds UNIQUEMENT sous la forme d'un JSON strict : "
+            '{"tst": float, "reps": int, "notes": "court retour technique"}'
+        )
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=[
+                types.Part.from_bytes(data=video_bytes, mime_type="video/mp4"),
+                prompt
+            ]
+        )
+        text = response.text.strip()
+        # Nettoyage JSON
+        json_match = re.search(r'\{.*\}', text, re.DOTALL)
+        if json_match:
+            data = json.loads(json_match.group(0))
+            return data, "Succès"
+        return None, f"Réponse non structurée : {text[:100]}"
+    except Exception as e:
+        return None, f"Erreur Gemini : {str(e)}"
+
 
 # ==============================================================================
-# 6. EN-TÊTE PRINCIPAL & ONGLETIS GESTIONNAIRE DE VUE (SWIPABLE)
+# 6. EN-TÊTE PRINCIPAL & ONGLETS FLUIDES
 # ==============================================================================
 st.markdown("""
     <div class="app-brand-banner">
@@ -492,12 +646,12 @@ st.markdown("""
             </div>
         </div>
         <div style="display:flex; align-items:center; gap:6px;">
-            <span class="badge-cyan">📲 Swipe Actif</span>
+            <span class="badge-cyan">📲 Glissement Fluide</span>
         </div>
     </div>
 """, unsafe_allow_html=True)
 
-# Les 4 compartiments principaux sous forme d'onglets réactifs
+# Les 4 compartiments
 tab_studio, tab_stats, tab_athletes, tab_settings = st.tabs([
     "🎥 Studio",
     "📊 Stats",
@@ -510,7 +664,6 @@ tab_studio, tab_stats, tab_athletes, tab_settings = st.tabs([
 # COMPARTIMENT 1 : STUDIO VIDÉO & CHRONOMÉTRAGE TST
 # ==============================================================================
 with tab_studio:
-    # 1. Zone d'importation
     with st.expander("📁 Importer des vidéos (Galerie Smartphone ou PC)", expanded=False):
         uploaded_files = st.file_uploader(
             "Importer les vidéos (.mp4, .mov, .avi)",
@@ -526,7 +679,7 @@ with tab_studio:
                 <h3 style="margin-bottom: 0.2rem; font-size: 1.15rem;">Studio Prêt</h3>
                 <p style="color:#94a3b8; font-size: 0.88rem; max-width: 440px; margin: 0 auto;">
                     Touchez <b>Importer des vidéos</b> pour charger vos séances.<br>
-                    <small style="color:#00f0ff;">Astuce : glissez l'écran vers la gauche pour voir les Stats ou les Athlètes 👉</small>
+                    <small style="color:#00f0ff;">Glissez l'écran horizontalement pour voyager entre les sections 👉</small>
                 </p>
             </div>
         """, unsafe_allow_html=True)
@@ -540,7 +693,7 @@ with tab_studio:
         current_fname = file_names[cur_idx]
         current_file = files_dict[current_fname]
 
-        # File d'attente ergonomique
+        # File d'attente
         col_prev, col_status, col_next = st.columns([1, 2, 1])
         with col_prev:
             if st.button("◀️ Préc.", key="btn_prev_vid", use_container_width=True, disabled=(cur_idx == 0)):
@@ -561,11 +714,11 @@ with tab_studio:
                 st.session_state.active_video_idx = min(total_files - 1, cur_idx + 1)
                 st.rerun()
 
-        # Détection automatique de l'athlète et de l'exercice
+        # Détection auto élève & exo
         existing_students = list(st.session_state.db["students"].keys())
         auto_student, auto_exo = detect_student_and_exercise(current_fname, existing_students)
 
-        # Chronomètre de la vidéo
+        # État chronomètre
         if current_fname not in st.session_state.stopwatches:
             st.session_state.stopwatches[current_fname] = {
                 "tst_val": 0.0,
@@ -573,7 +726,8 @@ with tab_studio:
                 "out_marker": 0.0,
                 "running": False,
                 "start_time": 0.0,
-                "rpe": 7.5
+                "rpe": 7.5,
+                "reps": 0
             }
         sw = st.session_state.stopwatches[current_fname]
 
@@ -604,6 +758,38 @@ with tab_studio:
                 sw["tst_val"] = diff_marker
                 st.toast(f"✅ TST fixé à {diff_marker}s")
                 st.rerun()
+
+            # MODULE AUTO-TRACK IA & TEMPO
+            with st.expander("🤖 Auto-Track IA : Détection Mouvement & Reps", expanded=False):
+                st.markdown("<small style='color:#94a3b8;'>Quantification automatique du temps sous tension et des répétitions.</small>", unsafe_allow_html=True)
+
+                gem_key = st.session_state.db["settings"].get("gemini_api_key", "").strip()
+                if st.button("✨ Lancer l'Auto-Track IA (Vision)", key=f"ai_track_{current_fname}", use_container_width=True):
+                    with st.spinner("Analyse IA du mouvement en cours..."):
+                        current_file.seek(0)
+                        vid_bytes = current_file.read()
+                        ai_res, ai_msg = analyze_video_with_gemini(vid_bytes, gem_key)
+                        if ai_res:
+                            sw["tst_val"] = float(ai_res.get("tst", sw["tst_val"]))
+                            sw["reps"] = int(ai_res.get("reps", 0))
+                            st.success(f"Détection IA : TST = {sw['tst_val']}s | {sw['reps']} répétitions !")
+                            st.rerun()
+                        else:
+                            st.warning(f"Note Auto-Track : {ai_msg}")
+
+                c_rep1, c_rep2 = st.columns(2)
+                with c_rep1:
+                    reps_input = st.number_input("Nombre de répétitions :", min_value=0, max_value=100, value=int(sw.get("reps", 0)), step=1, key=f"reps_inp_{current_fname}")
+                    sw["reps"] = reps_input
+                with c_rep2:
+                    if reps_input > 0 and sw["tst_val"] > 0:
+                        tempo_rep = round(sw["tst_val"] / reps_input, 1)
+                        st.markdown(f"""
+                            <div style="padding-top:14px;">
+                                <span style="font-size:0.75rem; color:#94a3b8;">TEMPO MOYEN / REP</span><br>
+                                <b style="font-size:1.1rem; color:#00f0ff;">{tempo_rep} s / rep</b>
+                            </div>
+                        """, unsafe_allow_html=True)
 
         with col_tools:
             st.markdown('<div class="cali-card">', unsafe_allow_html=True)
@@ -657,7 +843,7 @@ with tab_studio:
 
             st.markdown("<hr style='border-color: rgba(255,255,255,0.08); margin: 0.5rem 0;'>", unsafe_allow_html=True)
 
-            # Formulaire d'Évaluation
+            # Formulaire d'Évaluation (Logique Pure : TST + RPE)
             with st.form(key=f"eval_form_{current_fname}"):
                 student_options = existing_students if existing_students else ["Aucun élève"]
                 def_student_idx = 0
@@ -671,16 +857,6 @@ with tab_studio:
                 rpe_score = st.slider("🔥 Effort perçu (RPE 1-10) :", min_value=1.0, max_value=10.0, value=float(sw.get("rpe", 7.5)), step=0.5)
                 sw["rpe"] = rpe_score
 
-                # Calcul en direct de la Charge d'Entraînement
-                calc_charge = round(disp_tst * rpe_score, 1)
-
-                st.markdown(f"""
-                    <div class="charge-card">
-                        <span style="font-size:0.8rem; color:#94a3b8; font-weight:600;">⚡ CHARGE DU SET (TST × RPE)</span>
-                        <span style="font-size:1.15rem; font-weight:800; color:#00f0ff;">{calc_charge} <small style="font-size:0.75rem; color:#cbd5e1;">UA</small></span>
-                    </div>
-                """, unsafe_allow_html=True)
-
                 if rpe_score <= 5.5:
                     rpe_class, rpe_text = "rpe-low", "🟢 Récupération / Technique (RIR 4+)"
                 elif rpe_score <= 7.5:
@@ -692,7 +868,7 @@ with tab_studio:
 
                 st.markdown(f'<div class="rpe-indicator {rpe_class}">{rpe_text}</div>', unsafe_allow_html=True)
 
-                coach_notes = st.text_input("💬 Feedback / Consigne :", placeholder="Ex: Coudes bien verrouillés, tempo respecté")
+                coach_notes = st.text_input("💬 Feedback / Consigne :", placeholder="Ex: Coudes bien verrouillés, bon tempo")
 
                 submit_eval = st.form_submit_button("⚡ VALIDER & ENREGISTRER", type="primary", use_container_width=True)
 
@@ -710,21 +886,21 @@ with tab_studio:
                             "exercise": val_exo,
                             "tst": final_tst,
                             "rpe": rpe_score,
-                            "charge": calc_charge,
+                            "reps": int(sw.get("reps", 0)),
                             "video_name": current_fname,
                             "date": now_str,
                             "notes": coach_notes,
                             "synced": False
                         }
 
-                        # Envoi selon le connecteur choisi
+                        # Envoi selon connecteur
                         ok_sync, msg_sync = dispatch_sync_evaluation(
                             st.session_state.db["settings"],
                             sel_student,
                             val_exo,
                             final_tst,
                             rpe_score,
-                            calc_charge,
+                            int(sw.get("reps", 0)),
                             coach_notes,
                             now_str
                         )
@@ -734,7 +910,7 @@ with tab_studio:
                         save_db(st.session_state.db)
 
                         st.session_state.processed_videos.add(current_fname)
-                        st.toast(f"✅ Séance validée : {sel_student} (Charge: {calc_charge} UA)")
+                        st.toast(f"✅ Séance validée : {sel_student} (TST: {final_tst}s | RPE: {rpe_score})")
 
                         if st.session_state.db["settings"].get("auto_advance", True) and cur_idx < total_files - 1:
                             st.session_state.active_video_idx += 1
@@ -746,26 +922,24 @@ with tab_studio:
 
 
 # ==============================================================================
-# COMPARTIMENT 2 : STATS, CHARGE D'ENTRAÎNEMENT & HISTORIQUE
+# COMPARTIMENT 2 : STATS & PROGRESSION PURE (TST & RPE)
 # ==============================================================================
 with tab_stats:
-    st.markdown("### 📊 Statistiques & Suivi de Charge")
+    st.markdown("### 📊 Statistiques & Suivi TST / RPE")
     evals = st.session_state.db.get("evaluations", [])
 
     if not evals:
         st.info("Aucune analyse enregistrée. Évaluez vos premières vidéos dans le Studio !")
     else:
         df_evals = pd.DataFrame(evals)
-        if "charge" not in df_evals.columns:
-            df_evals["charge"] = (df_evals["tst"] * df_evals["rpe"]).round(1)
 
-        # 4 KPIs
+        # 4 KPIs purs (sans multiplicateur)
         k1, k2 = st.columns(2)
         with k1:
             st.metric("Total Séances", len(df_evals))
             st.metric("TST Moyen", f"{df_evals['tst'].mean():.1f} s")
         with k2:
-            st.metric("Charge Moyenne", f"{df_evals['charge'].mean():.1f} UA")
+            st.metric("Athlètes Suivis", df_evals["student"].nunique())
             st.metric("RPE Moyen", f"{df_evals['rpe'].mean():.1f} / 10")
 
         st.markdown("<hr style='border-color: rgba(255,255,255,0.08); margin: 0.8rem 0;'>", unsafe_allow_html=True)
@@ -775,7 +949,7 @@ with tab_stats:
         df_filtered = df_evals if selected_student == "Tous les athlètes" else df_evals[df_evals["student"] == selected_student]
 
         if HAS_PLOTLY and not df_filtered.empty:
-            tab_g1, tab_g2 = st.tabs(["📈 Évolution TST", "⚡ Charge d'Entraînement"])
+            tab_g1, tab_g2 = st.tabs(["📈 Évolution TST", "🔥 Répartition RPE"])
 
             with tab_g1:
                 fig_tst = px.line(
@@ -784,7 +958,7 @@ with tab_stats:
                     y="tst",
                     color="exercise",
                     markers=True,
-                    labels={"tst": "TST (s)", "date": "Date", "exercise": "Exercice"},
+                    labels={"tst": "Temps Sous Tension (s)", "date": "Date", "exercise": "Exercice"},
                     template="plotly_dark"
                 )
                 fig_tst.update_layout(
@@ -797,26 +971,27 @@ with tab_stats:
                 st.plotly_chart(fig_tst, use_container_width=True)
 
             with tab_g2:
-                fig_charge = px.bar(
+                fig_rpe = px.histogram(
                     df_filtered,
-                    x="date",
-                    y="charge",
-                    color="exercise",
-                    labels={"charge": "Charge (TST x RPE)", "date": "Date"},
+                    x="rpe",
+                    nbins=10,
+                    color_discrete_sequence=["#00f0ff"],
+                    labels={"rpe": "Niveau RPE"},
                     template="plotly_dark"
                 )
-                fig_charge.update_layout(
+                fig_rpe.update_layout(
                     paper_bgcolor="rgba(0,0,0,0)",
                     plot_bgcolor="rgba(15,23,42,0.6)",
                     font_family="Plus Jakarta Sans",
                     margin=dict(l=10, r=10, t=25, b=20)
                 )
-                st.plotly_chart(fig_charge, use_container_width=True)
+                st.plotly_chart(fig_rpe, use_container_width=True)
 
-        # Tableau d'historique
+        # Tableau d'historique épuré
         st.markdown("##### 📜 Registre des séances")
-        df_disp = df_filtered[["date", "student", "exercise", "tst", "rpe", "charge", "notes"]].copy()
-        df_disp.columns = ["Date", "Athlète", "Exercice", "TST (s)", "RPE", "Charge (UA)", "Notes"]
+        cols_present = ["date", "student", "exercise", "tst", "rpe", "notes"]
+        df_disp = df_filtered[cols_present].copy()
+        df_disp.columns = ["Date", "Athlète", "Exercice", "TST (s)", "RPE", "Notes"]
         st.dataframe(df_disp, use_container_width=True)
 
         csv_bytes = df_filtered.to_csv(index=False).encode('utf-8')
@@ -867,13 +1042,13 @@ with tab_athletes:
         for name, details in list(students.items()):
             evals = st.session_state.db.get("evaluations", [])
             student_evals = [e for e in evals if e.get("student") == name]
-            total_charge = sum(e.get("charge", round(e.get("tst", 0)*e.get("rpe", 0), 1)) for e in student_evals)
+            avg_tst = (sum(e.get("tst", 0) for e in student_evals) / len(student_evals)) if student_evals else 0.0
 
             st.markdown(f"""
                 <div class="cali-card">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
                         <h4 style="margin:0; font-size:1.05rem; color:#f8fafc;">👤 {name}</h4>
-                        <span class="badge-lime">{len(student_evals)} Séances ({total_charge:.0f} UA)</span>
+                        <span class="badge-lime">{len(student_evals)} Séances (TST moy: {avg_tst:.1f}s)</span>
                     </div>
                     <div style="margin-top:6px; font-size:0.82rem; color:#94a3b8;">
                         📅 Fréquence: <b style="color:#f1f5f9;">{details.get('freq', 'Non précisée')}</b>
@@ -893,37 +1068,31 @@ with tab_athletes:
 
 
 # ==============================================================================
-# COMPARTIMENT 4 : RÉGLAGES & CONNECTEURS CLOUD
+# COMPARTIMENT 4 : RÉGLAGES & CONNECTEURS
 # ==============================================================================
 with tab_settings:
-    st.markdown("### ⚙️ Paramètres & Synchronisation")
+    st.markdown("### ⚙️ Paramètres & Connecteurs")
 
     with st.form("settings_full_form"):
-        st.markdown("##### 🌐 Mode de Synchronisation des Données")
+        st.markdown("##### 🌐 Mode d'Enregistrement")
         sync_mode = st.radio(
-            "Comment souhaitez-vous enregistrer vos données d'analyse ?",
+            "Où stocker vos analyses ?",
             [
-                ("google_forms", "📝 Google Forms (Méthode actuelle avec entry IDs)"),
-                ("gsheet_webhook", "🚀 Google Sheets Direct (Sans formulaire, via Webhook Apps Script)"),
-                ("local_only", "💾 Caliperf Local uniquement (100% hors-ligne, zéro latence)")
+                ("google_forms", "📝 Google Forms (Méthode actuelle)"),
+                ("gsheet_webhook", "🚀 Google Sheets Direct (Sans formulaire)"),
+                ("local_only", "💾 Caliperf Local uniquement (100% hors-ligne)")
             ],
             format_func=lambda x: x[1],
             index=0 if st.session_state.db["settings"].get("sync_mode") == "google_forms" else (1 if st.session_state.db["settings"].get("sync_mode") == "gsheet_webhook" else 2)
         )[0]
 
         if sync_mode == "gsheet_webhook":
-            st.markdown("""
-                <div style="background:rgba(0,240,255,0.08); padding:10px; border-radius:8px; font-size:0.82rem; color:#cbd5e1; margin-bottom:8px;">
-                    💡 <b>Pourquoi c'est mieux que Google Forms ?</b><br>
-                    Les données sont insérées directement dans votre Google Sheet en temps réel, sans passer par un formulaire intermédiaire, et la Charge d'Entraînement (TST x RPE) est automatiquement calculée !
-                </div>
-            """, unsafe_allow_html=True)
             wh_url_input = st.text_input("URL Webhook Google Apps Script :", value=st.session_state.db["settings"].get("webhook_url", ""))
         else:
             wh_url_input = st.session_state.db["settings"].get("webhook_url", "")
 
         if sync_mode == "google_forms":
-            form_url = st.text_input("URL Google Form (formResponse) :", value=st.session_state.db["settings"].get("form_url", DEFAULT_FORM_URL))
+            form_url = st.text_input("URL Google Form :", value=st.session_state.db["settings"].get("form_url", DEFAULT_FORM_URL))
             col_e1, col_e2 = st.columns(2)
             with col_e1:
                 e_nom = st.text_input("Entry Nom :", value=st.session_state.db["settings"].get("entry_nom", DEFAULT_ENTRY_NOM))
@@ -939,6 +1108,15 @@ with tab_settings:
             e_rpe = st.session_state.db["settings"].get("entry_rpe", DEFAULT_ENTRY_RPE)
 
         st.markdown("<hr style='border-color: rgba(255,255,255,0.08); margin: 0.8rem 0;'>", unsafe_allow_html=True)
+        st.markdown("##### 🤖 Intelligence Artificielle & Vision")
+        gem_key_input = st.text_input(
+            "Clé API Gemini (Optionnel, pour l'Auto-Track IA des vidéos) :",
+            value=st.session_state.db["settings"].get("gemini_api_key", ""),
+            type="password",
+            help="Permet à l'IA d'analyser la vidéo et de détecter le TST et les répétitions automatiquement."
+        )
+
+        st.markdown("<hr style='border-color: rgba(255,255,255,0.08); margin: 0.8rem 0;'>", unsafe_allow_html=True)
         st.markdown("##### ⚡ Ergonomie du Studio")
         auto_adv = st.checkbox("Passer automatiquement à la vidéo suivante après validation", value=st.session_state.db["settings"].get("auto_advance", True))
 
@@ -951,6 +1129,7 @@ with tab_settings:
                 "entry_exo": e_exo.strip(),
                 "entry_tst": e_tst.strip(),
                 "entry_rpe": e_rpe.strip(),
+                "gemini_api_key": gem_key_input.strip(),
                 "admin_pwd": st.session_state.db["settings"].get("admin_pwd", "admin"),
                 "auto_advance": auto_adv
             }
@@ -959,20 +1138,17 @@ with tab_settings:
             time.sleep(0.5)
             st.rerun()
 
-    # Guide de mise en place Webhook Google Sheet
-    with st.expander("📄 Voir le script pour connecter un Google Sheet en 1 minute", expanded=False):
+    # Script Webhook Google Sheet
+    with st.expander("📄 Script Google Apps Script pour Google Sheets direct", expanded=False):
         st.markdown("""
-        Si vous voulez vous débarrasser définitivement de Google Forms, collez ce petit script dans votre Google Sheet (*Extensions > Apps Script*) puis cliquez sur **Déployer > Nouveau déploiement (Application Web, accès Tout le monde)** :
-
         ```javascript
         function doPost(e) {
           var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
           var data = JSON.parse(e.postData.contents);
-          sheet.appendRow([data.date, data.student, data.exercise, data.tst, data.rpe, data.charge, data.notes]);
+          sheet.appendRow([data.date, data.student, data.exercise, data.tst, data.rpe, data.reps, data.notes]);
           return ContentService.createTextOutput("OK");
         }
         ```
-        Collez ensuite l'URL fournie dans le champ Webhook ci-dessus !
         """)
 
     # Sauvegarde locale JSON
