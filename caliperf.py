@@ -562,37 +562,86 @@ def dispatch_sync_evaluation(settings, student, exercise, tst_val, rpe_val, reps
 
     return True, "Mode local"
 
-def analyze_video_with_gemini(video_bytes, api_key):
+def analyze_video_with_gemini(video_file, api_key):
     """Analyse vidéo par Gemini Vision pour détecter automatiquement le TST et les répétitions."""
     if not HAS_GEMINI:
         return None, "Bibliothèque google-genai non disponible."
     if not api_key:
         return None, "Clé API Gemini manquante. Renseignez-la dans l'onglet Réglages."
 
+    import tempfile
+
     try:
         client = genai.Client(api_key=api_key)
         prompt = (
-            "Analyse cette vidéo d'exercice de musculation/calisthenics. "
-            "1. Détecte le début précis du set (quand la première répétition démarre). "
-            "2. Détecte la fin précise du set (quand la dernière répétition se termine). "
-            "3. Calcule le Temps Sous Tension (TST) en secondes. "
-            "4. Compte le nombre de répétitions complètes valides. "
-            "Réponds UNIQUEMENT sous la forme d'un JSON strict : "
-            '{"tst": float, "reps": int, "notes": "court retour technique"}'
+            "Tu es un expert en biomécanique et coaching sportif de calisthenics / street lifting. "
+            "Analyse cette vidéo d'entraînement : "
+            "1. Identifie le moment précis (en secondes) où la première répétition commence (début de l'effort). "
+            "2. Identifie le moment précis (en secondes) où la dernière répétition se termine (fin de l'effort). "
+            "3. Calcule le Temps Sous Tension réel (TST) = Fin - Début (en secondes). "
+            "4. Compte le nombre exact de répétitions complètes et valides. "
+            "Réponds UNIQUEMENT avec un objet JSON strict de la forme : "
+            '{"tst": 24.5, "reps": 8, "notes": "court retour technique"}'
         )
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=[
-                types.Part.from_bytes(data=video_bytes, mime_type="video/mp4"),
-                prompt
-            ]
-        )
-        text = response.text.strip()
-        json_match = re.search(r'\{.*\}', text, re.DOTALL)
-        if json_match:
-            data = json.loads(json_match.group(0))
-            return data, "Succès"
-        return None, f"Réponse non structurée : {text[:100]}"
+
+        suffix = os.path.splitext(getattr(video_file, 'name', 'video.mp4'))[1] or ".mp4"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            video_file.seek(0)
+            tmp.write(video_file.read())
+            tmp_path = tmp.name
+
+        try:
+            # Upload du fichier vidéo vers l'API Gemini
+            uploaded_file = client.files.upload(file=tmp_path)
+
+            # Attente si la vidéo est en cours de traitement
+            max_wait = 30
+            waited = 0
+            while getattr(uploaded_file, "state", None) == "PROCESSING" and waited < max_wait:
+                time.sleep(2)
+                waited += 2
+                uploaded_file = client.files.get(name=uploaded_file.name)
+
+            # Modèles dans l'ordre de recommandation Google AI Studio
+            candidate_models = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-1.5-flash"]
+            response = None
+            last_err = None
+
+            for m in candidate_models:
+                try:
+                    response = client.models.generate_content(
+                        model=m,
+                        contents=[uploaded_file, prompt]
+                    )
+                    if response and response.text:
+                        break
+                except Exception as model_err:
+                    last_err = model_err
+                    continue
+
+            # Nettoyage du fichier distant
+            try:
+                client.files.delete(name=uploaded_file.name)
+            except Exception:
+                pass
+
+            if not response or not response.text:
+                return None, f"Erreur modèle Gemini : {last_err}"
+
+            text = response.text.strip()
+            json_match = re.search(r'\{.*\}', text, re.DOTALL)
+            if json_match:
+                data = json.loads(json_match.group(0))
+                return data, "Succès"
+            return None, f"Réponse non structurée : {text[:100]}"
+
+        finally:
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except Exception:
+                    pass
+
     except Exception as e:
         return None, f"Erreur Gemini : {str(e)}"
 
@@ -729,9 +778,7 @@ with tab_studio:
                 gem_key = st.session_state.db["settings"].get("gemini_api_key", "").strip()
                 if st.button("✨ Lancer l'Auto-Track IA (Vision)", key=f"ai_track_{current_fname}", use_container_width=True):
                     with st.spinner("Analyse IA du mouvement en cours..."):
-                        current_file.seek(0)
-                        vid_bytes = current_file.read()
-                        ai_res, ai_msg = analyze_video_with_gemini(vid_bytes, gem_key)
+                        ai_res, ai_msg = analyze_video_with_gemini(current_file, gem_key)
                         if ai_res:
                             sw["tst_val"] = float(ai_res.get("tst", sw["tst_val"]))
                             sw["reps"] = int(ai_res.get("reps", 0))
