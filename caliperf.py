@@ -562,6 +562,29 @@ def dispatch_sync_evaluation(settings, student, exercise, tst_val, rpe_val, reps
 
     return True, "Mode local"
 
+def get_gemini_api_key():
+    """Récupère la clé API Gemini de manière ultra-résiliente (Streamlit Secrets, env, base, session)."""
+    try:
+        if hasattr(st, "secrets"):
+            if "GEMINI_API_KEY" in st.secrets:
+                return str(st.secrets["GEMINI_API_KEY"]).strip()
+            if "gemini_api_key" in st.secrets:
+                return str(st.secrets["gemini_api_key"]).strip()
+            if "general" in st.secrets and "gemini_api_key" in st.secrets["general"]:
+                return str(st.secrets["general"]["gemini_api_key"]).strip()
+    except Exception:
+        pass
+
+    env_k = os.getenv("GEMINI_API_KEY", "").strip()
+    if env_k:
+        return env_k
+
+    db_k = st.session_state.db.get("settings", {}).get("gemini_api_key", "").strip()
+    if db_k:
+        return db_k
+
+    return st.session_state.get("active_gemini_key", "").strip()
+
 def analyze_video_with_gemini(video_file, api_key):
     """Analyse vidéo par Gemini Vision pour détecter automatiquement le TST et les répétitions."""
     if not HAS_GEMINI:
@@ -775,17 +798,34 @@ with tab_studio:
             with st.expander("🤖 Auto-Track IA : Détection Mouvement & Reps", expanded=False):
                 st.markdown("<small style='color:#94a3b8;'>Quantification automatique du temps sous tension et des répétitions.</small>", unsafe_allow_html=True)
 
-                gem_key = st.session_state.db["settings"].get("gemini_api_key", "").strip()
-                if st.button("✨ Lancer l'Auto-Track IA (Vision)", key=f"ai_track_{current_fname}", use_container_width=True):
-                    with st.spinner("Analyse IA du mouvement en cours..."):
-                        ai_res, ai_msg = analyze_video_with_gemini(current_file, gem_key)
-                        if ai_res:
-                            sw["tst_val"] = float(ai_res.get("tst", sw["tst_val"]))
-                            sw["reps"] = int(ai_res.get("reps", 0))
-                            st.success(f"Détection IA : TST = {sw['tst_val']}s | {sw['reps']} répétitions !")
+                gem_key = get_gemini_api_key()
+                if not gem_key:
+                    st.markdown("""
+                        <div style="background:rgba(245,158,11,0.12); border-left:4px solid #f59e0b; padding:8px 12px; border-radius:8px; margin:8px 0; font-size:0.82rem; color:#fde68a;">
+                            🔑 <b>Clé API Gemini requise :</b><br>
+                            Collez votre clé Google AI Studio ci-dessous pour activer l'analyse directe.
+                        </div>
+                    """, unsafe_allow_html=True)
+                    quick_k = st.text_input("Collez votre clé Gemini :", type="password", key=f"quick_key_inp_{current_fname}", placeholder="AIzaSy...")
+                    if st.button("💾 Enregistrer la clé et débloquer", key=f"btn_save_key_{current_fname}", use_container_width=True, type="primary"):
+                        if quick_k.strip():
+                            st.session_state.db["settings"]["gemini_api_key"] = quick_k.strip()
+                            st.session_state["active_gemini_key"] = quick_k.strip()
+                            save_db(st.session_state.db)
+                            st.toast("✅ Clé API enregistrée !")
                             st.rerun()
-                        else:
-                            st.warning(f"Note Auto-Track : {ai_msg}")
+                else:
+                    st.markdown('<span class="badge-lime" style="margin-bottom:8px; display:inline-block;">🟢 Clé API Active</span>', unsafe_allow_html=True)
+                    if st.button("✨ Lancer l'Auto-Track IA (Vision)", key=f"ai_track_{current_fname}", use_container_width=True, type="primary"):
+                        with st.spinner("Analyse IA du mouvement en cours..."):
+                            ai_res, ai_msg = analyze_video_with_gemini(current_file, gem_key)
+                            if ai_res:
+                                sw["tst_val"] = float(ai_res.get("tst", sw["tst_val"]))
+                                sw["reps"] = int(ai_res.get("reps", 0))
+                                st.success(f"Détection IA : TST = {sw['tst_val']}s | {sw['reps']} répétitions !")
+                                st.rerun()
+                            else:
+                                st.warning(f"Note Auto-Track : {ai_msg}")
 
                 c_rep1, c_rep2 = st.columns(2)
                 with c_rep1:
@@ -1114,7 +1154,7 @@ with tab_settings:
         st.markdown("##### 🤖 Intelligence Artificielle & Vision")
         gem_key_input = st.text_input(
             "Clé API Gemini (Optionnel, pour l'Auto-Track IA des vidéos) :",
-            value=st.session_state.db["settings"].get("gemini_api_key", ""),
+            value=get_gemini_api_key(),
             type="password",
             help="Permet à l'IA d'analyser la vidéo et de détecter le TST et les répétitions automatiquement."
         )
