@@ -1,7 +1,7 @@
 """
 Caliperf V2 - Espace Coaching & Performance
-Application responsive (Mobile-First & Desktop) de vidéo-analyse pour le coaching sportif (Calisthenics & Force).
-Mesure précise du Temps Sous Tension (TST), suivi du RPE, gestion des athlètes et synchronisation Google Forms.
+Application responsive Mobile-First & Desktop avec navigation tactile au swipe,
+calcul automatique de la Charge d'Entraînement (TST x RPE), et synchronisation moderne Google Sheets / Webhook.
 """
 
 import os
@@ -12,6 +12,7 @@ from datetime import datetime
 import pandas as pd
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
 
 # Import optionnel de plotly pour les graphiques de progression
 try:
@@ -28,7 +29,7 @@ st.set_page_config(
     page_title="Caliperf V2 | Video Coach Studio",
     page_icon="⚡",
     layout="wide",
-    initial_sidebar_state="collapsed"  # Réduit sur mobile pour maximiser l'espace écran
+    initial_sidebar_state="collapsed"
 )
 
 DB_FILE = "caliperf_db.json"
@@ -39,7 +40,7 @@ DEFAULT_ENTRY_TST = "entry.549289703"
 DEFAULT_ENTRY_RPE = "entry.46344190"
 
 # ==============================================================================
-# 2. GESTIONNAIRE DE BASE DE DONNÉES
+# 2. GESTIONNAIRE DE BASE DE DONNÉES (AVEC CALCUL DE CHARGE TST x RPE)
 # ==============================================================================
 def get_default_db():
     return {
@@ -54,19 +55,20 @@ def get_default_db():
         },
         "evaluations": [],
         "settings": {
+            "sync_mode": "google_forms",  # "local_only", "google_forms", "gsheet_webhook"
+            "webhook_url": "",
             "form_url": DEFAULT_FORM_URL,
             "entry_nom": DEFAULT_ENTRY_NOM,
             "entry_exo": DEFAULT_ENTRY_EXO,
             "entry_tst": DEFAULT_ENTRY_TST,
             "entry_rpe": DEFAULT_ENTRY_RPE,
             "admin_pwd": "admin",
-            "auto_advance": True,
-            "send_to_google": True
+            "auto_advance": True
         }
     }
 
 def load_db():
-    """Charge la base JSON avec migration automatique si ancien format V1."""
+    """Charge la base JSON avec migration automatique si ancien format."""
     if not os.path.exists(DB_FILE):
         data = get_default_db()
         save_db(data)
@@ -93,6 +95,13 @@ def load_db():
             raw["evaluations"] = []
         if "settings" not in raw:
             raw["settings"] = get_default_db()["settings"]
+        else:
+            # Compatibilité anciens réglages
+            if "sync_mode" not in raw["settings"]:
+                raw["settings"]["sync_mode"] = "google_forms"
+            if "webhook_url" not in raw["settings"]:
+                raw["settings"]["webhook_url"] = ""
+
         return raw
 
     except Exception as e:
@@ -123,46 +132,50 @@ if "processed_videos" not in st.session_state:
 if "stopwatches" not in st.session_state:
     st.session_state.stopwatches = {}
 
-if "current_nav" not in st.session_state:
-    st.session_state.current_nav = "🎥 Studio"
-
 # ==============================================================================
-# 3. CSS RESPONSIVE : ADAPTÉ MOBILE & DESKTOP (THUMB-FRIENDLY & HIGH-CONTRAST)
+# 3. CSS RESPONSIVE & MOBILE SAFE-AREA FIX
 # ==============================================================================
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@600;700&display=swap');
 
-    /* Typographie globale */
     html, body, [class*="css"] {
         font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
         -webkit-tap-highlight-color: transparent;
         touch-action: manipulation;
     }
 
-    /* Fond d'écran Dark Athletic */
     [data-testid="stAppViewContainer"] {
-        background: radial-gradient(circle at 10% 15%, #0e1628 0%, #080d19 45%, #04060c 100%);
+        background: radial-gradient(circle at 10% 12%, #0e172a 0%, #070d19 45%, #03050a 100%);
         color: #f1f5f9;
     }
 
-    [data-testid="stSidebar"] {
-        background: #080d18 !important;
-        border-right: 1px solid rgba(255, 255, 255, 0.08);
-    }
-
-    /* Espacements principaux réduits sur mobile pour éviter de scroller */
+    /* FIX CRITIQUE DU HAUT D'ÉCRAN MOBILE (NOTCH & HEADER STREAMLIT) */
     .block-container {
-        padding-top: 1rem !important;
-        padding-bottom: 2.5rem !important;
-        padding-left: 0.8rem !important;
-        padding-right: 0.8rem !important;
+        padding-top: calc(4.2rem + env(safe-area-inset-top, 0px)) !important;
+        padding-bottom: calc(2.5rem + env(safe-area-inset-bottom, 0px)) !important;
+        padding-left: 0.85rem !important;
+        padding-right: 0.85rem !important;
         max-width: 1250px !important;
     }
 
-    /* Optimisation du lecteur vidéo (Ne doit pas dépasser 42% de l'écran sur smartphone) */
+    [data-testid="stHeader"] {
+        background: rgba(7, 13, 25, 0.88) !important;
+        backdrop-filter: blur(12px) !important;
+        height: 3.5rem !important;
+    }
+
+    @media (min-width: 769px) {
+        .block-container {
+            padding-top: 2.5rem !important;
+            padding-left: 2rem !important;
+            padding-right: 2rem !important;
+        }
+    }
+
+    /* LECTEUR VIDÉO RESPONSIVE (Ne bloque pas l'écran sur mobile) */
     video {
-        max-height: 42vh !important;
+        max-height: 40vh !important;
         width: 100% !important;
         object-fit: contain !important;
         background: #000 !important;
@@ -172,37 +185,63 @@ st.markdown("""
 
     @media (min-width: 769px) {
         video {
-            max-height: 58vh !important;
-        }
-        .block-container {
-            padding-left: 2rem !important;
-            padding-right: 2rem !important;
-            padding-top: 2rem !important;
+            max-height: 56vh !important;
         }
     }
 
-    /* Cartes Glassmorphism */
+    /* ONGLETS / TABS TACTILES STYLE SEGMENTED CONTROL */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 6px !important;
+        background: rgba(15, 23, 42, 0.85) !important;
+        padding: 6px !important;
+        border-radius: 14px !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        display: flex !important;
+        margin-bottom: 1rem !important;
+        overflow-x: auto !important;
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        flex: 1 !important;
+        min-height: 48px !important;
+        border-radius: 10px !important;
+        font-weight: 700 !important;
+        font-size: 0.95rem !important;
+        color: #94a3b8 !important;
+        background: transparent !important;
+        border: none !important;
+        text-align: center !important;
+        white-space: nowrap !important;
+        transition: all 0.2s ease !important;
+    }
+
+    .stTabs [aria-selected="true"] {
+        background: linear-gradient(135deg, #00f0ff, #0088ff) !important;
+        color: #030712 !important;
+        font-weight: 800 !important;
+        box-shadow: 0 4px 16px rgba(0, 240, 255, 0.4) !important;
+    }
+
+    /* CARTES & BADGES */
     .cali-card {
-        background: rgba(15, 23, 42, 0.78);
+        background: rgba(15, 23, 42, 0.8);
         border: 1px solid rgba(255, 255, 255, 0.09);
         border-radius: 14px;
-        padding: 1rem 1.1rem;
+        padding: 1rem 1.15rem;
         backdrop-filter: blur(12px);
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
         margin-bottom: 0.9rem;
     }
 
-    /* Badges */
     .badge-cyan {
         background: rgba(0, 240, 255, 0.12);
         color: #00f0ff;
         border: 1px solid rgba(0, 240, 255, 0.35);
-        padding: 4px 10px;
+        padding: 3px 9px;
         border-radius: 9999px;
         font-size: 0.72rem;
         font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 0.04em;
         display: inline-block;
     }
 
@@ -210,7 +249,7 @@ st.markdown("""
         background: rgba(16, 185, 129, 0.15);
         color: #10b981;
         border: 1px solid rgba(16, 185, 129, 0.35);
-        padding: 4px 10px;
+        padding: 3px 9px;
         border-radius: 9999px;
         font-size: 0.72rem;
         font-weight: 700;
@@ -221,14 +260,14 @@ st.markdown("""
         background: rgba(245, 158, 11, 0.15);
         color: #f59e0b;
         border: 1px solid rgba(245, 158, 11, 0.35);
-        padding: 4px 10px;
+        padding: 3px 9px;
         border-radius: 9999px;
         font-size: 0.72rem;
         font-weight: 700;
         display: inline-block;
     }
 
-    /* Digital Readout Grand Format (Lisible d'un coup d'œil sur téléphone) */
+    /* DIGITAL TIMER */
     .digital-timer {
         font-family: 'JetBrains Mono', monospace;
         font-size: 2.7rem;
@@ -237,18 +276,30 @@ st.markdown("""
         text-shadow: 0 0 18px rgba(0, 240, 255, 0.45);
         letter-spacing: -0.02em;
         line-height: 1;
-        margin: 0.2rem 0 0.5rem 0;
+        margin: 0.2rem 0 0.4rem 0;
     }
 
     .digital-sub {
-        font-size: 0.78rem;
+        font-size: 0.76rem;
         color: #94a3b8;
-        font-weight: 600;
+        font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.05em;
     }
 
-    /* RPE Indicateur Dynamique */
+    /* CHARGE D'ENTRAÎNEMENT CARTOUCHE */
+    .charge-card {
+        background: linear-gradient(135deg, rgba(0, 240, 255, 0.08), rgba(59, 130, 246, 0.12));
+        border: 1px solid rgba(0, 240, 255, 0.25);
+        border-radius: 10px;
+        padding: 8px 12px;
+        margin: 8px 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    /* RPE INDICATOR */
     .rpe-indicator {
         padding: 8px 12px;
         border-radius: 9px;
@@ -259,66 +310,111 @@ st.markdown("""
         align-items: center;
         gap: 8px;
     }
-    .rpe-low {
-        background: rgba(16, 185, 129, 0.15);
-        border-left: 4px solid #10b981;
-        color: #6ee7b7;
-    }
-    .rpe-mod {
-        background: rgba(59, 130, 246, 0.15);
-        border-left: 4px solid #3b82f6;
-        color: #93c5fd;
-    }
-    .rpe-opt {
-        background: rgba(245, 158, 11, 0.15);
-        border-left: 4px solid #f59e0b;
-        color: #fde68a;
-    }
-    .rpe-max {
-        background: rgba(239, 68, 68, 0.2);
-        border-left: 4px solid #ef4444;
-        color: #fca5a5;
-    }
+    .rpe-low { background: rgba(16, 185, 129, 0.15); border-left: 4px solid #10b981; color: #6ee7b7; }
+    .rpe-mod { background: rgba(59, 130, 246, 0.15); border-left: 4px solid #3b82f6; color: #93c5fd; }
+    .rpe-opt { background: rgba(245, 158, 11, 0.15); border-left: 4px solid #f59e0b; color: #fde68a; }
+    .rpe-max { background: rgba(239, 68, 68, 0.2); border-left: 4px solid #ef4444; color: #fca5a5; }
 
-    /* Boutons tactiles optimisés Mobile (Zones de frappe au pouce >= 46px) */
+    /* BOUTONS POUCE (TACTILE) */
     .stButton>button {
         border-radius: 9px !important;
         font-weight: 600 !important;
-        min-height: 46px !important;
+        min-height: 48px !important;
         font-size: 0.95rem !important;
         transition: all 0.15s ease !important;
         border: 1px solid rgba(255, 255, 255, 0.12) !important;
     }
     .stButton>button:active {
-        transform: scale(0.98) !important;
+        transform: scale(0.97) !important;
     }
 
-    /* Champs de saisie */
-    .stTextInput input, .stSelectbox select, .stTextArea textarea, .stNumberInput input {
-        border-radius: 8px !important;
-        background-color: rgba(15, 23, 42, 0.85) !important;
-        border: 1px solid rgba(255, 255, 255, 0.14) !important;
-        color: white !important;
-        min-height: 42px !important;
-    }
-
-    /* Header Mobile Bar */
-    .mobile-header-bar {
+    /* HEADER APP BANNER */
+    .app-brand-banner {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 0.4rem 0.2rem 0.8rem 0.2rem;
-        margin-bottom: 0.4rem;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        margin-bottom: 0.6rem;
     }
 </style>
 """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 4. FONCTIONS UTILITAIRES
+# 4. GESTIONNAIRE DE GESTE SWIPE MOBILE (JAVASCRIPT CLIENT-SIDE)
+# ==============================================================================
+swipe_gesture_js = """
+<script>
+(function() {
+    try {
+        const doc = (window.parent && window.parent.document) ? window.parent.document : document;
+        let startX = 0;
+        let startY = 0;
+        let startTime = 0;
+
+        function getTabButtons() {
+            return doc.querySelectorAll('button[data-baseweb="tab"], [role="tab"]');
+        }
+
+        doc.addEventListener('touchstart', function(e) {
+            if (!e.changedTouches || e.changedTouches.length === 0) return;
+            const target = e.target;
+            // Ne pas intercepter si on touche un champ, slider, vidéo ou bouton de réglage
+            if (target.closest('input, textarea, select, video, [role="slider"], .stSlider, .stNumberInput, .stVideo')) {
+                return;
+            }
+            startX = e.changedTouches[0].clientX;
+            startY = e.changedTouches[0].clientY;
+            startTime = Date.now();
+        }, { passive: true });
+
+        doc.addEventListener('touchend', function(e) {
+            if (!e.changedTouches || e.changedTouches.length === 0) return;
+            const target = e.target;
+            if (target.closest('input, textarea, select, video, [role="slider"], .stSlider, .stNumberInput, .stVideo')) {
+                return;
+            }
+            const endX = e.changedTouches[0].clientX;
+            const endY = e.changedTouches[0].clientY;
+            const elapsed = Date.now() - startTime;
+
+            const deltaX = endX - startX;
+            const deltaY = endY - startY;
+
+            // Swipe horizontal valide : distance >= 55px, temps < 800ms, direction nettement horizontale
+            if (elapsed < 800 && Math.abs(deltaX) > 55 && Math.abs(deltaX) > Math.abs(deltaY) * 1.4) {
+                const tabs = getTabButtons();
+                if (!tabs || tabs.length < 2) return;
+
+                let activeIdx = 0;
+                for (let i = 0; i < tabs.length; i++) {
+                    if (tabs[i].getAttribute('aria-selected') === 'true' || tabs[i].classList.contains('active')) {
+                        activeIdx = i;
+                        break;
+                    }
+                }
+
+                if (deltaX < 0 && activeIdx < tabs.length - 1) {
+                    // Glisser vers la gauche -> Onglet Suivant
+                    tabs[activeIdx + 1].click();
+                    if (navigator.vibrate) navigator.vibrate(18);
+                } else if (deltaX > 0 && activeIdx > 0) {
+                    // Glisser vers la droite -> Onglet Précédent
+                    tabs[activeIdx - 1].click();
+                    if (navigator.vibrate) navigator.vibrate(18);
+                }
+            }
+        }, { passive: true });
+    } catch(e) {
+        console.warn("Swipe gesture init info:", e);
+    }
+})();
+</script>
+"""
+components.html(swipe_gesture_js, height=0)
+
+# ==============================================================================
+# 5. SYNCHRONISATION MODERNE (GOOGLE SHEETS WEBHOOK / GOOGLE FORMS)
 # ==============================================================================
 def detect_student_and_exercise(filename, student_list):
-    """Détecte automatiquement l'athlète et l'exercice depuis le nom du fichier."""
     clean_name = os.path.splitext(filename)[0].replace("_", " ").replace("-", " ")
     detected_student = None
     detected_exercise = clean_name
@@ -336,88 +432,86 @@ def detect_student_and_exercise(filename, student_list):
 
     return detected_student, detected_exercise if detected_exercise else clean_name
 
-def send_to_google_forms(form_url, entries, student_name, exercise, tst_seconds, rpe_val):
-    """Envoi sécurisé vers Google Forms sans bloquer l'UI."""
-    payload = {
-        entries["entry_nom"]: student_name,
-        entries["entry_exo"]: exercise,
-        entries["entry_tst"]: str(round(tst_seconds, 2)).replace('.', ','),
-        entries["entry_rpe"]: str(rpe_val)
-    }
-    try:
-        res = requests.post(form_url, data=payload, timeout=3.5)
-        return res.status_code == 200, res.status_code
-    except Exception as e:
-        return False, str(e)
+def dispatch_sync_evaluation(settings, student, exercise, tst_val, rpe_val, charge_val, notes, date_str):
+    """
+    Envoi des données selon le mode configuré par le coach :
+    1. 'gsheet_webhook' : Webhook direct Google Sheets (JSON structuré avec calcul de Charge)
+    2. 'google_forms' : Formulaire Google Forms legacy
+    3. 'local_only' : Sauvegarde interne uniquement
+    """
+    mode = settings.get("sync_mode", "google_forms")
+
+    if mode == "gsheet_webhook":
+        wh_url = settings.get("webhook_url", "").strip()
+        if not wh_url:
+            return False, "URL Webhook vide"
+        payload = {
+            "date": date_str,
+            "student": student,
+            "exercise": exercise,
+            "tst": tst_val,
+            "rpe": rpe_val,
+            "charge": charge_val,
+            "notes": notes
+        }
+        try:
+            r = requests.post(wh_url, json=payload, timeout=4)
+            return r.status_code == 200, f"HTTP {r.status_code}"
+        except Exception as e:
+            return False, str(e)
+
+    elif mode == "google_forms":
+        form_url = settings.get("form_url", DEFAULT_FORM_URL)
+        payload = {
+            settings.get("entry_nom", DEFAULT_ENTRY_NOM): student,
+            settings.get("entry_exo", DEFAULT_ENTRY_EXO): exercise,
+            settings.get("entry_tst", DEFAULT_ENTRY_TST): str(round(tst_val, 2)).replace('.', ','),
+            settings.get("entry_rpe", DEFAULT_ENTRY_RPE): str(rpe_val)
+        }
+        try:
+            r = requests.post(form_url, data=payload, timeout=4)
+            return r.status_code == 200, f"HTTP {r.status_code}"
+        except Exception as e:
+            return False, str(e)
+
+    return True, "Mode local"
 
 
 # ==============================================================================
-# 5. EN-TÊTE MOBILE & NAVIGATION EN 1 CLIC (ACCESSIBLE AU POUCE)
+# 6. EN-TÊTE PRINCIPAL & ONGLETIS GESTIONNAIRE DE VUE (SWIPABLE)
 # ==============================================================================
-admin_pwd_target = st.session_state.db["settings"].get("admin_pwd", "admin")
-
 st.markdown("""
-    <div class="mobile-header-bar">
+    <div class="app-brand-banner">
         <div style="display:flex; align-items:center; gap:8px;">
-            <div style="background: linear-gradient(135deg, #00f0ff, #3b82f6); padding: 6px 9px; border-radius: 9px;">
-                <span style="font-size: 16px;">⚡</span>
+            <div style="background: linear-gradient(135deg, #00f0ff, #0077ff); padding: 6px 10px; border-radius: 10px;">
+                <span style="font-size: 17px;">⚡</span>
             </div>
             <div>
-                <span style="font-size: 1.15rem; font-weight:800; letter-spacing: -0.02em;">CALIPERF</span>
-                <span style="color:#00f0ff; font-weight:800; font-size:1.15rem;">V2</span>
+                <span style="font-size: 1.25rem; font-weight:800; letter-spacing: -0.02em;">CALIPERF</span>
+                <span style="color:#00f0ff; font-weight:800; font-size:1.25rem;">PRO</span>
             </div>
         </div>
         <div style="display:flex; align-items:center; gap:6px;">
-            <span class="badge-lime">📱 Mobile & PC</span>
+            <span class="badge-cyan">📲 Swipe Actif</span>
         </div>
     </div>
 """, unsafe_allow_html=True)
 
-# Barre de Navigation principale directement accessible sur l'écran (sans ouvrir le menu hamburger)
-col_nav1, col_nav2, col_nav3, col_nav4 = st.columns(4)
-with col_nav1:
-    btn_type = "primary" if st.session_state.current_nav == "🎥 Studio" else "secondary"
-    if st.button("🎥 Studio", use_container_width=True, type=btn_type):
-        st.session_state.current_nav = "🎥 Studio"
-        st.rerun()
-with col_nav2:
-    btn_type = "primary" if st.session_state.current_nav == "📊 Stats" else "secondary"
-    if st.button("📊 Stats", use_container_width=True, type=btn_type):
-        st.session_state.current_nav = "📊 Stats"
-        st.rerun()
-with col_nav3:
-    btn_type = "primary" if st.session_state.current_nav == "👥 Athlètes" else "secondary"
-    if st.button("👥 Athlètes", use_container_width=True, type=btn_type):
-        st.session_state.current_nav = "👥 Athlètes"
-        st.rerun()
-with col_nav4:
-    btn_type = "primary" if st.session_state.current_nav == "⚙️ Réglages" else "secondary"
-    if st.button("⚙️ Réglages", use_container_width=True, type=btn_type):
-        st.session_state.current_nav = "⚙️ Réglages"
-        st.rerun()
-
-# Connexion Coach rapide si non connecté (dans un expander compact)
-if not st.session_state.is_authenticated:
-    with st.expander("🔒 Activer le Mode Coach (Code Admin)", expanded=False):
-        c_p1, c_p2 = st.columns([2, 1])
-        with c_p1:
-            entered_pwd = st.text_input("Code Coach :", type="password", key="quick_login_pwd", label_visibility="collapsed", placeholder="Mot de passe coach...")
-        with c_p2:
-            if st.button("Déverrouiller", use_container_width=True, type="primary"):
-                if entered_pwd == admin_pwd_target:
-                    st.session_state.is_authenticated = True
-                    st.toast("✅ Mode Coach déverrouillé !")
-                    st.rerun()
-                else:
-                    st.error("Code erroné.")
+# Les 4 compartiments principaux sous forme d'onglets réactifs
+tab_studio, tab_stats, tab_athletes, tab_settings = st.tabs([
+    "🎥 Studio",
+    "📊 Stats",
+    "👥 Athlètes",
+    "⚙️ Réglages"
+])
 
 
 # ==============================================================================
-# VUE 1 : STUDIO VIDÉO & CHRONOMÉTRAGE TST (OPTIMISÉ ÉCRAN TACTILE)
+# COMPARTIMENT 1 : STUDIO VIDÉO & CHRONOMÉTRAGE TST
 # ==============================================================================
-if st.session_state.current_nav == "🎥 Studio":
-    # 1. Dépôt de vidéos (optimisé pour galerie smartphone & glisser-déposer PC)
-    with st.expander("📁 Importer des vidéos (depuis la galerie ou PC)", expanded=False):
+with tab_studio:
+    # 1. Zone d'importation
+    with st.expander("📁 Importer des vidéos (Galerie Smartphone ou PC)", expanded=False):
         uploaded_files = st.file_uploader(
             "Importer les vidéos (.mp4, .mov, .avi)",
             type=['mp4', 'mov', 'avi'],
@@ -427,11 +521,12 @@ if st.session_state.current_nav == "🎥 Studio":
 
     if not uploaded_files:
         st.markdown("""
-            <div class="cali-card" style="text-align:center; padding: 2rem 1rem; margin-top: 0.5rem;">
-                <div style="font-size: 2.4rem; margin-bottom: 0.4rem;">📲</div>
-                <h3 style="margin-bottom: 0.2rem; font-size: 1.15rem;">Prêt pour vos analyses</h3>
+            <div class="cali-card" style="text-align:center; padding: 2rem 1rem; margin-top: 0.4rem;">
+                <div style="font-size: 2.3rem; margin-bottom: 0.3rem;">📲</div>
+                <h3 style="margin-bottom: 0.2rem; font-size: 1.15rem;">Studio Prêt</h3>
                 <p style="color:#94a3b8; font-size: 0.88rem; max-width: 440px; margin: 0 auto;">
-                    Touchez <b>Importer des vidéos</b> ci-dessus pour sélectionner les vidéos de vos élèves depuis votre galerie mobile ou votre ordinateur.
+                    Touchez <b>Importer des vidéos</b> pour charger vos séances.<br>
+                    <small style="color:#00f0ff;">Astuce : glissez l'écran vers la gauche pour voir les Stats ou les Athlètes 👉</small>
                 </p>
             </div>
         """, unsafe_allow_html=True)
@@ -440,12 +535,12 @@ if st.session_state.current_nav == "🎥 Studio":
         file_names = list(files_dict.keys())
         total_files = len(file_names)
 
-        # Contrôles de file d'attente adaptés mobile : Précédent / Suivant au pouce
         cur_idx = min(st.session_state.active_video_idx, total_files - 1)
         st.session_state.active_video_idx = cur_idx
         current_fname = file_names[cur_idx]
         current_file = files_dict[current_fname]
 
+        # File d'attente ergonomique
         col_prev, col_status, col_next = st.columns([1, 2, 1])
         with col_prev:
             if st.button("◀️ Préc.", key="btn_prev_vid", use_container_width=True, disabled=(cur_idx == 0)):
@@ -454,7 +549,7 @@ if st.session_state.current_nav == "🎥 Studio":
         with col_status:
             is_analyzed = current_fname in st.session_state.processed_videos
             badge_type = "badge-lime" if is_analyzed else "badge-amber"
-            status_text = "✅ Analysée" if is_analyzed else "⏳ En attente"
+            status_text = "✅ Validée" if is_analyzed else "⏳ En attente"
             st.markdown(f"""
                 <div style="text-align:center; padding-top: 4px;">
                     <span style="font-size: 0.82rem; font-weight:700; color:#f1f5f9;">Vidéo {cur_idx + 1} / {total_files}</span><br>
@@ -466,11 +561,11 @@ if st.session_state.current_nav == "🎥 Studio":
                 st.session_state.active_video_idx = min(total_files - 1, cur_idx + 1)
                 st.rerun()
 
-        # Détection auto
+        # Détection automatique de l'athlète et de l'exercice
         existing_students = list(st.session_state.db["students"].keys())
         auto_student, auto_exo = detect_student_and_exercise(current_fname, existing_students)
 
-        # Gestion du chronomètre pour cette vidéo
+        # Chronomètre de la vidéo
         if current_fname not in st.session_state.stopwatches:
             st.session_state.stopwatches[current_fname] = {
                 "tst_val": 0.0,
@@ -482,18 +577,16 @@ if st.session_state.current_nav == "🎥 Studio":
             }
         sw = st.session_state.stopwatches[current_fname]
 
-        # Layout responsive : sur PC en 2 colonnes, sur Mobile empilement parfait
         col_video, col_tools = st.columns([1.5, 1.2], gap="medium")
 
         with col_video:
-            # Lecteur Vidéo (CSS contraint la hauteur à 42vh max sur téléphone)
             st.video(current_file)
 
-            # Repères Début/Fin de set (In / Out Markers) - Idéal pour les coachs
+            # Repères temporels In / Out
             st.markdown("""
-                <div class="cali-card" style="padding: 10px 14px; margin-top: 6px;">
-                    <div style="font-weight:700; font-size:0.78rem; color:#94a3b8; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:6px;">
-                        🎯 Repères Précis In / Out (au centième)
+                <div class="cali-card" style="padding: 9px 12px; margin-top: 6px;">
+                    <div style="font-weight:700; font-size:0.75rem; color:#94a3b8; text-transform:uppercase; letter-spacing:0.04em;">
+                        🎯 Repères Début/Fin du Set (Précision Cadre)
                     </div>
                 </div>
             """, unsafe_allow_html=True)
@@ -507,7 +600,7 @@ if st.session_state.current_nav == "🎥 Studio":
                 sw["out_marker"] = out_val
 
             diff_marker = max(0.0, round(out_val - in_val, 2)) if out_val > in_val else 0.0
-            if st.button(f"⚡ Appliquer repères : TST = {diff_marker}s", use_container_width=True, key=f"apply_{current_fname}", disabled=(diff_marker <= 0)):
+            if st.button(f"⚡ Appliquer : TST = {diff_marker}s", use_container_width=True, key=f"apply_{current_fname}", disabled=(diff_marker <= 0)):
                 sw["tst_val"] = diff_marker
                 st.toast(f"✅ TST fixé à {diff_marker}s")
                 st.rerun()
@@ -515,22 +608,21 @@ if st.session_state.current_nav == "🎥 Studio":
         with col_tools:
             st.markdown('<div class="cali-card">', unsafe_allow_html=True)
 
-            # Affichage Digital Neon
             disp_tst = sw["tst_val"]
             st.markdown(f"""
-                <div style="text-align: center; padding: 0.2rem 0 0.4rem 0;">
+                <div style="text-align: center; padding: 0.1rem 0 0.3rem 0;">
                     <span class="digital-sub">TEMPS SOUS TENSION (TST)</span>
-                    <div class="digital-timer">{disp_tst:.2f}<span style="font-size:1.4rem; color:#94a3b8;"> s</span></div>
+                    <div class="digital-timer">{disp_tst:.2f}<span style="font-size:1.3rem; color:#94a3b8;"> s</span></div>
                 </div>
             """, unsafe_allow_html=True)
 
-            # Boutons Chrono au pouce
+            # Contrôles Chrono
             c_run, c_raz = st.columns([1.5, 1])
             with c_run:
                 is_run = sw["running"]
-                btn_run_label = "⏸️ PAUSE" if is_run else "▶️ DÉMARRER CHRONO"
-                btn_run_type = "secondary" if is_run else "primary"
-                if st.button(btn_run_label, key=f"btn_run_{current_fname}", type=btn_run_type, use_container_width=True):
+                btn_label = "⏸️ PAUSE" if is_run else "▶️ DÉMARRER CHRONO"
+                btn_type = "secondary" if is_run else "primary"
+                if st.button(btn_label, key=f"btn_run_{current_fname}", type=btn_type, use_container_width=True):
                     if sw["running"]:
                         sw["tst_val"] += time.time() - sw["start_time"]
                         sw["running"] = False
@@ -544,7 +636,7 @@ if st.session_state.current_nav == "🎥 Studio":
                     sw["running"] = False
                     st.rerun()
 
-            # Micro-ajustements rapides
+            # Ajustements rapides
             c_a1, c_a2, c_a3, c_a4 = st.columns(4)
             with c_a1:
                 if st.button("-1s", key=f"m1_{current_fname}", use_container_width=True):
@@ -563,11 +655,10 @@ if st.session_state.current_nav == "🎥 Studio":
                     sw["tst_val"] += 5.0
                     st.rerun()
 
-            st.markdown("<hr style='border-color: rgba(255,255,255,0.08); margin: 0.6rem 0;'>", unsafe_allow_html=True)
+            st.markdown("<hr style='border-color: rgba(255,255,255,0.08); margin: 0.5rem 0;'>", unsafe_allow_html=True)
 
             # Formulaire d'Évaluation
             with st.form(key=f"eval_form_{current_fname}"):
-                # Athlète & Exercice
                 student_options = existing_students if existing_students else ["Aucun élève"]
                 def_student_idx = 0
                 if auto_student and auto_student in student_options:
@@ -576,11 +667,20 @@ if st.session_state.current_nav == "🎥 Studio":
                 sel_student = st.selectbox("👤 Athlète :", student_options, index=def_student_idx)
                 val_exo = st.text_input("🏋️ Exercice :", value=auto_exo)
 
-                # RPE Slider
+                # Slider RPE
                 rpe_score = st.slider("🔥 Effort perçu (RPE 1-10) :", min_value=1.0, max_value=10.0, value=float(sw.get("rpe", 7.5)), step=0.5)
                 sw["rpe"] = rpe_score
 
-                # Indicateur RPE dynamique
+                # Calcul en direct de la Charge d'Entraînement
+                calc_charge = round(disp_tst * rpe_score, 1)
+
+                st.markdown(f"""
+                    <div class="charge-card">
+                        <span style="font-size:0.8rem; color:#94a3b8; font-weight:600;">⚡ CHARGE DU SET (TST × RPE)</span>
+                        <span style="font-size:1.15rem; font-weight:800; color:#00f0ff;">{calc_charge} <small style="font-size:0.75rem; color:#cbd5e1;">UA</small></span>
+                    </div>
+                """, unsafe_allow_html=True)
+
                 if rpe_score <= 5.5:
                     rpe_class, rpe_text = "rpe-low", "🟢 Récupération / Technique (RIR 4+)"
                 elif rpe_score <= 7.5:
@@ -592,120 +692,136 @@ if st.session_state.current_nav == "🎥 Studio":
 
                 st.markdown(f'<div class="rpe-indicator {rpe_class}">{rpe_text}</div>', unsafe_allow_html=True)
 
-                # Feedback coach optionnel
-                coach_notes = st.text_input("💬 Consigne / Feedback élève :", placeholder="Ex: Coudes bien verrouillés, amplitude propre")
+                coach_notes = st.text_input("💬 Feedback / Consigne :", placeholder="Ex: Coudes bien verrouillés, tempo respecté")
 
-                # Bouton de validation principal géant (Zone tactile maximale)
                 submit_eval = st.form_submit_button("⚡ VALIDER & ENREGISTRER", type="primary", use_container_width=True)
 
                 if submit_eval:
                     final_tst = round(sw["tst_val"], 2)
                     if final_tst <= 0:
-                        st.warning("⚠️ Chronomètre à 0s. Veuillez mesurer le TST avant de valider.")
+                        st.warning("⚠️ Chronomètre à 0s. Veuillez mesurer le TST.")
                     elif sel_student == "Aucun élève":
                         st.error("Ajoutez un athlète dans l'onglet 'Athlètes'.")
                     else:
-                        # 1. Sauvegarde locale
+                        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
                         new_eval = {
                             "id": f"eval_{int(time.time()*1000)}",
                             "student": sel_student,
                             "exercise": val_exo,
                             "tst": final_tst,
                             "rpe": rpe_score,
+                            "charge": calc_charge,
                             "video_name": current_fname,
-                            "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                            "date": now_str,
                             "notes": coach_notes,
-                            "google_synced": False
+                            "synced": False
                         }
 
-                        # 2. Synchronisation Google Forms en arrière-plan
-                        if st.session_state.db["settings"].get("send_to_google", True):
-                            form_url = st.session_state.db["settings"].get("form_url", DEFAULT_FORM_URL)
-                            entries = {
-                                "entry_nom": st.session_state.db["settings"].get("entry_nom", DEFAULT_ENTRY_NOM),
-                                "entry_exo": st.session_state.db["settings"].get("entry_exo", DEFAULT_ENTRY_EXO),
-                                "entry_tst": st.session_state.db["settings"].get("entry_tst", DEFAULT_ENTRY_TST),
-                                "entry_rpe": st.session_state.db["settings"].get("entry_rpe", DEFAULT_ENTRY_RPE),
-                            }
-                            ok, _ = send_to_google_forms(form_url, entries, sel_student, val_exo, final_tst, rpe_score)
-                            new_eval["google_synced"] = ok
+                        # Envoi selon le connecteur choisi
+                        ok_sync, msg_sync = dispatch_sync_evaluation(
+                            st.session_state.db["settings"],
+                            sel_student,
+                            val_exo,
+                            final_tst,
+                            rpe_score,
+                            calc_charge,
+                            coach_notes,
+                            now_str
+                        )
+                        new_eval["synced"] = ok_sync
 
                         st.session_state.db["evaluations"].append(new_eval)
                         save_db(st.session_state.db)
 
-                        # Marquer la vidéo comme traitée
                         st.session_state.processed_videos.add(current_fname)
-                        st.toast(f"✅ Analyse validée pour {sel_student} (TST: {final_tst}s)")
+                        st.toast(f"✅ Séance validée : {sel_student} (Charge: {calc_charge} UA)")
 
-                        # Auto-advance vers la vidéo suivante
                         if st.session_state.db["settings"].get("auto_advance", True) and cur_idx < total_files - 1:
                             st.session_state.active_video_idx += 1
 
-                        time.sleep(0.7)
+                        time.sleep(0.6)
                         st.rerun()
 
             st.markdown('</div>', unsafe_allow_html=True)
 
 
 # ==============================================================================
-# VUE 2 : STATS & PROGRESSION
+# COMPARTIMENT 2 : STATS, CHARGE D'ENTRAÎNEMENT & HISTORIQUE
 # ==============================================================================
-elif st.session_state.current_nav == "📊 Stats":
-    st.markdown("### 📊 Progression & Suivi")
+with tab_stats:
+    st.markdown("### 📊 Statistiques & Suivi de Charge")
     evals = st.session_state.db.get("evaluations", [])
 
     if not evals:
-        st.info("Aucune analyse enregistrée. Évaluez des vidéos dans le Studio pour débloquer les statistiques !")
+        st.info("Aucune analyse enregistrée. Évaluez vos premières vidéos dans le Studio !")
     else:
         df_evals = pd.DataFrame(evals)
+        if "charge" not in df_evals.columns:
+            df_evals["charge"] = (df_evals["tst"] * df_evals["rpe"]).round(1)
 
-        # KPI Cards (2x2 sur mobile)
+        # 4 KPIs
         k1, k2 = st.columns(2)
         with k1:
             st.metric("Total Séances", len(df_evals))
             st.metric("TST Moyen", f"{df_evals['tst'].mean():.1f} s")
         with k2:
-            st.metric("Athlètes Suivis", df_evals["student"].nunique())
+            st.metric("Charge Moyenne", f"{df_evals['charge'].mean():.1f} UA")
             st.metric("RPE Moyen", f"{df_evals['rpe'].mean():.1f} / 10")
 
         st.markdown("<hr style='border-color: rgba(255,255,255,0.08); margin: 0.8rem 0;'>", unsafe_allow_html=True)
 
-        # Filtre athlète
         all_students = ["Tous les athlètes"] + sorted(list(df_evals["student"].unique()))
-        selected_student = st.selectbox("Filtrer par athlète :", all_students)
+        selected_student = st.selectbox("Filtrer par athlète :", all_students, key="stats_filter_student")
         df_filtered = df_evals if selected_student == "Tous les athlètes" else df_evals[df_evals["student"] == selected_student]
 
-        # Graphique mobile Plotly
         if HAS_PLOTLY and not df_filtered.empty:
-            st.markdown("##### 📈 Évolution du Temps Sous Tension")
-            fig_tst = px.line(
-                df_filtered,
-                x="date",
-                y="tst",
-                color="exercise",
-                markers=True,
-                labels={"tst": "TST (secondes)", "date": "Date", "exercise": "Exercice"},
-                template="plotly_dark"
-            )
-            fig_tst.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(15,23,42,0.6)",
-                font_family="Plus Jakarta Sans",
-                margin=dict(l=10, r=10, t=25, b=20),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-            )
-            st.plotly_chart(fig_tst, use_container_width=True)
+            tab_g1, tab_g2 = st.tabs(["📈 Évolution TST", "⚡ Charge d'Entraînement"])
+
+            with tab_g1:
+                fig_tst = px.line(
+                    df_filtered,
+                    x="date",
+                    y="tst",
+                    color="exercise",
+                    markers=True,
+                    labels={"tst": "TST (s)", "date": "Date", "exercise": "Exercice"},
+                    template="plotly_dark"
+                )
+                fig_tst.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(15,23,42,0.6)",
+                    font_family="Plus Jakarta Sans",
+                    margin=dict(l=10, r=10, t=25, b=20),
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                )
+                st.plotly_chart(fig_tst, use_container_width=True)
+
+            with tab_g2:
+                fig_charge = px.bar(
+                    df_filtered,
+                    x="date",
+                    y="charge",
+                    color="exercise",
+                    labels={"charge": "Charge (TST x RPE)", "date": "Date"},
+                    template="plotly_dark"
+                )
+                fig_charge.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(15,23,42,0.6)",
+                    font_family="Plus Jakarta Sans",
+                    margin=dict(l=10, r=10, t=25, b=20)
+                )
+                st.plotly_chart(fig_charge, use_container_width=True)
 
         # Tableau d'historique
-        st.markdown("##### 📜 Dernières évaluations")
-        df_disp = df_filtered[["date", "student", "exercise", "tst", "rpe", "notes"]].copy()
-        df_disp.columns = ["Date", "Athlète", "Exercice", "TST (s)", "RPE", "Notes"]
+        st.markdown("##### 📜 Registre des séances")
+        df_disp = df_filtered[["date", "student", "exercise", "tst", "rpe", "charge", "notes"]].copy()
+        df_disp.columns = ["Date", "Athlète", "Exercice", "TST (s)", "RPE", "Charge (UA)", "Notes"]
         st.dataframe(df_disp, use_container_width=True)
 
-        # Export CSV
         csv_bytes = df_filtered.to_csv(index=False).encode('utf-8')
         st.download_button(
-            "📥 Exporter les données en CSV",
+            "📥 Exporter les données (CSV / Excel)",
             data=csv_bytes,
             file_name=f"caliperf_stats_{datetime.now().strftime('%Y%m%d')}.csv",
             mime="text/csv",
@@ -714,52 +830,50 @@ elif st.session_state.current_nav == "📊 Stats":
 
 
 # ==============================================================================
-# VUE 3 : ATHLÈTES & FICHES
+# COMPARTIMENT 3 : ATHLÈTES & FICHES
 # ==============================================================================
-elif st.session_state.current_nav == "👥 Athlètes":
-    st.markdown("### 👥 Gestion des Athlètes")
+with tab_athletes:
+    st.markdown("### 👥 Dossiers Athlètes")
 
-    # Inscription nouvel athlète
     with st.expander("➕ Inscrire un nouvel athlète", expanded=False):
-        with st.form("add_student_mobile_form"):
+        with st.form("add_student_tab_form"):
             new_nom = st.text_input("Nom :")
             new_prenom = st.text_input("Prénom :")
             new_freq = st.selectbox(
-                "Fréquence :",
+                "Fréquence hebdomadaire :",
                 ["2x / semaine", "3x / semaine", "4x / semaine", "5x / semaine", "6x / semaine", "Quotidien"]
             )
-            new_goal = st.text_area("Objectif athlétique :", placeholder="Ex: Progression tractions lestées & Front lever")
+            new_goal = st.text_area("Objectif principal :", placeholder="Ex: Débloquer le Front lever & séries de Dips à +30kg")
 
-            if st.form_submit_button("✅ Inscrire l'athlète", type="primary", use_container_width=True):
+            if st.form_submit_button("✅ Enregistrer l'athlète", type="primary", use_container_width=True):
                 if new_nom.strip() and new_prenom.strip():
                     full_name = f"{new_prenom.strip()} {new_nom.strip()}"
                     st.session_state.db["students"][full_name] = {
                         "freq": new_freq,
                         "goal": new_goal.strip() if new_goal.strip() else "Objectif général",
-                        "link": st.session_state.db["settings"].get("form_url", DEFAULT_FORM_URL),
                         "created_at": datetime.now().strftime("%Y-%m-%d %H:%M")
                     }
                     save_db(st.session_state.db)
-                    st.success(f"{full_name} ajouté !")
-                    time.sleep(0.6)
+                    st.success(f"{full_name} inscrit avec succès !")
+                    time.sleep(0.5)
                     st.rerun()
                 else:
                     st.warning("Veuillez renseigner le nom et le prénom.")
 
-    # Liste des athlètes
     students = st.session_state.db.get("students", {})
     if not students:
-        st.info("Aucun athlète enregistré.")
+        st.info("Aucun athlète dans la base.")
     else:
         for name, details in list(students.items()):
             evals = st.session_state.db.get("evaluations", [])
             student_evals = [e for e in evals if e.get("student") == name]
+            total_charge = sum(e.get("charge", round(e.get("tst", 0)*e.get("rpe", 0), 1)) for e in student_evals)
 
             st.markdown(f"""
                 <div class="cali-card">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
                         <h4 style="margin:0; font-size:1.05rem; color:#f8fafc;">👤 {name}</h4>
-                        <span class="badge-lime">{len(student_evals)} Séances</span>
+                        <span class="badge-lime">{len(student_evals)} Séances ({total_charge:.0f} UA)</span>
                     </div>
                     <div style="margin-top:6px; font-size:0.82rem; color:#94a3b8;">
                         📅 Fréquence: <b style="color:#f1f5f9;">{details.get('freq', 'Non précisée')}</b>
@@ -770,59 +884,101 @@ elif st.session_state.current_nav == "👥 Athlètes":
                 </div>
             """, unsafe_allow_html=True)
 
-            if st.session_state.is_authenticated:
-                if st.button(f"🗑️ Supprimer {name}", key=f"del_stud_{name}", use_container_width=True):
-                    del st.session_state.db["students"][name]
-                    save_db(st.session_state.db)
-                    st.toast(f"Athlète {name} supprimé.")
-                    time.sleep(0.4)
-                    st.rerun()
+            if st.button(f"🗑️ Supprimer {name}", key=f"del_stud_{name}", use_container_width=True):
+                del st.session_state.db["students"][name]
+                save_db(st.session_state.db)
+                st.toast(f"Athlète {name} supprimé.")
+                time.sleep(0.4)
+                st.rerun()
 
 
 # ==============================================================================
-# VUE 4 : RÉGLAGES & SYNCHRONISATION
+# COMPARTIMENT 4 : RÉGLAGES & CONNECTEURS CLOUD
 # ==============================================================================
-elif st.session_state.current_nav == "⚙️ Réglages":
-    st.markdown("### ⚙️ Réglages & Connexions")
+with tab_settings:
+    st.markdown("### ⚙️ Paramètres & Synchronisation")
 
-    with st.form("settings_mobile_form"):
-        st.markdown("##### 🔗 Connecteur Google Forms")
-        form_url = st.text_input("URL Google Form :", value=st.session_state.db["settings"].get("form_url", DEFAULT_FORM_URL))
+    with st.form("settings_full_form"):
+        st.markdown("##### 🌐 Mode de Synchronisation des Données")
+        sync_mode = st.radio(
+            "Comment souhaitez-vous enregistrer vos données d'analyse ?",
+            [
+                ("google_forms", "📝 Google Forms (Méthode actuelle avec entry IDs)"),
+                ("gsheet_webhook", "🚀 Google Sheets Direct (Sans formulaire, via Webhook Apps Script)"),
+                ("local_only", "💾 Caliperf Local uniquement (100% hors-ligne, zéro latence)")
+            ],
+            format_func=lambda x: x[1],
+            index=0 if st.session_state.db["settings"].get("sync_mode") == "google_forms" else (1 if st.session_state.db["settings"].get("sync_mode") == "gsheet_webhook" else 2)
+        )[0]
 
-        col_e1, col_e2 = st.columns(2)
-        with col_e1:
-            e_nom = st.text_input("Entry Nom :", value=st.session_state.db["settings"].get("entry_nom", DEFAULT_ENTRY_NOM))
-            e_tst = st.text_input("Entry TST :", value=st.session_state.db["settings"].get("entry_tst", DEFAULT_ENTRY_TST))
-        with col_e2:
-            e_exo = st.text_input("Entry Exo :", value=st.session_state.db["settings"].get("entry_exo", DEFAULT_ENTRY_EXO))
-            e_rpe = st.text_input("Entry RPE :", value=st.session_state.db["settings"].get("entry_rpe", DEFAULT_ENTRY_RPE))
+        if sync_mode == "gsheet_webhook":
+            st.markdown("""
+                <div style="background:rgba(0,240,255,0.08); padding:10px; border-radius:8px; font-size:0.82rem; color:#cbd5e1; margin-bottom:8px;">
+                    💡 <b>Pourquoi c'est mieux que Google Forms ?</b><br>
+                    Les données sont insérées directement dans votre Google Sheet en temps réel, sans passer par un formulaire intermédiaire, et la Charge d'Entraînement (TST x RPE) est automatiquement calculée !
+                </div>
+            """, unsafe_allow_html=True)
+            wh_url_input = st.text_input("URL Webhook Google Apps Script :", value=st.session_state.db["settings"].get("webhook_url", ""))
+        else:
+            wh_url_input = st.session_state.db["settings"].get("webhook_url", "")
 
-        st.markdown("<hr style='border-color: rgba(255,255,255,0.08); margin: 0.6rem 0;'>", unsafe_allow_html=True)
-        auto_adv = st.checkbox("Passer automatiquement à la vidéo suivante", value=st.session_state.db["settings"].get("auto_advance", True))
-        auto_send = st.checkbox("Synchroniser automatiquement Google Forms", value=st.session_state.db["settings"].get("send_to_google", True))
+        if sync_mode == "google_forms":
+            form_url = st.text_input("URL Google Form (formResponse) :", value=st.session_state.db["settings"].get("form_url", DEFAULT_FORM_URL))
+            col_e1, col_e2 = st.columns(2)
+            with col_e1:
+                e_nom = st.text_input("Entry Nom :", value=st.session_state.db["settings"].get("entry_nom", DEFAULT_ENTRY_NOM))
+                e_tst = st.text_input("Entry TST :", value=st.session_state.db["settings"].get("entry_tst", DEFAULT_ENTRY_TST))
+            with col_e2:
+                e_exo = st.text_input("Entry Exo :", value=st.session_state.db["settings"].get("entry_exo", DEFAULT_ENTRY_EXO))
+                e_rpe = st.text_input("Entry RPE :", value=st.session_state.db["settings"].get("entry_rpe", DEFAULT_ENTRY_RPE))
+        else:
+            form_url = st.session_state.db["settings"].get("form_url", DEFAULT_FORM_URL)
+            e_nom = st.session_state.db["settings"].get("entry_nom", DEFAULT_ENTRY_NOM)
+            e_tst = st.session_state.db["settings"].get("entry_tst", DEFAULT_ENTRY_TST)
+            e_exo = st.session_state.db["settings"].get("entry_exo", DEFAULT_ENTRY_EXO)
+            e_rpe = st.session_state.db["settings"].get("entry_rpe", DEFAULT_ENTRY_RPE)
 
-        new_admin_pwd = st.text_input("Code Coach Pro :", value=st.session_state.db["settings"].get("admin_pwd", "admin"), type="password")
+        st.markdown("<hr style='border-color: rgba(255,255,255,0.08); margin: 0.8rem 0;'>", unsafe_allow_html=True)
+        st.markdown("##### ⚡ Ergonomie du Studio")
+        auto_adv = st.checkbox("Passer automatiquement à la vidéo suivante après validation", value=st.session_state.db["settings"].get("auto_advance", True))
 
-        if st.form_submit_button("💾 Enregistrer les Réglages", type="primary", use_container_width=True):
+        if st.form_submit_button("💾 Enregistrer la configuration", type="primary", use_container_width=True):
             st.session_state.db["settings"] = {
+                "sync_mode": sync_mode,
+                "webhook_url": wh_url_input.strip(),
                 "form_url": form_url.strip(),
                 "entry_nom": e_nom.strip(),
                 "entry_exo": e_exo.strip(),
                 "entry_tst": e_tst.strip(),
                 "entry_rpe": e_rpe.strip(),
-                "admin_pwd": new_admin_pwd.strip(),
-                "auto_advance": auto_adv,
-                "send_to_google": auto_send
+                "admin_pwd": st.session_state.db["settings"].get("admin_pwd", "admin"),
+                "auto_advance": auto_adv
             }
             save_db(st.session_state.db)
-            st.toast("✅ Réglages enregistrés !")
+            st.toast("✅ Configuration sauvegardée !")
             time.sleep(0.5)
             st.rerun()
+
+    # Guide de mise en place Webhook Google Sheet
+    with st.expander("📄 Voir le script pour connecter un Google Sheet en 1 minute", expanded=False):
+        st.markdown("""
+        Si vous voulez vous débarrasser définitivement de Google Forms, collez ce petit script dans votre Google Sheet (*Extensions > Apps Script*) puis cliquez sur **Déployer > Nouveau déploiement (Application Web, accès Tout le monde)** :
+
+        ```javascript
+        function doPost(e) {
+          var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+          var data = JSON.parse(e.postData.contents);
+          sheet.appendRow([data.date, data.student, data.exercise, data.tst, data.rpe, data.charge, data.notes]);
+          return ContentService.createTextOutput("OK");
+        }
+        ```
+        Collez ensuite l'URL fournie dans le champ Webhook ci-dessus !
+        """)
 
     # Sauvegarde locale JSON
     json_bytes = json.dumps(st.session_state.db, indent=2, ensure_ascii=False).encode('utf-8')
     st.download_button(
-        "📥 Télécharger la base locale (JSON)",
+        "📥 Télécharger la sauvegarde complète (JSON)",
         data=json_bytes,
         file_name=f"caliperf_backup_{datetime.now().strftime('%Y%m%d')}.json",
         mime="application/json",
