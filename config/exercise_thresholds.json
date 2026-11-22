@@ -1,0 +1,213 @@
+{
+  "version": "1.0",
+  "metadata": {
+    "description": "Seuils biomécaniques de référence pour Callisthénie & Street Lifting (CaliPerf)",
+    "updated_at": "2026-11-22"
+  },
+  "signal_filtering": {
+    "butterworth_order": 4,
+    "cutoff_frequency_hz": 3.5,
+    "min_frames_for_butterworth": 15
+  },
+  "exercises": {
+    "full_planche": {
+      "display_name": "Full Planche",
+      "type": "isometric",
+      "primary_camera_angles": ["profile", "three_quarter"],
+      "angles": {
+        "elbow": {
+          "min": 165.0,
+          "ideal": 180.0,
+          "description": "Verrouillage des coudes (bras tendus)"
+        },
+        "body_alignment": {
+          "min": 160.0,
+          "max": 190.0,
+          "ideal": 175.0,
+          "description": "Alignement épaule-hanche-cheville (hollow body)"
+        },
+        "body_horizontal_tilt": {
+          "min": -15.0,
+          "max": 15.0,
+          "ideal": 0.0,
+          "description": "Inclinaison du corps / horizontale (0° = parallèle)"
+        },
+        "shoulder_lean": {
+          "min": 35.0,
+          "max": 75.0,
+          "ideal": 50.0,
+          "description": "Avancement des épaules devant la ligne d'appui"
+        }
+      },
+      "stability": {
+        "max_hip_vertical_velocity": 0.08,
+        "min_hold_duration_sec": 0.5
+      }
+    },
+    "straddle_planche": {
+      "display_name": "Straddle Planche",
+      "type": "isometric",
+      "primary_camera_angles": ["profile", "three_quarter", "front"],
+      "angles": {
+        "elbow": {
+          "min": 165.0,
+          "ideal": 180.0,
+          "description": "Verrouillage des coudes"
+        },
+        "body_alignment": {
+          "min": 155.0,
+          "max": 190.0,
+          "ideal": 170.0,
+          "description": "Alignement épaule-bassin"
+        },
+        "body_horizontal_tilt": {
+          "min": -15.0,
+          "max": 18.0,
+          "ideal": 0.0,
+          "description": "Inclinaison du tronc"
+        }
+      },
+      "stability": {
+        "max_hip_vertical_velocity": 0.08,
+        "min_hold_duration_sec": 0.5
+      }
+    },
+    "maltese": {
+      "display_name": "Maltese (Hirondelle)",
+      "type": "isometric",
+      "primary_camera_angles": ["profile", "front", "three_quarter"],
+      "angles": {
+        "elbow": {
+          "min": 160.0,
+          "ideal": 180.0,
+          "description": "Verrouillage des coudes"
+        },
+        "body_alignment": {
+          "min": 160.0,
+          "max": 190.0,
+          "ideal": 175.0,
+          "description": "Alignement corps complet"
+        },
+        "body_horizontal_tilt": {
+          "min": -10.0,
+          "max": 15.0,
+          "ideal": 0.0,
+          "description": "Parallélisme avec le sol"
+        },
+        "arm_abduction": {
+          "min": 35.0,
+          "max": 80.0,
+          "ideal": 55.0,
+          "description": "Écartement des bras par rapport au tronc"
+        }
+      },
+      "stability": {
+        "max_hip_vertical_velocity": 0.08,
+        "min_hold_duration_sec": 0.5
+      }
+    },
+    "front_lever": {
+      "display_name": "Front Lever",
+      "type": "isometric",
+      "primary_camera_angles": ["profile", "three_quarter"],
+      "angles": {
+        "elbow": {
+          "min": 165.0,
+          "ideal": 180.0,
+          "description": "Bras tendus sous la barre"
+        },
+        "body_alignment": {
+          "min": 160.0,
+          "max": 190.0,
+          "ideal": 175.0,
+          "description": "Alignement épaule-hanche-pieds"
+        },
+        "body_horizontal_tilt": {
+          "min": -15.0,
+          "max": 15.0,
+          "ideal": 0.0,
+          "description": "Alignement horizontal du corps"
+        },
+        "shoulder_trunk_angle": {
+          "min": 30.0,
+          "max": 65.0,
+          "ideal": 45.0,
+          "description": "Angle d'ouverture bras/buste"
+        }
+      },
+      "stability": {
+        "max_hip_vertical_velocity": 0.08,
+        "min_hold_duration_sec": 0.5
+      }
+    },
+    "pull_ups": {
+      "display_name": "Tractions",
+      "type": "dynamic",
+      "primary_camera_angles": ["front", "profile", "three_quarter"],
+      "key_joint": "elbow",
+      "phases": {
+        "lockout_bottom": {
+          "elbow_min": 155.0,
+          "description": "Suspension basse complète (dead/active hang)"
+        },
+        "inflection_top": {
+          "elbow_max": 75.0,
+          "description": "Flexion complète au sommet (menton au-dessus de la barre)"
+        }
+      },
+      "timing": {
+        "min_rep_duration_sec": 0.7,
+        "max_rep_duration_sec": 8.0,
+        "lockout_pause_threshold_sec": 0.4
+      }
+    },
+    "push_ups": {
+      "display_name": "Pompes",
+      "type": "dynamic",
+      "primary_camera_angles": ["profile", "three_quarter"],
+      "key_joint": "elbow",
+      "phases": {
+        "lockout_top": {
+          "elbow_min": 165.0,
+          "body_alignment_min": 150.0,
+          "description": "Bras verrouillés en planche haute"
+        },
+        "inflection_bottom": {
+          "elbow_max": 90.0,
+          "body_alignment_min": 145.0,
+          "description": "Poitrine proche du sol (coude <= 90°)"
+        }
+      },
+      "timing": {
+        "min_rep_duration_sec": 0.6,
+        "max_rep_duration_sec": 6.0,
+        "lockout_pause_threshold_sec": 0.4
+      }
+    },
+    "planche_push_ups": {
+      "display_name": "Planche Push-ups",
+      "type": "dynamic",
+      "primary_camera_angles": ["profile", "three_quarter"],
+      "key_joint": "elbow",
+      "phases": {
+        "lockout_top": {
+          "elbow_min": 165.0,
+          "body_horizontal_tilt_max": 20.0,
+          "body_alignment_min": 155.0,
+          "description": "Position haute en planche verrouillée"
+        },
+        "inflection_bottom": {
+          "elbow_max": 95.0,
+          "body_horizontal_tilt_max": 25.0,
+          "body_alignment_min": 150.0,
+          "description": "Flexion des coudes en maintenant l'élévation"
+        }
+      },
+      "timing": {
+        "min_rep_duration_sec": 0.8,
+        "max_rep_duration_sec": 8.0,
+        "lockout_pause_threshold_sec": 0.4
+      }
+    }
+  }
+}
