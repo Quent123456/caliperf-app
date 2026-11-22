@@ -597,14 +597,33 @@ def analyze_video_with_gemini(video_file, api_key):
     try:
         client = genai.Client(api_key=api_key)
         prompt = (
-            "Tu es un expert en biomécanique et coaching sportif de calisthenics / street lifting. "
-            "Analyse cette vidéo d'entraînement : "
-            "1. Identifie le moment précis (en secondes) où la première répétition commence (début de l'effort). "
-            "2. Identifie le moment précis (en secondes) où la dernière répétition se termine (fin de l'effort). "
-            "3. Calcule le Temps Sous Tension réel (TST) = Fin - Début (en secondes). "
-            "4. Compte le nombre exact de répétitions complètes et valides. "
-            "Réponds UNIQUEMENT avec un objet JSON strict de la forme : "
-            '{"tst": 24.5, "reps": 8, "notes": "court retour technique"}'
+            "Tu es un expert en biomécanique et coaching sportif spécialisé en callisthénie, "
+            "street workout et musculation au poids du corps.\n\n"
+            "ANALYSE CETTE VIDÉO D'ENTRAÎNEMENT en suivant ces étapes PRÉCISÉMENT :\n\n"
+            "--- ÉTAPE 1 : COMPTAGE DES RÉPÉTITIONS ---\n"
+            "Une répétition = UN cycle complet de mouvement (phase concentrique + phase excentrique).\n"
+            "Exemples de cycles complets :\n"
+            "  - Traction : corps monte jusqu'au menton au-dessus de la barre, puis redescend bras tendus\n"
+            "  - Dips : corps descend puis remonte bras tendus\n"
+            "  - Pompe : corps descend vers le sol puis remonte bras tendus\n"
+            "  - Muscle-up : corps passe sous la barre puis au-dessus\n"
+            "  - Squat : descente + remontée complète\n"
+            "Compte TOUTES les répétitions réalisées, peu importe la qualité ou l'amplitude.\n"
+            "Un mouvement partiel qui effectue quand même un aller-retour = 1 répétition.\n"
+            "Ne compte PAS les positions statiques (maintien, isométrie) comme des répétitions.\n\n"
+            "--- ÉTAPE 2 : TEMPS SOUS TENSION (TST) ---\n"
+            "Identifie le moment exact (en secondes depuis le début de la vidéo) où :\n"
+            "  - La PREMIÈRE répétition COMMENCE (début du premier mouvement actif)\n"
+            "  - La DERNIÈRE répétition SE TERMINE (fin du dernier mouvement actif)\n"
+            "TST = timestamp_fin - timestamp_début (en secondes, avec 1 décimale).\n"
+            "ATTENTION : ne compte PAS le temps avant/après l'effort (préparation, repos).\n\n"
+            "--- ÉTAPE 3 : NOTES TECHNIQUES ---\n"
+            "Donne un très court retour technique (1-2 phrases max) sur la qualité du mouvement.\n\n"
+            "--- FORMAT DE RÉPONSE ---\n"
+            "Réponds UNIQUEMENT avec un objet JSON strict, sans texte autour, de la forme :\n"
+            '{"tst": 24.5, "reps": 8, "debut_s": 2.1, "fin_s": 26.6, "notes": "Court retour technique."}\n'
+            "Les champs debut_s et fin_s sont les timestamps en secondes.\n"
+            "IMPORTANT : ne mets AUCUN texte avant ou après le JSON."
         )
 
         suffix = os.path.splitext(getattr(video_file, 'name', 'video.mp4'))[1] or ".mp4"
@@ -618,17 +637,21 @@ def analyze_video_with_gemini(video_file, api_key):
             uploaded_file = client.files.upload(file=tmp_path)
 
             # Attente si la vidéo est en cours de traitement
-            max_wait = 30
+            max_wait = 60
             waited = 0
-            while getattr(uploaded_file, "state", None) == "PROCESSING" and waited < max_wait:
+            while hasattr(uploaded_file, "state") and str(getattr(uploaded_file, "state", "")).upper() == "PROCESSING" and waited < max_wait:
                 time.sleep(2)
                 waited += 2
-                uploaded_file = client.files.get(name=uploaded_file.name)
+                try:
+                    uploaded_file = client.files.get(name=uploaded_file.name)
+                except Exception:
+                    break
 
-            # Modèles dans l'ordre de recommandation Google AI Studio
-            candidate_models = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-1.5-flash"]
+            # Modèles actuels (nov 2026) — les anciens (2.5, 2.0, 1.5) sont retirés
+            candidate_models = ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.5-flash"]
             response = None
             last_err = None
+            used_model = None
 
             for m in candidate_models:
                 try:
@@ -637,9 +660,13 @@ def analyze_video_with_gemini(video_file, api_key):
                         contents=[uploaded_file, prompt]
                     )
                     if response and response.text:
+                        used_model = m
                         break
+                    else:
+                        last_err = f"Modèle {m} : réponse vide"
                 except Exception as model_err:
-                    last_err = model_err
+                    last_err = f"Modèle {m} : {model_err}"
+                    response = None
                     continue
 
             # Nettoyage du fichier distant
@@ -649,14 +676,23 @@ def analyze_video_with_gemini(video_file, api_key):
                 pass
 
             if not response or not response.text:
-                return None, f"Erreur modèle Gemini : {last_err}"
+                return None, f"Aucun modèle disponible. Dernière erreur : {last_err}"
 
             text = response.text.strip()
-            json_match = re.search(r'\{.*\}', text, re.DOTALL)
+            # Extraction robuste du JSON même si du texte entoure
+            json_match = re.search(r'\{[^{}]*"tst"\s*:[^{}]*\}', text, re.DOTALL)
+            if not json_match:
+                json_match = re.search(r'\{.*\}', text, re.DOTALL)
             if json_match:
                 data = json.loads(json_match.group(0))
+                # Validation minimale des champs attendus
+                if "tst" not in data:
+                    data["tst"] = 0.0
+                if "reps" not in data:
+                    data["reps"] = 0
+                data["_model"] = used_model
                 return data, "Succès"
-            return None, f"Réponse non structurée : {text[:100]}"
+            return None, f"Réponse non structurée (modèle {used_model}) : {text[:150]}"
 
         finally:
             if os.path.exists(tmp_path):
@@ -817,15 +853,24 @@ with tab_studio:
                 else:
                     st.markdown('<span class="badge-lime" style="margin-bottom:8px; display:inline-block;">🟢 Clé API Active</span>', unsafe_allow_html=True)
                     if st.button("✨ Lancer l'Auto-Track IA (Vision)", key=f"ai_track_{current_fname}", use_container_width=True, type="primary"):
-                        with st.spinner("Analyse IA du mouvement en cours..."):
+                        with st.spinner("🔍 Analyse IA du mouvement en cours… (peut prendre 15-30s)"):
                             ai_res, ai_msg = analyze_video_with_gemini(current_file, gem_key)
                             if ai_res:
                                 sw["tst_val"] = float(ai_res.get("tst", sw["tst_val"]))
                                 sw["reps"] = int(ai_res.get("reps", 0))
-                                st.success(f"Détection IA : TST = {sw['tst_val']}s | {sw['reps']} répétitions !")
+                                debut_s = ai_res.get("debut_s", "?")
+                                fin_s = ai_res.get("fin_s", "?")
+                                notes = ai_res.get("notes", "")
+                                model_used = ai_res.get("_model", "?")
+                                st.success(
+                                    f"✅ **Détection IA réussie** (via `{model_used}`)\n\n"
+                                    f"⏱️ **TST** = **{sw['tst_val']}s** (de {debut_s}s à {fin_s}s)\n\n"
+                                    f"🔄 **Répétitions** = **{sw['reps']}**\n\n"
+                                    f"📝 {notes}"
+                                )
                                 st.rerun()
                             else:
-                                st.warning(f"Note Auto-Track : {ai_msg}")
+                                st.error(f"❌ Auto-Track échoué : {ai_msg}")
 
                 c_rep1, c_rep2 = st.columns(2)
                 with c_rep1:
