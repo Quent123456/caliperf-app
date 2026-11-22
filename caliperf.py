@@ -1,6 +1,6 @@
 """
 Caliperf V2 - Espace Coaching & Performance
-Application responsive Mobile-First & Desktop avec navigation tactile au swipe fluide (transition continue),
+Application responsive Mobile-First & Desktop avec navigation tactile au swipe fluide,
 mesure pure du TST & RPE (sans multiplicateurs), et module d'Auto-Track IA pour le comptage de reps et TST.
 """
 
@@ -152,7 +152,7 @@ st.markdown("""
     html, body, [class*="css"] {
         font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
         -webkit-tap-highlight-color: transparent;
-        touch-action: manipulation;
+        touch-action: pan-y pinch-zoom;
     }
 
     [data-testid="stAppViewContainer"] {
@@ -163,7 +163,7 @@ st.markdown("""
 
     /* PADDING HAUT D'ÉCRAN SÉCURISÉ (NOTCH SMARTPHONE & HEADER STREAMLIT) */
     .block-container {
-        padding-top: calc(4.4rem + env(safe-area-inset-top, 0px)) !important;
+        padding-top: calc(4.2rem + env(safe-area-inset-top, 0px)) !important;
         padding-bottom: calc(2.5rem + env(safe-area-inset-bottom, 0px)) !important;
         padding-left: 0.85rem !important;
         padding-right: 0.85rem !important;
@@ -208,7 +208,7 @@ st.markdown("""
         border-radius: 14px !important;
         border: 1px solid rgba(255, 255, 255, 0.1) !important;
         display: flex !important;
-        margin-bottom: 1rem !important;
+        margin-bottom: 0.8rem !important;
         overflow-x: auto !important;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3) !important;
     }
@@ -237,11 +237,12 @@ st.markdown("""
     /* ANIMATION FLUIDE D'ENTRÉE DES PANNEAUX (SLIDE DOUX) */
     [data-baseweb="tab-panel"] {
         animation: tabPanelSlideFade 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+        will-change: transform, opacity;
     }
     @keyframes tabPanelSlideFade {
         0% {
             opacity: 0.2;
-            transform: translate3d(20px, 0, 0);
+            transform: translate3d(24px, 0, 0);
         }
         100% {
             opacity: 1;
@@ -348,190 +349,159 @@ st.markdown("""
         display: flex;
         justify-content: space-between;
         align-items: center;
+        margin-bottom: 0.4rem;
+    }
+
+    /* INDICATEUR GUIDE GLISSEMENT MOBILE */
+    .swipe-hint-pill {
+        text-align: center;
+        font-size: 0.72rem;
+        color: #64748b;
+        margin-top: -0.4rem;
         margin-bottom: 0.6rem;
+        letter-spacing: 0.03em;
     }
 </style>
 """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 4. GESTIONNAIRE DE GESTE SWIPE FLUIDE EN CONTINU (JAVASCRIPT CLIENT-SIDE)
+# 4. GESTIONNAIRE DE GESTE SWIPE MOBILE ROBUSTE (DIRECT DOM & IFRAME COMPLIANT)
 # ==============================================================================
-# Ce script permet de glisser avec le doigt en voyant la page suivante glisser
-# progressivement sous l'écran en temps réel, sans transition brutale.
-fluid_swipe_js = """
-<script>
+# Ce script s'injecte directement dans le DOM principal pour garantir que les gestes
+# tactiles fonctionnent sur tous les navigateurs mobiles (iOS Safari, Android Chrome)
+# même en environnement Streamlit Cloud.
+swipe_engine_code = """
 (function() {
-    try {
-        const doc = (window.parent && window.parent.document) ? window.parent.document : document;
-        const win = (window.parent && window.parent.window) ? window.parent.window : window;
+    function setupSwipe() {
+        var targetWin = window;
+        var targetDoc = document;
+        try {
+            if (window.parent && window.parent.document) {
+                targetWin = window.parent;
+                targetDoc = window.parent.document;
+            }
+        } catch(e) {}
 
-        let startX = 0;
-        let startY = 0;
-        let currentX = 0;
-        let isDragging = false;
-        let isHorizontal = false;
-        let activeIdx = 0;
-        let nextIdx = -1;
-        let panels = [];
-        let tabButtons = [];
-        let activePanel = null;
-        let nextPanel = null;
-        let startTime = 0;
+        if (targetWin._caliperfSwipeEngineReady) return;
+        targetWin._caliperfSwipeEngineReady = true;
 
-        function refreshElements() {
-            tabButtons = Array.from(doc.querySelectorAll('button[data-baseweb="tab"], [role="tab"]'));
-            panels = Array.from(doc.querySelectorAll('div[data-baseweb="tab-panel"]'));
-            activeIdx = tabButtons.findIndex(b => b.getAttribute('aria-selected') === 'true');
-            if (activeIdx === -1) activeIdx = 0;
+        var startX = 0;
+        var startY = 0;
+        var currentX = 0;
+        var isTracking = false;
+        var isHorizontal = false;
+        var startTime = 0;
+        var activePanel = null;
+
+        function getTabs() {
+            return Array.from(targetDoc.querySelectorAll('button[data-baseweb="tab"], [role="tab"]'));
         }
 
-        doc.addEventListener('touchstart', function(e) {
+        function getPanels() {
+            return Array.from(targetDoc.querySelectorAll('div[data-baseweb="tab-panel"]'));
+        }
+
+        function getActiveIndex() {
+            var tabs = getTabs();
+            for (var i = 0; i < tabs.length; i++) {
+                if (tabs[i].getAttribute('aria-selected') === 'true') return i;
+            }
+            return 0;
+        }
+
+        targetDoc.addEventListener('touchstart', function(e) {
             if (!e.touches || e.touches.length !== 1) return;
-            const target = e.target;
-            if (target.closest('input, textarea, select, video, .stVideo, [role="slider"], .stSlider, .stNumberInput, pre, code')) {
+            var t = e.target;
+            if (t.closest('input, textarea, select, video, .stVideo, [role="slider"], .stSlider, .stNumberInput, pre, code, button')) {
                 return;
             }
 
-            refreshElements();
-            if (panels.length < 2 || activeIdx >= panels.length) return;
+            var panels = getPanels();
+            var activeIdx = getActiveIndex();
+            activePanel = panels[activeIdx] || null;
 
             startX = e.touches[0].clientX;
             startY = e.touches[0].clientY;
             currentX = startX;
             startTime = Date.now();
-            isDragging = true;
+            isTracking = true;
             isHorizontal = false;
-            activePanel = panels[activeIdx];
-            nextPanel = null;
-            nextIdx = -1;
         }, { passive: true });
 
-        doc.addEventListener('touchmove', function(e) {
-            if (!isDragging || !e.touches || e.touches.length !== 1) return;
+        targetDoc.addEventListener('touchmove', function(e) {
+            if (!isTracking || !e.touches || e.touches.length !== 1) return;
             currentX = e.touches[0].clientX;
-            const currentY = e.touches[0].clientY;
-            const diffX = currentX - startX;
-            const diffY = currentY - startY;
+            var currentY = e.touches[0].clientY;
+            var diffX = currentX - startX;
+            var diffY = currentY - startY;
 
             if (!isHorizontal) {
-                if (Math.abs(diffX) > 12 && Math.abs(diffX) > Math.abs(diffY) * 1.25) {
+                if (Math.abs(diffX) > 10 && Math.abs(diffX) > Math.abs(diffY) * 1.25) {
                     isHorizontal = true;
                 } else if (Math.abs(diffY) > 12) {
-                    isDragging = false;
+                    isTracking = false;
                     return;
                 }
             }
 
-            if (!isHorizontal || !activePanel) return;
-
-            if (diffX < 0 && activeIdx < panels.length - 1) {
-                nextIdx = activeIdx + 1;
-            } else if (diffX > 0 && activeIdx > 0) {
-                nextIdx = activeIdx - 1;
-            } else {
-                nextIdx = -1;
-            }
-
-            const screenW = win.innerWidth || doc.documentElement.clientWidth;
-            let appliedX = diffX;
-            if ((activeIdx === 0 && diffX > 0) || (activeIdx === panels.length - 1 && diffX < 0)) {
-                appliedX = diffX * 0.25;
-            }
-
-            activePanel.style.transition = 'none';
-            activePanel.style.transform = `translate3d(${appliedX}px, 0, 0)`;
-            activePanel.style.opacity = Math.max(0.4, 1 - Math.abs(appliedX) / (screenW * 1.6));
-
-            if (nextIdx >= 0 && nextIdx < panels.length) {
-                nextPanel = panels[nextIdx];
-                const incomingOffset = diffX < 0 ? (screenW + appliedX) : (-screenW + appliedX);
-                nextPanel.style.display = 'block';
-                nextPanel.style.position = 'fixed';
-                nextPanel.style.top = activePanel.offsetTop + 'px';
-                nextPanel.style.left = '0';
-                nextPanel.style.width = '100%';
-                nextPanel.style.zIndex = '999';
-                nextPanel.style.transition = 'none';
-                nextPanel.style.transform = `translate3d(${incomingOffset}px, 0, 0)`;
-                nextPanel.style.opacity = Math.min(1, Math.abs(appliedX) / (screenW * 0.7) + 0.3);
+            if (isHorizontal && activePanel) {
+                var dragDist = diffX * 0.35;
+                activePanel.style.transform = 'translate3d(' + dragDist + 'px, 0, 0)';
+                activePanel.style.transition = 'none';
             }
         }, { passive: true });
 
-        function resetPanels() {
+        targetDoc.addEventListener('touchend', function(e) {
+            if (!isTracking) return;
+            isTracking = false;
+
             if (activePanel) {
                 activePanel.style.transform = '';
-                activePanel.style.opacity = '';
-                activePanel.style.transition = '';
+                activePanel.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)';
             }
-            if (nextPanel) {
-                nextPanel.style.transform = '';
-                nextPanel.style.opacity = '';
-                nextPanel.style.position = '';
-                nextPanel.style.top = '';
-                nextPanel.style.left = '';
-                nextPanel.style.width = '';
-                nextPanel.style.zIndex = '';
-                nextPanel.style.transition = '';
-                nextPanel.style.display = 'none';
-            }
-            isDragging = false;
+
+            if (!isHorizontal) return;
             isHorizontal = false;
-            nextPanel = null;
-        }
 
-        doc.addEventListener('touchend', function(e) {
-            if (!isDragging || !isHorizontal) {
-                isDragging = false;
-                isHorizontal = false;
-                return;
-            }
+            var diffX = currentX - startX;
+            var elapsed = Date.now() - startTime;
+            var screenW = targetWin.innerWidth || 360;
+            var threshold = Math.min(screenW * 0.16, 55);
+            var velocity = Math.abs(diffX) / Math.max(elapsed, 1);
 
-            const diffX = currentX - startX;
-            const duration = Date.now() - startTime;
-            const screenW = win.innerWidth || doc.documentElement.clientWidth;
-            const threshold = screenW * 0.18;
-            const velocity = Math.abs(diffX) / Math.max(duration, 1);
-            const isFlick = velocity > 0.32 && Math.abs(diffX) > 40;
+            if (Math.abs(diffX) > threshold || (velocity > 0.28 && Math.abs(diffX) > 28)) {
+                var tabs = getTabs();
+                var activeIdx = getActiveIndex();
 
-            if (nextPanel && (Math.abs(diffX) > threshold || isFlick) && nextIdx !== -1) {
-                activePanel.style.transition = 'transform 0.24s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.24s ease';
-                nextPanel.style.transition = 'transform 0.24s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.24s ease';
-
-                const exitX = diffX < 0 ? -screenW : screenW;
-                activePanel.style.transform = `translate3d(${exitX}px, 0, 0)`;
-                activePanel.style.opacity = '0.3';
-                nextPanel.style.transform = 'translate3d(0, 0, 0)';
-                nextPanel.style.opacity = '1';
-
-                setTimeout(function() {
-                    if (tabButtons[nextIdx]) {
-                        tabButtons[nextIdx].click();
-                        if (navigator.vibrate) navigator.vibrate(15);
+                if (diffX < 0 && activeIdx < tabs.length - 1) {
+                    // Swipe gauche -> Onglet suivant
+                    if (targetWin.navigator && targetWin.navigator.vibrate) {
+                        targetWin.navigator.vibrate(15);
                     }
-                    setTimeout(resetPanels, 50);
-                }, 240);
-            } else {
-                if (activePanel) {
-                    activePanel.style.transition = 'transform 0.2s ease, opacity 0.2s ease';
-                    activePanel.style.transform = 'translate3d(0, 0, 0)';
-                    activePanel.style.opacity = '1';
+                    tabs[activeIdx + 1].click();
+                } else if (diffX > 0 && activeIdx > 0) {
+                    // Swipe droite -> Onglet précédent
+                    if (targetWin.navigator && targetWin.navigator.vibrate) {
+                        targetWin.navigator.vibrate(15);
+                    }
+                    tabs[activeIdx - 1].click();
                 }
-                if (nextPanel) {
-                    nextPanel.style.transition = 'transform 0.2s ease, opacity 0.2s ease';
-                    const exitTarget = diffX < 0 ? screenW : -screenW;
-                    nextPanel.style.transform = `translate3d(${exitTarget}px, 0, 0)`;
-                    nextPanel.style.opacity = '0';
-                }
-                setTimeout(resetPanels, 200);
             }
         }, { passive: true });
-    } catch (err) {
-        console.warn("Caliperf smooth slider err:", err);
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', setupSwipe);
+    } else {
+        setupSwipe();
     }
 })();
-</script>
 """
-components.html(fluid_swipe_js, height=0)
+
+# Injection double : via image onerror (top-window direct) et components.html (fallback)
+escaped_js = swipe_engine_code.replace("\n", " ").replace('"', "'")
+st.markdown(f'<img src="x" style="display:none;" onerror="{escaped_js}">', unsafe_allow_html=True)
+components.html(f"<script>{swipe_engine_code}</script>", height=0)
 
 # ==============================================================================
 # 5. FONCTIONS MÉTIER (LOGIQUE PURE : TST & RPE)
@@ -555,9 +525,6 @@ def detect_student_and_exercise(filename, student_list):
     return detected_student, detected_exercise if detected_exercise else clean_name
 
 def dispatch_sync_evaluation(settings, student, exercise, tst_val, rpe_val, reps_val, notes, date_str):
-    """
-    Envoi épuré (TST et RPE purs, sans multiplicateur).
-    """
     mode = settings.get("sync_mode", "google_forms")
 
     if mode == "gsheet_webhook":
@@ -621,7 +588,6 @@ def analyze_video_with_gemini(video_bytes, api_key):
             ]
         )
         text = response.text.strip()
-        # Nettoyage JSON
         json_match = re.search(r'\{.*\}', text, re.DOTALL)
         if json_match:
             data = json.loads(json_match.group(0))
@@ -646,9 +612,10 @@ st.markdown("""
             </div>
         </div>
         <div style="display:flex; align-items:center; gap:6px;">
-            <span class="badge-cyan">📲 Glissement Fluide</span>
+            <span class="badge-cyan">📲 Glissement Tactile</span>
         </div>
     </div>
+    <div class="swipe-hint-pill">👈 Glissez l'écran de gauche à droite pour naviguer 👉</div>
 """, unsafe_allow_html=True)
 
 # Les 4 compartiments
@@ -693,7 +660,6 @@ with tab_studio:
         current_fname = file_names[cur_idx]
         current_file = files_dict[current_fname]
 
-        # File d'attente
         col_prev, col_status, col_next = st.columns([1, 2, 1])
         with col_prev:
             if st.button("◀️ Préc.", key="btn_prev_vid", use_container_width=True, disabled=(cur_idx == 0)):
@@ -714,11 +680,9 @@ with tab_studio:
                 st.session_state.active_video_idx = min(total_files - 1, cur_idx + 1)
                 st.rerun()
 
-        # Détection auto élève & exo
         existing_students = list(st.session_state.db["students"].keys())
         auto_student, auto_exo = detect_student_and_exercise(current_fname, existing_students)
 
-        # État chronomètre
         if current_fname not in st.session_state.stopwatches:
             st.session_state.stopwatches[current_fname] = {
                 "tst_val": 0.0,
@@ -736,7 +700,6 @@ with tab_studio:
         with col_video:
             st.video(current_file)
 
-            # Repères temporels In / Out
             st.markdown("""
                 <div class="cali-card" style="padding: 9px 12px; margin-top: 6px;">
                     <div style="font-weight:700; font-size:0.75rem; color:#94a3b8; text-transform:uppercase; letter-spacing:0.04em;">
@@ -802,7 +765,6 @@ with tab_studio:
                 </div>
             """, unsafe_allow_html=True)
 
-            # Contrôles Chrono
             c_run, c_raz = st.columns([1.5, 1])
             with c_run:
                 is_run = sw["running"]
@@ -822,7 +784,6 @@ with tab_studio:
                     sw["running"] = False
                     st.rerun()
 
-            # Ajustements rapides
             c_a1, c_a2, c_a3, c_a4 = st.columns(4)
             with c_a1:
                 if st.button("-1s", key=f"m1_{current_fname}", use_container_width=True):
@@ -843,7 +804,6 @@ with tab_studio:
 
             st.markdown("<hr style='border-color: rgba(255,255,255,0.08); margin: 0.5rem 0;'>", unsafe_allow_html=True)
 
-            # Formulaire d'Évaluation (Logique Pure : TST + RPE)
             with st.form(key=f"eval_form_{current_fname}"):
                 student_options = existing_students if existing_students else ["Aucun élève"]
                 def_student_idx = 0
@@ -853,7 +813,6 @@ with tab_studio:
                 sel_student = st.selectbox("👤 Athlète :", student_options, index=def_student_idx)
                 val_exo = st.text_input("🏋️ Exercice :", value=auto_exo)
 
-                # Slider RPE
                 rpe_score = st.slider("🔥 Effort perçu (RPE 1-10) :", min_value=1.0, max_value=10.0, value=float(sw.get("rpe", 7.5)), step=0.5)
                 sw["rpe"] = rpe_score
 
@@ -893,7 +852,6 @@ with tab_studio:
                             "synced": False
                         }
 
-                        # Envoi selon connecteur
                         ok_sync, msg_sync = dispatch_sync_evaluation(
                             st.session_state.db["settings"],
                             sel_student,
@@ -933,7 +891,6 @@ with tab_stats:
     else:
         df_evals = pd.DataFrame(evals)
 
-        # 4 KPIs purs (sans multiplicateur)
         k1, k2 = st.columns(2)
         with k1:
             st.metric("Total Séances", len(df_evals))
@@ -987,7 +944,6 @@ with tab_stats:
                 )
                 st.plotly_chart(fig_rpe, use_container_width=True)
 
-        # Tableau d'historique épuré
         st.markdown("##### 📜 Registre des séances")
         cols_present = ["date", "student", "exercise", "tst", "rpe", "notes"]
         df_disp = df_filtered[cols_present].copy()
@@ -1138,7 +1094,6 @@ with tab_settings:
             time.sleep(0.5)
             st.rerun()
 
-    # Script Webhook Google Sheet
     with st.expander("📄 Script Google Apps Script pour Google Sheets direct", expanded=False):
         st.markdown("""
         ```javascript
@@ -1151,7 +1106,6 @@ with tab_settings:
         ```
         """)
 
-    # Sauvegarde locale JSON
     json_bytes = json.dumps(st.session_state.db, indent=2, ensure_ascii=False).encode('utf-8')
     st.download_button(
         "📥 Télécharger la sauvegarde complète (JSON)",
