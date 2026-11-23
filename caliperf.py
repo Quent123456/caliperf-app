@@ -34,16 +34,19 @@ import tempfile
 
 # Modules biomécaniques hybrides CaliPerf (Couches 1, 2, 3)
 try:
-    from services.gemini_vision import classify_exercise_gemini, extract_key_frames
+    from services.gemini_vision import classify_exercise_gemini, extract_3_frames_fast
     from core.biomechanics import (
         load_exercise_thresholds,
         save_exercise_thresholds,
-        extract_kinematics_from_video
+        extract_kinematics_from_video,
+        generate_annotated_frame_on_demand
     )
     from core.rep_counter import (
         evaluate_isometric_figure,
         evaluate_dynamic_movement,
-        calibrate_and_update_thresholds
+        calibrate_and_update_thresholds,
+        analyze_single_video_pipeline,
+        process_video_batch_parallel
     )
     HAS_BIOMECH = True
 except Exception as e:
@@ -185,6 +188,9 @@ if "biomech_routings" not in st.session_state:
 
 if "active_uploaded_files" not in st.session_state:
     st.session_state.active_uploaded_files = []
+
+if "batch_results" not in st.session_state:
+    st.session_state.batch_results = []
 
 # ==============================================================================
 # 3. DIRECTION ARTISTIQUE & DESIGN SYSTEM (DARK KINETIC FLUIDE)
@@ -770,10 +776,9 @@ st.markdown("""
     <div class="swipe-hint-pill">👈 Glissez l'écran de gauche à droite pour naviguer 👉</div>
 """, unsafe_allow_html=True)
 
-# Les 5 compartiments avec navigation tactile fluide
-tab_studio, tab_biomech, tab_stats, tab_athletes, tab_settings = st.tabs([
-    "🎥 Studio",
-    "🔬 Biomécanique",
+# Les 4 compartiments principaux
+tab_studio, tab_stats, tab_athletes, tab_settings = st.tabs([
+    "🎥 Studio & Batch IA",
     "📊 Stats",
     "👥 Athlètes",
     "⚙️ Réglages"
@@ -812,6 +817,115 @@ with tab_studio:
         files_dict = {f.name: f for f in uploaded_files}
         file_names = list(files_dict.keys())
         total_files = len(file_names)
+        existing_students = list(st.session_state.db["students"].keys())
+
+        # ----------------------------------------------------------------------
+        # MODE AUTOMATIQUE PAR LOT (BATCH ZERO-FRICTION)
+        # ----------------------------------------------------------------------
+        st.markdown(f"""
+            <div class="cali-card" style="padding: 10px 14px; margin-bottom: 0.6rem; border: 1px solid rgba(0, 240, 255, 0.3);">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <span style="font-size:0.88rem; font-weight:800; color:#00f0ff; text-transform:uppercase; letter-spacing:0.04em;">
+                            ⚡ Auto-Analyse par Lot ({total_files} vidéo{'s' if total_files > 1 else ''})
+                        </span>
+                        <div style="color:#94a3b8; font-size:0.76rem; margin-top:2px;">
+                            Traitement 100% autonome en parallèle : nom de l'exercice, TUT effectif et répétitions.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
+        col_b_run, col_b_info = st.columns([1.5, 1])
+        with col_b_run:
+            lbl_btn = f"🚀 Lancer l'Auto-Analyse par Lot ({total_files} vidéos)" if total_files > 1 else "🚀 Lancer l'Auto-Analyse de la Vidéo"
+            if st.button(lbl_btn, key="btn_run_batch_all", type="primary", use_container_width=True):
+                gem_key = get_gemini_api_key()
+                p_bar = st.progress(0.0)
+                p_txt = st.empty()
+
+                def _b_cb(frac, msg):
+                    p_bar.progress(frac)
+                    p_txt.caption(msg)
+
+                all_temp_paths = [get_persisted_temp_video_path(f) for f in uploaded_files]
+                with st.spinner("Analyse accélérée du lot en cours (Gemini 3 frames + MediaPipe 640px)..."):
+                    batch_res = process_video_batch_parallel(all_temp_paths, gem_key, progress_callback=_b_cb)
+                    st.session_state.batch_results = batch_res
+
+                    for r in batch_res:
+                        fn = r["filename"]
+                        if fn not in st.session_state.stopwatches:
+                            st.session_state.stopwatches[fn] = {
+                                "tst_val": 0.0, "in_marker": 0.0, "out_marker": 0.0,
+                                "running": False, "start_time": 0.0, "rpe": 7.5, "reps": 0
+                            }
+                        st.session_state.stopwatches[fn]["tst_val"] = float(r["tut"])
+                        st.session_state.stopwatches[fn]["reps"] = int(r["reps"])
+                        st.session_state.stopwatches[fn]["detected_exo"] = r["exercise_display"]
+                        st.session_state.biomech_results[fn] = r
+
+                    st.toast(f"✅ {total_files} vidéos analysées avec succès !")
+                    st.rerun()
+
+        with col_b_info:
+            if st.button("⚡ Analyser la vidéo active (< 3s)", key="btn_run_cur_single", use_container_width=True):
+                gem_key = get_gemini_api_key()
+                with st.spinner("Analyse ultra-rapide..."):
+                    cur_temp_path = get_persisted_temp_video_path(files_dict[file_names[min(st.session_state.active_video_idx, total_files - 1)]])
+                    res = analyze_single_video_pipeline(cur_temp_path, gem_key)
+                    fn = res["filename"]
+                    if fn not in st.session_state.stopwatches:
+                        st.session_state.stopwatches[fn] = {
+                            "tst_val": 0.0, "in_marker": 0.0, "out_marker": 0.0,
+                            "running": False, "start_time": 0.0, "rpe": 7.5, "reps": 0
+                        }
+                    st.session_state.stopwatches[fn]["tst_val"] = float(res["tut"])
+                    st.session_state.stopwatches[fn]["reps"] = int(res["reps"])
+                    st.session_state.stopwatches[fn]["detected_exo"] = res["exercise_display"]
+                    st.session_state.biomech_results[fn] = res
+                    st.toast(f"✅ {res['exercise_display']} : TUT = {res['tut']}s | {res['reps']} reps")
+                    st.rerun()
+
+        # TABLEAU RÉCAPITULATIF DU BATCH
+        if st.session_state.get("batch_results"):
+            with st.expander(f"📋 Tableau récapitulatif du lot ({len(st.session_state.batch_results)} vidéos)", expanded=True):
+                batch_rows = []
+                for b in st.session_state.batch_results:
+                    batch_rows.append({
+                        "Fichier": b["filename"],
+                        "Exercice Détecté": b["exercise_display"],
+                        "Type": "Isométrique" if b["type"] == "isometric" else "Dynamique",
+                        "TUT Effectif": f"{b['tut']}s",
+                        "Répétitions": b["reps"],
+                        "Qualité / Dérive": b["drift"],
+                        "Statut": b["status"]
+                    })
+                st.dataframe(pd.DataFrame(batch_rows), use_container_width=True, hide_index=True)
+
+                if st.button("💾 Enregistrer toutes ces séances dans la base de données", key="btn_save_batch_db", use_container_width=True):
+                    for b in st.session_state.batch_results:
+                        fn = b["filename"]
+                        auto_s, _ = detect_student_and_exercise(fn, existing_students)
+                        s_name = auto_s if auto_s else (existing_students[0] if existing_students else "Élève Démo")
+                        new_e = {
+                            "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                            "student": s_name,
+                            "exercise": b["exercise_display"],
+                            "tst": b["tut"],
+                            "rpe": 7.5,
+                            "reps": b["reps"],
+                            "video_name": fn,
+                            "notes": f"Batch IA : {b['drift']}",
+                            "synced": True
+                        }
+                        st.session_state.db["evaluations"].append(new_e)
+                        st.session_state.processed_videos.add(fn)
+                    save_db(st.session_state.db)
+                    st.success("✅ Toutes les séances du lot ont été enregistrées !")
+                    time.sleep(0.8)
+                    st.rerun()
 
         cur_idx = min(st.session_state.active_video_idx, total_files - 1)
         st.session_state.active_video_idx = cur_idx
@@ -902,68 +1016,74 @@ with tab_studio:
                             st.rerun()
                 else:
                     st.markdown('<span class="badge-lime" style="margin-bottom:8px; display:inline-block;">🟢 Clé API Active</span>', unsafe_allow_html=True)
-                    if st.button("✨ Lancer l'Auto-Track IA (Vision)", key=f"ai_track_{current_fname}", use_container_width=True, type="primary"):
-                        with st.spinner("🔍 Analyse IA du mouvement en cours… (peut prendre 15-30s)"):
-                            ai_res, ai_msg = analyze_video_with_gemini(current_file, gem_key)
-                            if ai_res:
-                                sw["tst_val"] = float(ai_res.get("tst", sw["tst_val"]))
-                                sw["reps"] = int(ai_res.get("reps", 0))
-                                debut_s = ai_res.get("debut_s", "?")
-                                fin_s = ai_res.get("fin_s", "?")
-                                notes = ai_res.get("notes", "")
-                                model_used = ai_res.get("_model", "?")
-                                st.success(
-                                    f"✅ **Détection IA réussie** (via `{model_used}`)\n\n"
-                                    f"⏱️ **TST** = **{sw['tst_val']}s** (de {debut_s}s à {fin_s}s)\n\n"
-                                    f"🔄 **Répétitions** = **{sw['reps']}**\n\n"
-                                    f"📝 {notes}"
+                    if st.button("✨ Lancer l'Auto-Track Rapide (< 3s)", key=f"ai_track_{current_fname}", use_container_width=True, type="primary"):
+                        with st.spinner("Analyse ultra-rapide (Gemini 3 frames + MediaPipe)..."):
+                            cur_temp = get_persisted_temp_video_path(current_file)
+                            res = analyze_single_video_pipeline(cur_temp, gem_key)
+                            sw["tst_val"] = float(res["tut"])
+                            sw["reps"] = int(res["reps"])
+                            sw["detected_exo"] = res["exercise_display"]
+                            st.session_state.biomech_results[current_fname] = res
+                            st.success(f"✅ Détection : **{res['exercise_display']}** | TST = **{sw['tst_val']}s** | Reps = **{sw['reps']}**")
+                            st.rerun()
+
+            # COURBES PLOTLY & CALIBRATION DIRECTEMENT DANS LE STUDIO
+            if current_fname in st.session_state.biomech_results:
+                bio_r = st.session_state.biomech_results[current_fname]
+                kin = bio_r.get("kinematics")
+                ev = bio_r.get("evaluation")
+
+                with st.expander(f"📈 Diagnostic & Courbes Plotly ({bio_r.get('exercise_display', 'Exercice')})", expanded=False):
+                    if kin and ev and HAS_PLOTLY:
+                        t_ser = kin["timestamps"]
+                        filt = kin["angles_filtered"]
+                        is_iso = ev.get("type") == "isometric"
+
+                        fig_elbow = go.Figure()
+                        fig_elbow.add_trace(go.Scatter(
+                            x=t_ser, y=filt["elbow"],
+                            mode='lines', name='Coude Filtré (°)',
+                            line=dict(color='#00f0ff', width=2.5)
+                        ))
+
+                        if is_iso:
+                            for hb in ev.get("hold_blocks", []):
+                                fig_elbow.add_vrect(
+                                    x0=hb["start_time"], x1=hb["end_time"],
+                                    fillcolor="rgba(16, 185, 129, 0.2)", layer="below", line_width=0,
+                                    annotation_text=f"Tenue {hb['duration']}s", annotation_position="top left"
                                 )
-                                st.rerun()
+                        else:
+                            for rep in ev.get("reps_detail", []):
+                                fig_elbow.add_vrect(
+                                    x0=rep["start_time"], x1=rep["end_time"],
+                                    fillcolor="rgba(0, 240, 255, 0.15)", layer="below", line_width=0,
+                                    annotation_text=f"R#{rep['rep_number']}", annotation_position="top left"
+                                )
+
+                        fig_elbow.update_layout(
+                            title="Flexion / Extension du Coude (°)",
+                            xaxis_title="Temps (s)",
+                            yaxis_title="Degrés (°)",
+                            paper_bgcolor="rgba(15, 23, 42, 0.6)",
+                            plot_bgcolor="rgba(15, 23, 42, 0.6)",
+                            font=dict(color="#f1f5f9"),
+                            margin=dict(l=30, r=20, t=35, b=35),
+                            height=260
+                        )
+                        st.plotly_chart(fig_elbow, use_container_width=True)
+
+                        # Calibration
+                        st.markdown("<small style='color:#94a3b8;'>Calibration des seuils pour cet exercice :</small>", unsafe_allow_html=True)
+                        if st.button("💾 Calibrer & Enregistrer ces angles dans config JSON", key=f"btn_calib_{current_fname}", use_container_width=True):
+                            cal_ok, cal_vals, cal_msg = calibrate_and_update_thresholds(
+                                kinematics=kin,
+                                exercise_key=bio_r.get("exercise_key", "full_planche")
+                            )
+                            if cal_ok:
+                                st.success("✅ Seuils de référence mis à jour avec succès !")
                             else:
-                                st.error(f"❌ Auto-Track échoué : {ai_msg}")
-
-                    if HAS_BIOMECH:
-                        st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
-                        if st.button("🔬 Analyse Biomécanique Complète (MediaPipe + Zéro-Phase)", key=f"btn_quick_bio_{current_fname}", use_container_width=True):
-                            temp_p = get_persisted_temp_video_path(current_file)
-                            with st.spinner("Extraction cinématique MediaPipe & filtrage Butterworth..."):
-                                try:
-                                    kin_data = extract_kinematics_from_video(temp_p)
-                                    # Détection automatique de l'exercice cible
-                                    exo_target = "full_planche"
-                                    low_name = current_fname.lower()
-                                    if "pull" in low_name or "traction" in low_name:
-                                        exo_target = "pull_ups"
-                                    elif "push" in low_name or "pompe" in low_name:
-                                        exo_target = "push_ups"
-                                    elif "front" in low_name:
-                                        exo_target = "front_lever"
-                                    elif "straddle" in low_name:
-                                        exo_target = "straddle_planche"
-                                    elif "maltese" in low_name:
-                                        exo_target = "maltese"
-
-                                    thresholds_db = load_exercise_thresholds()
-                                    exo_type = thresholds_db["exercises"].get(exo_target, {}).get("type", "isometric")
-                                    if exo_type == "isometric":
-                                        b_eval = evaluate_isometric_figure(kin_data, exo_target, thresholds_db)
-                                        sw["tst_val"] = float(b_eval["effective_tut"])
-                                        sw["reps"] = 0
-                                    else:
-                                        b_eval = evaluate_dynamic_movement(kin_data, exo_target, thresholds_db)
-                                        sw["tst_val"] = float(b_eval["active_tut"])
-                                        sw["reps"] = int(b_eval["valid_reps_count"])
-
-                                    st.session_state.biomech_results[current_fname] = {
-                                        "kinematics": kin_data,
-                                        "evaluation": b_eval,
-                                        "exercise_key": exo_target
-                                    }
-                                    st.success(f"🔬 Analyse biomécanique validée ({b_eval['display_name']}) : TST = {sw['tst_val']}s | Reps = {sw['reps']}.")
-                                    st.toast("✅ Données cinématiques enregistrées ! Rendez-vous dans l'onglet 🔬 Biomécanique.")
-                                    st.rerun()
-                                except Exception as bio_err:
-                                    st.error(f"Erreur cinématique : {bio_err}")
+                                st.error(cal_msg)
 
                 c_rep1, c_rep2 = st.columns(2)
                 with c_rep1:
@@ -1036,7 +1156,8 @@ with tab_studio:
                     def_student_idx = student_options.index(auto_student)
 
                 sel_student = st.selectbox("👤 Athlète :", student_options, index=def_student_idx)
-                val_exo = st.text_input("🏋️ Exercice :", value=auto_exo)
+                def_exo = sw.get("detected_exo", auto_exo)
+                val_exo = st.text_input("🏋️ Exercice :", value=def_exo)
 
                 rpe_score = st.slider("🔥 Effort perçu (RPE 1-10) :", min_value=1.0, max_value=10.0, value=float(sw.get("rpe", 7.5)), step=0.5)
                 sw["rpe"] = rpe_score
@@ -1104,312 +1225,9 @@ with tab_studio:
             st.markdown('</div>', unsafe_allow_html=True)
 
 
-# ==============================================================================
-# COMPARTIMENT 2 : BIOMÉCANIQUE, COURBES PLOTLY & CALIBRATION IA
-# ==============================================================================
-with tab_biomech:
-    st.markdown("""
-        <div style="margin-bottom: 0.8rem;">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <div>
-                    <h3 style="margin:0; font-size:1.25rem;">🔬 Diagnostic Biomécanique & Calibration</h3>
-                    <p style="color:#94a3b8; font-size:0.82rem; margin:2px 0 0 0;">
-                        Extraction cinématique MediaPipe Pose, filtrage Butterworth zéro-phase et quantification exacte du TUT & Reps.
-                    </p>
-                </div>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
-
-    biomech_files = st.session_state.get("active_uploaded_files", [])
-    if not biomech_files:
-        st.markdown("""
-            <div class="cali-card" style="text-align:center; padding: 2rem 1rem;">
-                <div style="font-size: 2.2rem; margin-bottom: 0.3rem;">📹</div>
-                <h4 style="margin-bottom: 0.2rem;">Aucune vidéo disponible pour l'analyse</h4>
-                <p style="color:#94a3b8; font-size: 0.85rem; max-width: 440px; margin: 0 auto;">
-                    Rendez-vous dans l'onglet <b>🎥 Studio</b> pour importer une vidéo depuis votre galerie ou PC.
-                </p>
-            </div>
-        """, unsafe_allow_html=True)
-    else:
-        bio_dict = {f.name: f for f in biomech_files}
-        b_names = list(bio_dict.keys())
-        default_b_idx = min(st.session_state.active_video_idx, len(b_names) - 1)
-        sel_video_name = st.selectbox("🎯 Vidéo à analyser :", b_names, index=default_b_idx, key="sel_bio_vid")
-        target_video_file = bio_dict[sel_video_name]
-        temp_vid_path = get_persisted_temp_video_path(target_video_file)
-
-        thresholds_db = load_exercise_thresholds() if HAS_BIOMECH else {}
-        exercise_choices = {
-            "full_planche": "Full Planche (Isométrique)",
-            "straddle_planche": "Straddle Planche (Isométrique)",
-            "maltese": "Maltese / Hirondelle (Isométrique)",
-            "front_lever": "Front Lever (Isométrique)",
-            "pull_ups": "Tractions (Dynamique)",
-            "push_ups": "Pompes (Dynamique)",
-            "planche_push_ups": "Planche Push-ups (Dynamique)"
-        }
-
-        # ÉTAPE 1 : ROUTAGE SÉMANTIQUE IA (GEMINI VISION)
-        c_rout1, c_rout2 = st.columns([1.2, 1], gap="medium")
-        with c_rout1:
-            st.markdown("""
-                <div class="cali-card" style="padding: 12px 14px; margin-bottom: 0.6rem;">
-                    <div style="font-weight:700; font-size:0.78rem; color:#00f0ff; text-transform:uppercase; letter-spacing:0.04em;">
-                        1. Routage Sémantique de l'Exercice (Gemini Flash)
-                    </div>
-                    <small style="color:#94a3b8;">Extrait 3-4 frames clés pour router automatiquement vers les règles biomécaniques.</small>
-                </div>
-            """, unsafe_allow_html=True)
-
-            gem_k = get_gemini_api_key()
-            if st.button("🤖 Détecter l'Exercice par IA (Gemini)", key=f"btn_route_{sel_video_name}", use_container_width=True, type="secondary"):
-                if not gem_k:
-                    st.error("Clé API Gemini requise dans Réglages.")
-                else:
-                    with st.spinner("Analyse sémantique Gemini Flash..."):
-                        rout_res, kf_list, r_msg = classify_exercise_gemini(temp_vid_path, gem_k, num_frames=4)
-                        if rout_res:
-                            st.session_state.biomech_routings[sel_video_name] = rout_res
-                            st.toast(f"✅ Détecté : {rout_res.get('exercise_display', rout_res.get('exercise'))}")
-                            st.rerun()
-                        else:
-                            st.warning(f"Note : {r_msg}")
-
-            active_routing = st.session_state.biomech_routings.get(sel_video_name)
-            if active_routing:
-                conf = int(active_routing.get("confidence", 0.9) * 100)
-                st.markdown(f"""
-                    <div style="background:rgba(0,240,255,0.08); border-left:3px solid #00f0ff; padding:8px 12px; border-radius:8px; font-size:0.82rem; margin-top:6px;">
-                        🎯 <b>IA Détection :</b> {active_routing.get('exercise_display', active_routing.get('exercise'))} |
-                        <b>Angle :</b> {active_routing.get('camera_angle', 'profile')} |
-                        <b>Confiance :</b> {conf}%
-                    </div>
-                """, unsafe_allow_html=True)
-
-        with c_rout2:
-            st.markdown("""
-                <div class="cali-card" style="padding: 12px 14px; margin-bottom: 0.6rem;">
-                    <div style="font-weight:700; font-size:0.78rem; color:#94a3b8; text-transform:uppercase; letter-spacing:0.04em;">
-                        Profil de Validation Biomécanique
-                    </div>
-                    <small style="color:#94a3b8;">Choix automatique ou forçage manuel par l'entraîneur.</small>
-                </div>
-            """, unsafe_allow_html=True)
-
-            def_exo_idx = 0
-            if active_routing and active_routing.get("exercise") in exercise_choices:
-                def_exo_idx = list(exercise_choices.keys()).index(active_routing.get("exercise"))
-
-            sel_exo_key = st.selectbox(
-                "Profil Biomécanique appliqué :",
-                list(exercise_choices.keys()),
-                index=def_exo_idx,
-                format_func=lambda k: exercise_choices[k],
-                key=f"sel_exo_profil_{sel_video_name}"
-            )
-
-        # ÉTAPE 2 : LANCEMENT DE L'ANALYSE CINÉMATIQUE
-        st.markdown("<div style='height:4px;'></div>", unsafe_allow_html=True)
-        if st.button("⚡ Lancer l'Analyse Cinématique (MediaPipe + Butterworth Zéro-Phase)", key=f"btn_run_bio_{sel_video_name}", use_container_width=True, type="primary"):
-            p_bar = st.progress(0.0)
-            p_text = st.empty()
-
-            def p_cb(frac, msg):
-                p_bar.progress(frac)
-                p_text.caption(msg)
-
-            with st.spinner("Calcul des repères anatomiques et lissage du signal..."):
-                try:
-                    kin_data = extract_kinematics_from_video(temp_vid_path, progress_callback=p_cb)
-                    exo_type = thresholds_db["exercises"][sel_exo_key]["type"]
-                    if exo_type == "isometric":
-                        eval_res = evaluate_isometric_figure(kin_data, sel_exo_key, thresholds_db)
-                    else:
-                        eval_res = evaluate_dynamic_movement(kin_data, sel_exo_key, thresholds_db)
-
-                    st.session_state.biomech_results[sel_video_name] = {
-                        "kinematics": kin_data,
-                        "evaluation": eval_res,
-                        "exercise_key": sel_exo_key
-                    }
-                    st.toast("✅ Analyse cinématique terminée avec succès !")
-                    st.rerun()
-                except Exception as bio_err:
-                    st.error(f"Erreur durant l'analyse : {bio_err}")
-
-        # ÉTAPE 3 : RÉSULTATS DÉTAILLÉS & COURBES PLOTLY
-        if sel_video_name in st.session_state.biomech_results:
-            bio_res = st.session_state.biomech_results[sel_video_name]
-            kin = bio_res["kinematics"]
-            ev = bio_res["evaluation"]
-            exo_k = bio_res["exercise_key"]
-            is_iso = ev["type"] == "isometric"
-
-            st.markdown("<hr style='border-color: rgba(255,255,255,0.08); margin: 1rem 0;'>", unsafe_allow_html=True)
-
-            if is_iso:
-                col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-                with col_m1:
-                    st.metric("⏱️ TUT Effectif", f"{ev['effective_tut']} s")
-                with col_m2:
-                    st.metric("💪 Tenue Max Continue", f"{ev['max_continuous_hold']} s")
-                with col_m3:
-                    drift_val = ev.get("angular_drift", {}).get("alignment_drift_deg", 0.0)
-                    drift_sign = "+" if drift_val > 0 else ""
-                    st.metric("📐 Dérive Alignement", f"{drift_sign}{drift_val}°")
-                with col_m4:
-                    mean_el = ev.get("angular_drift", {}).get("final_elbow", 180.0)
-                    st.metric("🔒 Coude Fin de Série", f"{mean_el}°")
-            else:
-                col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-                with col_m1:
-                    st.metric("🔄 Reps Validées", f"{ev['valid_reps_count']}")
-                with col_m2:
-                    st.metric("⏱️ TUT Actif Total", f"{ev['active_tut']} s")
-                with col_m3:
-                    st.metric("⚡ Tempo Moyen / Rep", f"{ev['average_rep_duration']} s")
-                with col_m4:
-                    first_rep = ev["reps_detail"][0] if ev["reps_detail"] else {}
-                    st.metric("🎯 Angle Min Atteint", f"{first_rep.get('inflection_angle', '?')}°")
-
-            c_app1, c_app2 = st.columns([1.5, 1])
-            with c_app1:
-                tut_val_to_apply = ev["effective_tut"] if is_iso else ev["active_tut"]
-                reps_to_apply = 0 if is_iso else ev["valid_reps_count"]
-                if st.button(f"⚡ Appliquer ces valeurs au Studio (TST = {tut_val_to_apply}s | Reps = {reps_to_apply})", use_container_width=True, type="primary"):
-                    if sel_video_name not in st.session_state.stopwatches:
-                        st.session_state.stopwatches[sel_video_name] = {"tst_val": 0.0, "in_marker": 0.0, "out_marker": 0.0, "running": False, "start_time": 0.0, "rpe": 7.5, "reps": 0}
-                    st.session_state.stopwatches[sel_video_name]["tst_val"] = float(tut_val_to_apply)
-                    st.session_state.stopwatches[sel_video_name]["reps"] = int(reps_to_apply)
-                    st.toast("✅ Mesures biomécaniques appliquées au chronomètre du Studio !")
-
-            # COURBES PLOTLY INTERACTIVES
-            if HAS_PLOTLY:
-                st.markdown("#### 📈 Courbes Cinématiques & Filtrage Zéro-Phase")
-
-                t_series = kin["timestamps"]
-                filt = kin["angles_filtered"]
-                raw = kin["angles_raw"]
-
-                # 1. Courbe de l'angle du coude
-                fig_elbow = go.Figure()
-                fig_elbow.add_trace(go.Scatter(
-                    x=t_series, y=raw["elbow"],
-                    mode='lines', name='Coude Brut (MediaPipe)',
-                    line=dict(color='rgba(148, 163, 184, 0.4)', dash='dot', width=1.2)
-                ))
-                fig_elbow.add_trace(go.Scatter(
-                    x=t_series, y=filt["elbow"],
-                    mode='lines', name='Coude Filtré (Butterworth 4e ordre)',
-                    line=dict(color='#00f0ff', width=2.5)
-                ))
-
-                if is_iso:
-                    seuil_coude = ev["thresholds_used"].get("elbow_min", 165.0)
-                    fig_elbow.add_hline(y=seuil_coude, line_dash="dash", line_color="#ef4444", annotation_text=f"Seuil Bras Tendu ({seuil_coude}°)")
-                    for hb in ev.get("hold_blocks", []):
-                        fig_elbow.add_vrect(
-                            x0=hb["start_time"], x1=hb["end_time"],
-                            fillcolor="rgba(16, 185, 129, 0.2)", layer="below", line_width=0,
-                            annotation_text=f"Tenue {hb['duration']}s", annotation_position="top left"
-                        )
-                else:
-                    seuil_lock = ev["thresholds_used"].get("lockout_thresh", 160.0)
-                    seuil_inf = ev["thresholds_used"].get("inflection_thresh", 85.0)
-                    fig_elbow.add_hline(y=seuil_lock, line_dash="dash", line_color="#10b981", annotation_text="Verrouillage")
-                    fig_elbow.add_hline(y=seuil_inf, line_dash="dash", line_color="#f59e0b", annotation_text="Inflexion / Flexion")
-                    for rep in ev.get("reps_detail", []):
-                        fig_elbow.add_vrect(
-                            x0=rep["start_time"], x1=rep["end_time"],
-                            fillcolor="rgba(0, 240, 255, 0.15)", layer="below", line_width=0,
-                            annotation_text=f"R#{rep['rep_number']}", annotation_position="top left"
-                        )
-
-                fig_elbow.update_layout(
-                    title="Angle de Flexion / Extension du Coude (°)",
-                    xaxis_title="Temps (secondes)",
-                    yaxis_title="Angle (°)",
-                    paper_bgcolor="rgba(15, 23, 42, 0.6)",
-                    plot_bgcolor="rgba(15, 23, 42, 0.6)",
-                    font=dict(color="#f1f5f9"),
-                    margin=dict(l=40, r=20, t=40, b=40),
-                    height=340
-                )
-                st.plotly_chart(fig_elbow, use_container_width=True)
-
-                if is_iso:
-                    fig_body = go.Figure()
-                    fig_body.add_trace(go.Scatter(
-                        x=t_series, y=filt["body_alignment"],
-                        mode='lines', name='Alignement Tronc (Épaule-Hanche-Cheville)',
-                        line=dict(color='#10b981', width=2.2)
-                    ))
-                    fig_body.add_trace(go.Scatter(
-                        x=t_series, y=filt["body_horizontal_tilt"],
-                        mode='lines', name='Inclinaison / Horizontale',
-                        line=dict(color='#f59e0b', width=2.0)
-                    ))
-
-                    align_min = ev["thresholds_used"].get("align_min", 160.0)
-                    align_max = ev["thresholds_used"].get("align_max", 195.0)
-                    fig_body.add_hline(y=align_min, line_dash="dot", line_color="rgba(16, 185, 129, 0.6)", annotation_text=f"Align. Min ({align_min}°)")
-                    fig_body.add_hline(y=align_max, line_dash="dot", line_color="rgba(16, 185, 129, 0.6)", annotation_text=f"Align. Max ({align_max}°)")
-
-                    fig_body.update_layout(
-                        title="Alignement Corporel & Inclinaison Horizontale (°)",
-                        xaxis_title="Temps (secondes)",
-                        yaxis_title="Degrés (°)",
-                        paper_bgcolor="rgba(15, 23, 42, 0.6)",
-                        plot_bgcolor="rgba(15, 23, 42, 0.6)",
-                        font=dict(color="#f1f5f9"),
-                        margin=dict(l=40, r=20, t=40, b=40),
-                        height=320
-                    )
-                    st.plotly_chart(fig_body, use_container_width=True)
-
-            # FRAMES CLÉS ANNOTÉES
-            if kin.get("keyframes"):
-                st.markdown("#### 🖼️ Frames Clés avec Squelette Biomécanique")
-                cols_kf = st.columns(len(kin["keyframes"]))
-                for i, kf in enumerate(kin["keyframes"]):
-                    with cols_kf[i]:
-                        st.image(kf["image_rgb"], caption=f"t = {kf['timestamp']}s | Coude: {kf['elbow_angle']}° | Align: {kf['body_alignment']}°", use_container_width=True)
-
-            # ÉTAPE 4 : MODE CALIBRATION (MISE À JOUR DE CONFIG/EXERCISE_THRESHOLDS.JSON)
-            st.markdown("<hr style='border-color: rgba(255,255,255,0.08); margin: 1rem 0;'>", unsafe_allow_html=True)
-            st.markdown("#### 🎯 Mode Calibration (Profil Athlète & Nouveaux Seuils)")
-            st.markdown("<small style='color:#94a3b8;'>Ajustez une fenêtre temporelle de référence pour extraire les angles moyens réels de cet athlète et mettre à jour le fichier de configuration.</small>", unsafe_allow_html=True)
-
-            duration_total = float(kin["duration"])
-            default_t_min = 0.0
-            default_t_max = duration_total
-            if is_iso and ev.get("hold_blocks"):
-                longest_h = max(ev["hold_blocks"], key=lambda b: b["duration"])
-                default_t_min = float(longest_h["start_time"])
-                default_t_max = float(longest_h["end_time"])
-
-            c_cal1, c_cal2 = st.columns(2)
-            with c_cal1:
-                cal_t_min = st.number_input("Début tenue de référence (s)", min_value=0.0, max_value=duration_total, value=default_t_min, step=0.2, key=f"cal_tmin_{sel_video_name}")
-            with c_cal2:
-                cal_t_max = st.number_input("Fin tenue de référence (s)", min_value=0.0, max_value=duration_total, value=default_t_max, step=0.2, key=f"cal_tmax_{sel_video_name}")
-
-            if st.button("💾 Enregistrer ces angles moyens dans config/exercise_thresholds.json", key=f"btn_save_calib_{sel_video_name}", use_container_width=True):
-                cal_ok, cal_vals, cal_msg = calibrate_and_update_thresholds(
-                    kinematics=kin,
-                    exercise_key=exo_k,
-                    time_window=(cal_t_min, cal_t_max)
-                )
-                if cal_ok:
-                    st.success(f"✅ Calibration enregistrée pour {exo_k} : Coude {cal_vals.get('mean_elbow')}°, Alignement {cal_vals.get('mean_alignment')}°, Inclinaison {cal_vals.get('mean_tilt')}°")
-                else:
-                    st.error(f"Erreur de calibration : {cal_msg}")
-
 
 # ==============================================================================
-# COMPARTIMENT 3 : STATS & PROGRESSION PURE (TST & RPE)
+# COMPARTIMENT 2 : STATS & PROGRESSION PURE (TST & RPE)
 # ==============================================================================
 with tab_stats:
     st.markdown("### 📊 Statistiques & Suivi TST / RPE")

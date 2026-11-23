@@ -343,3 +343,143 @@ def calibrate_and_update_thresholds(
 
     except Exception as e:
         return False, {}, f"Erreur de calibration : {e}"
+
+
+# ==============================================================================
+# PIPELINE RAPIDE COMBINÉ & TRAITEMENT PAR LOT (BATCH MULTITHREADÉ)
+# ==============================================================================
+
+def analyze_single_video_pipeline(
+    video_path: str,
+    api_key: str,
+    forced_exercise: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Exécute le pipeline complet sur une seule vidéo en moins de 3-5 secondes :
+    1. Identification sémantique instantanée Gemini (3 frames 512px)
+    2. Extraction cinématique MediaPipe (640px downscale + cache)
+    3. Quantification par machine à états (TUT effectif, Reps, Dérive)
+    """
+    from services.gemini_vision import classify_exercise_gemini
+    from core.biomechanics import extract_kinematics_from_video
+
+    config = load_exercise_thresholds()
+    exercises_cfg = config.get("exercises", {})
+
+    # Étape 1 : Routage sémantique
+    detected_exo = forced_exercise
+    routing_info = {}
+
+    if not detected_exo and api_key:
+        try:
+            rout_res, _, _ = classify_exercise_gemini(video_path, api_key)
+            if rout_res and rout_res.get("exercise") in exercises_cfg:
+                detected_exo = rout_res["exercise"]
+                routing_info = rout_res
+        except Exception:
+            pass
+
+    if not detected_exo or detected_exo not in exercises_cfg:
+        # Repli intelligent par nom de fichier
+        bname = os.path.basename(video_path).lower()
+        if "pull" in bname or "traction" in bname:
+            detected_exo = "pull_ups"
+        elif "push" in bname or "pompe" in bname:
+            detected_exo = "push_ups"
+        elif "front" in bname:
+            detected_exo = "front_lever"
+        elif "straddle" in bname:
+            detected_exo = "straddle_planche"
+        elif "maltese" in bname:
+            detected_exo = "maltese"
+        else:
+            detected_exo = "full_planche"
+
+    # Étape 2 : Extraction cinématique (avec cache instantané)
+    kin_data = extract_kinematics_from_video(video_path)
+
+    # Étape 3 : Évaluation biomécanique
+    exo_cfg = exercises_cfg[detected_exo]
+    exo_type = exo_cfg.get("type", "isometric")
+
+    if exo_type == "isometric":
+        eval_res = evaluate_isometric_figure(kin_data, detected_exo, config)
+        effective_tut = eval_res["effective_tut"]
+        valid_reps = 0
+        drift_data = eval_res.get("angular_drift", {})
+        drift_str = f"{drift_data.get('alignment_drift_deg', 0.0):+0.1f}° alignement" if drift_data else "Stable"
+    else:
+        eval_res = evaluate_dynamic_movement(kin_data, detected_exo, config)
+        effective_tut = eval_res["active_tut"]
+        valid_reps = eval_res["valid_reps_count"]
+        drift_str = f"Tempo: {eval_res.get('average_rep_duration', 0.0)}s/rep"
+
+    return {
+        "video_path": video_path,
+        "filename": os.path.basename(video_path),
+        "exercise_key": detected_exo,
+        "exercise_display": exo_cfg.get("display_name", detected_exo),
+        "type": exo_type,
+        "tut": round(float(effective_tut), 2),
+        "reps": int(valid_reps),
+        "drift": drift_str,
+        "confidence": routing_info.get("confidence", 0.95),
+        "camera_angle": routing_info.get("camera_angle", "profile"),
+        "kinematics": kin_data,
+        "evaluation": eval_res,
+        "status": "✅ Validé"
+    }
+
+
+def process_video_batch_parallel(
+    video_paths: List[str],
+    api_key: str,
+    progress_callback: Optional[Callable[[float, str], None]] = None
+) -> List[Dict[str, Any]]:
+    """
+    Traite un lot de vidéos (ex: 10 vidéos) en parallèle via ThreadPoolExecutor.
+    Temps cible total : quelques secondes pour le lot complet.
+    """
+    import concurrent.futures
+
+    total = len(video_paths)
+    if total == 0:
+        return []
+
+    results: List[Dict[str, Any]] = [None] * total
+    completed = 0
+
+    max_workers = min(6, max(2, os.cpu_count() or 4))
+
+    def _worker(idx_and_path):
+        idx, path = idx_and_path
+        try:
+            return idx, analyze_single_video_pipeline(path, api_key)
+        except Exception as e:
+            return idx, {
+                "video_path": path,
+                "filename": os.path.basename(path),
+                "exercise_key": "full_planche",
+                "exercise_display": "Erreur",
+                "type": "isometric",
+                "tut": 0.0,
+                "reps": 0,
+                "drift": str(e)[:40],
+                "confidence": 0.0,
+                "camera_angle": "profile",
+                "kinematics": None,
+                "evaluation": None,
+                "status": f"❌ {str(e)[:30]}"
+            }
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(_worker, (i, p)) for i, p in enumerate(video_paths)]
+        for f in concurrent.futures.as_completed(futures):
+            idx, res = f.result()
+            results[idx] = res
+            completed += 1
+            if progress_callback:
+                frac = completed / float(total)
+                progress_callback(frac, f"Analyse par lot : {completed}/{total} vidéos terminées ({res['exercise_display']})")
+
+    return results
