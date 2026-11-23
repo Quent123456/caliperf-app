@@ -1,10 +1,11 @@
 """
-services/gemini_vision.py - Identification sémantique ultra-rapide de l'exercice (Gemini Flash)
-Optimisé pour le traitement par lot :
+services/gemini_vision.py - Analyse vidéo et suivi de mouvement par IA (Gemini Flash Vision)
+Optimisé pour une vitesse extrême (< 1.5 - 2s par vidéo) et une fiabilité totale :
 - AUCUN upload vidéo complet vers l'API.
-- Extraction ciblée de 3 frames (25%, 50%, 75%) via cap.set() sans lire le reste de la vidéo.
-- Redimensionnement à 512px max et compression JPEG 75% en mémoire.
-- Appel Gemini Flash avec response_mime_type="application/json" (< 1.5 seconde par vidéo).
+- Extraction ciblée de 4 à 6 frames chronologiques via cap.set() sans lire le reste de la vidéo.
+- Compression JPEG en mémoire (max 480px) pour une charge réseau minime (< 150 KB au total).
+- Analyse sémantique complète : identification de l'exercice, comptage de répétitions (même partielles),
+  quantification du TUT effectif et diagnostic biomécanique.
 """
 
 import os
@@ -28,17 +29,18 @@ except ImportError:
     HAS_GEMINI = False
 
 
-def extract_3_frames_fast(
+def extract_sampled_frames_fast(
     video_path: str,
-    max_width: int = 512,
-    quality: int = 75
+    max_frames: int = 6,
+    max_width: int = 480,
+    quality: int = 70
 ) -> List[Dict[str, Any]]:
     """
-    Extrait instantanément 3 frames clés (25%, 50%, 75%) par saut de tête de lecture (seek).
-    Ne lit aucune autre frame de la vidéo.
-    Retourne une liste de dicts avec:
+    Extrait rapidement max_frames uniformément réparties dans la vidéo sans lire les autres frames.
+    Retourne une liste de dicts contenant:
       - 'timestamp': secondes
-      - 'jpeg_bytes': octets JPEG compressés (en mémoire)
+      - 'frame_idx': numéro de la frame
+      - 'jpeg_bytes': octets JPEG
       - 'image_rgb': image numpy pour affichage Streamlit
     """
     if not HAS_CV2:
@@ -58,10 +60,16 @@ def extract_3_frames_fast(
         fps = float(cap.get(cv2.CAP_PROP_FPS) or 30.0)
 
         if total_frames <= 0:
-            total_frames = 100
+            total_frames = 120
 
-        # Ratios stricts demandés : 25%, 50%, 75%
-        ratios = [0.25, 0.50, 0.75]
+        # Répartition uniforme de 10% à 90%
+        if max_frames <= 3:
+            ratios = [0.25, 0.50, 0.75]
+        elif max_frames <= 4:
+            ratios = [0.15, 0.40, 0.65, 0.90]
+        else:
+            ratios = [0.10, 0.25, 0.45, 0.65, 0.85, 0.95]
+
         target_indices = [
             min(total_frames - 1, max(0, int(total_frames * r)))
             for r in ratios
@@ -95,13 +103,20 @@ def extract_3_frames_fast(
         cap.release()
 
 
-def classify_exercise_gemini(
+def extract_3_frames_fast(video_path: str, max_width: int = 512, quality: int = 75) -> List[Dict[str, Any]]:
+    """Rétro-compatibilité pour l'extraction à 3 frames."""
+    return extract_sampled_frames_fast(video_path, max_frames=3, max_width=max_width, quality=quality)
+
+
+def analyze_motion_gemini(
     video_path: str,
-    api_key: str
+    api_key: str,
+    num_frames: int = 6
 ) -> Tuple[Optional[Dict[str, Any]], List[Dict[str, Any]], str]:
     """
-    Identification sémantique instantanée via Gemini Flash sur 3 frames légères en mémoire.
-    Retourne : (result_dict, key_frames, message)
+    Analyse complète par IA de la gestuelle, du TUT et des répétitions via Gemini Flash.
+    Envoie une séquence temporelle de frames légères et récupère un diagnostic structuré en JSON.
+    Retourne : (result_dict, key_frames, message_statut)
     """
     if not HAS_GEMINI:
         return None, [], "SDK google-genai non installé."
@@ -110,22 +125,39 @@ def classify_exercise_gemini(
         return None, [], "Clé API Gemini manquante."
 
     try:
-        key_frames = extract_3_frames_fast(video_path, max_width=512, quality=75)
+        key_frames = extract_sampled_frames_fast(video_path, max_frames=num_frames, max_width=480, quality=70)
     except Exception as e:
-        return None, [], f"Erreur extraction des 3 frames clés : {e}"
+        return None, [], f"Erreur extraction des frames vidéo : {e}"
 
     if not key_frames:
-        return None, [], "Échec de lecture des frames clés (vidéo corrompue ou vide)."
+        return None, [], "Échec de lecture des frames vidéo."
+
+    timestamps_str = ", ".join([f"Frame {i+1} ({kf['timestamp']}s)" for i, kf in enumerate(key_frames)])
 
     prompt = (
-        "Expert en Callisthénie / Street Workout. "
-        "Voici 3 images chronologiques (début, milieu, fin) d'un mouvement.\n"
-        "Identifie l'exercice parmi :\n"
-        "- 'full_planche', 'straddle_planche', 'maltese', 'front_lever'\n"
-        "- 'pull_ups', 'push_ups', 'planche_push_ups'\n"
-        "- 'other'\n\n"
-        "Réponds en JSON strict avec ce schéma exact :\n"
-        '{"exercise": "full_planche", "type": "isometric", "camera_angle": "profile", "confidence": 0.95, "exercise_display": "Full Planche"}'
+        "Tu es un expert mondial en analyse vidéo de Callisthénie, Street Workout et Street Lifting.\n"
+        f"Voici {len(key_frames)} images chronologiques d'une série : {timestamps_str}.\n\n"
+        "TÂCHE :\n"
+        "1. Identifie l'exercice : full_planche, straddle_planche, maltese, front_lever, pull_ups, push_ups, planche_push_ups, dips, muscle_ups, ou other.\n"
+        "2. Détermine le type : 'isometric' ou 'dynamic'.\n"
+        "3. RÉPÉTITIONS : Si le mouvement est dynamique (tractions, pompes, dips, etc.), compte TOUTES les répétitions réalisées ou entamées, sans restriction de perfection formelle. Si isométrique, mets 0.\n"
+        "4. TEMPS SOUS TENSION (TUT) : Estime la durée active totale sous tension (en secondes).\n"
+        "5. Début (start_time) et fin (end_time) du set en secondes.\n"
+        "6. Diagnostic court et encourageant en français sur la forme (verrouillage, alignement, propreté).\n\n"
+        "Réponds en JSON STRICT avec ce schéma exact :\n"
+        "{\n"
+        '  "exercise": "full_planche",\n'
+        '  "exercise_display": "Full Planche",\n'
+        '  "type": "isometric",\n'
+        '  "reps": 0,\n'
+        '  "tut": 5.2,\n'
+        '  "start_time": 0.5,\n'
+        '  "end_time": 5.7,\n'
+        '  "quality_score": 8.5,\n'
+        '  "camera_angle": "profile",\n'
+        '  "confidence": 0.95,\n'
+        '  "feedback": "Bonne propreté générale, maintien solide."\n'
+        "}"
     )
 
     try:
@@ -137,7 +169,14 @@ def classify_exercise_gemini(
         ]
         parts.append(prompt)
 
-        candidate_models = ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.5-flash"]
+        candidate_models = [
+            "gemini-3.8-flash",
+            "gemini-4-hydrogen",
+            "gemini-3.5-flash-lite",
+            "gemini-3.5-flash",
+            "gemini-3.1-flash-lite"
+        ]
+
         response = None
         last_err = None
         model_used = None
@@ -164,13 +203,31 @@ def classify_exercise_gemini(
             return None, key_frames, f"Échec Gemini : {last_err}"
 
         text = response.text.strip()
-        match = re.search(r'\{.*\}', text, re.DOTALL)
+        # Nettoyage des balises Markdown ```json ... ``` si présentes
+        cleaned = re.sub(r'^```json\s*', '', text, flags=re.MULTILINE)
+        cleaned = re.sub(r'```$', '', cleaned, flags=re.MULTILINE).strip()
+
+        match = re.search(r'\{.*\}', cleaned, re.DOTALL)
         if match:
             data = json.loads(match.group(0))
             data["_model"] = model_used
-            return data, key_frames, "Identification réussie"
 
-        return None, key_frames, f"JSON non conforme : {text[:100]}"
+            # Normalisation des champs numériques
+            data["reps"] = int(data.get("reps", 0))
+            data["tut"] = round(float(data.get("tut", 0.0)), 2)
+            data["start_time"] = round(float(data.get("start_time", 0.0)), 2)
+            data["end_time"] = round(float(data.get("end_time", data["tut"])), 2)
+            return data, key_frames, "Analyse IA réussie"
+
+        return None, key_frames, f"Format JSON inattendu : {text[:80]}"
 
     except Exception as e:
         return None, key_frames, f"Erreur Gemini : {e}"
+
+
+def classify_exercise_gemini(
+    video_path: str,
+    api_key: str
+) -> Tuple[Optional[Dict[str, Any]], List[Dict[str, Any]], str]:
+    """Rétro-compatibilité pour le routage d'exercice."""
+    return analyze_motion_gemini(video_path, api_key, num_frames=4)
