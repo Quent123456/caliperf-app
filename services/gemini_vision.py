@@ -7,14 +7,17 @@ automatiquement l'exercice vers le bon profil biomécanique.
 import os
 import json
 import re
+import time
 from typing import Dict, Any, List, Tuple, Optional
 
-# Imports optionnels sécurisés
+# Imports optionnels sécurisés avec capture d'erreur détaillée
+CV2_IMPORT_ERROR = None
 try:
     import cv2
     HAS_CV2 = True
-except ImportError:
+except Exception as e:
     HAS_CV2 = False
+    CV2_IMPORT_ERROR = str(e)
 
 try:
     from google import genai
@@ -34,7 +37,7 @@ def extract_key_frames(video_path: str, num_frames: int = 4) -> List[Dict[str, A
       - 'image_rgb': tableau numpy RGB (pour affichage Streamlit)
     """
     if not HAS_CV2:
-        raise ImportError("OpenCV (cv2) n'est pas installé.")
+        raise ImportError(f"OpenCV (cv2) n'est pas chargé : {CV2_IMPORT_ERROR}")
 
     if not os.path.exists(video_path):
         raise FileNotFoundError(f"Fichier vidéo introuvable : {video_path}")
@@ -89,6 +92,9 @@ def classify_exercise_gemini(
 ) -> Tuple[Optional[Dict[str, Any]], List[Dict[str, Any]], str]:
     """
     Routeur IA d'exercice par analyse de frames clés avec Gemini Vision.
+    Si OpenCV est disponible, extrait 3-4 images clés.
+    Si OpenCV est indisponible ou échoue, se replie de manière transparente
+    sur l'upload direct de la vidéo vers l'API Gemini.
     Retourne : (result_dict, key_frames, message)
     """
     if not HAS_GEMINI:
@@ -97,17 +103,23 @@ def classify_exercise_gemini(
     if not api_key:
         return None, [], "Clé API Gemini manquante."
 
-    try:
-        key_frames = extract_key_frames(video_path, num_frames=num_frames)
-    except Exception as e:
-        return None, [], f"Erreur extraction des frames vidéo : {e}"
+    if not os.path.exists(video_path):
+        return None, [], f"Fichier vidéo introuvable : {video_path}"
 
-    if not key_frames:
-        return None, [], "Aucune image clé n'a pu être extraite de la vidéo."
+    key_frames: List[Dict[str, Any]] = []
+    used_direct_video = False
+
+    # 1. Tentative d'extraction rapide des frames clés avec OpenCV
+    if HAS_CV2:
+        try:
+            key_frames = extract_key_frames(video_path, num_frames=num_frames)
+        except Exception as e:
+            print(f"[Gemini Vision] Extraction OpenCV échouée ({e}), repli direct vidéo...")
+            key_frames = []
 
     prompt = (
         "Tu es un expert biomécanique en Callisthénie et Street Workout. "
-        "Voici 3 à 4 images clés chronologiques extraites d'une séance d'entraînement.\n\n"
+        "Analyse ce contenu d'entraînement (images clés ou vidéo).\n\n"
         "IDENTIFIE L'EXERCICE OU LA FIGURE PRINCIPALE parmi ces profils cibles :\n"
         "- 'full_planche' : Full Planche (maintien horizontal au sol ou parallettes, jambes jointes)\n"
         "- 'straddle_planche' : Straddle Planche (maintien horizontal, jambes écartées)\n"
@@ -126,15 +138,35 @@ def classify_exercise_gemini(
         '{"exercise": "full_planche", "type": "isometric", "camera_angle": "profile", "confidence": 0.95, "exercise_display": "Full Planche", "notes": "Vue de profil, corps horizontal bras tendus"}'
     )
 
+    client = None
+    uploaded_remote_file = None
+
     try:
         client = genai.Client(api_key=api_key)
-
-        # Préparation des contenus multimodaux
         contents: List[Any] = []
-        for kf in key_frames:
-            part = types.Part.from_bytes(data=kf["jpeg_bytes"], mime_type="image/jpeg")
-            contents.append(part)
-        contents.append(prompt)
+
+        if key_frames:
+            # Mode rapide : envoi de 3-4 images clés
+            for kf in key_frames:
+                part = types.Part.from_bytes(data=kf["jpeg_bytes"], mime_type="image/jpeg")
+                contents.append(part)
+            contents.append(prompt)
+        else:
+            # Mode repli ultra-résilient : upload direct de la vidéo via Gemini Files API
+            used_direct_video = True
+            uploaded_remote_file = client.files.upload(file=video_path)
+
+            max_wait = 45
+            waited = 0
+            while hasattr(uploaded_remote_file, "state") and str(getattr(uploaded_remote_file, "state", "")).upper() == "PROCESSING" and waited < max_wait:
+                time.sleep(2)
+                waited += 2
+                try:
+                    uploaded_remote_file = client.files.get(name=uploaded_remote_file.name)
+                except Exception:
+                    break
+
+            contents = [uploaded_remote_file, prompt]
 
         candidate_models = ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.5-flash"]
         response = None
@@ -154,6 +186,13 @@ def classify_exercise_gemini(
                 last_err = f"{m}: {err}"
                 continue
 
+        # Nettoyage du fichier vidéo distant si utilisé
+        if uploaded_remote_file:
+            try:
+                client.files.delete(name=uploaded_remote_file.name)
+            except Exception:
+                pass
+
         if not response or not response.text:
             return None, key_frames, f"Échec de l'appel Gemini ({last_err})"
 
@@ -162,9 +201,15 @@ def classify_exercise_gemini(
         if match:
             data = json.loads(match.group(0))
             data["_model"] = model_used
+            data["_method"] = "direct_video" if used_direct_video else "keyframes_cv2"
             return data, key_frames, "Identification réussie"
 
         return None, key_frames, f"Réponse non conforme reçue : {text[:120]}"
 
     except Exception as e:
+        if uploaded_remote_file and client:
+            try:
+                client.files.delete(name=uploaded_remote_file.name)
+            except Exception:
+                pass
         return None, key_frames, f"Erreur Gemini Vision : {e}"

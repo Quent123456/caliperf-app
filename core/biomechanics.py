@@ -12,11 +12,13 @@ from typing import Dict, Any, List, Optional, Tuple, Callable
 import numpy as np
 
 # Imports optionnels sécurisés
+CV2_IMPORT_ERROR = None
 try:
     import cv2
     HAS_CV2 = True
-except ImportError:
+except Exception as e:
     HAS_CV2 = False
+    CV2_IMPORT_ERROR = str(e)
 
 try:
     from scipy import signal as scipy_signal
@@ -24,14 +26,16 @@ try:
 except ImportError:
     HAS_SCIPY = False
 
+MEDIAPIPE_IMPORT_ERROR = None
 try:
     import mediapipe as mp
     from mediapipe.tasks import python as mp_tasks
     from mediapipe.tasks.python import vision as mp_vision
     from mediapipe.tasks.python.vision import PoseLandmark
     HAS_MEDIAPIPE = True
-except ImportError:
+except Exception as e:
     HAS_MEDIAPIPE = False
+    MEDIAPIPE_IMPORT_ERROR = str(e)
 
 
 DEFAULT_CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "exercise_thresholds.json")
@@ -170,9 +174,9 @@ def extract_kinematics_from_video(
     calcule les séries temporelles d'angles biomécaniques et applique le filtre Butterworth.
     """
     if not HAS_CV2:
-        raise ImportError("OpenCV (cv2) est requis pour l'analyse vidéo.")
+        raise ImportError(f"OpenCV (cv2) n'a pas pu être chargé ({CV2_IMPORT_ERROR}). Vérifiez packages.txt sur Streamlit Cloud.")
     if not HAS_MEDIAPIPE:
-        raise ImportError("MediaPipe est requis pour l'analyse cinématique.")
+        raise ImportError(f"MediaPipe n'a pas pu être chargé ({MEDIAPIPE_IMPORT_ERROR}).")
 
     model_file = ensure_model_asset()
     cap = cv2.VideoCapture(video_path)
