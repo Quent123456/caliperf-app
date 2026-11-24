@@ -486,6 +486,12 @@ st.markdown("""
         margin-bottom: 0.6rem;
         letter-spacing: 0.03em;
     }
+
+    /* DÉFILEMENT TACTILE SÉCURISÉ POUR TABLEAUX & GRAPHIQUES */
+    [data-testid="stDataFrame"], .stDataFrame, [data-testid="stTable"], .stTable, table, .js-plotly-plot, .no-swipe {
+        touch-action: pan-x pan-y !important;
+        -webkit-overflow-scrolling: touch !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -494,7 +500,7 @@ st.markdown("""
 # ==============================================================================
 # Ce script s'injecte directement dans le DOM principal pour garantir que les gestes
 # tactiles fonctionnent sur tous les navigateurs mobiles (iOS Safari, Android Chrome)
-# même en environnement Streamlit Cloud.
+# tout en protégeant les tableaux, dataframes, graphiques et curseurs du swipe intempestif.
 swipe_engine_code = """
 (function() {
     function setupSwipe() {
@@ -507,8 +513,8 @@ swipe_engine_code = """
             }
         } catch(e) {}
 
-        if (targetWin._caliperfSwipeEngineReady) return;
-        targetWin._caliperfSwipeEngineReady = true;
+        if (targetWin._caliperfSwipeEngineVersion === 'v3') return;
+        targetWin._caliperfSwipeEngineVersion = 'v3';
 
         var startX = 0;
         var startY = 0;
@@ -517,6 +523,22 @@ swipe_engine_code = """
         var isHorizontal = false;
         var startTime = 0;
         var activePanel = null;
+
+        var noSwipeSelector = [
+            'input', 'textarea', 'select', 'button',
+            'video', 'audio', '.stVideo', '.stAudio',
+            '[role="slider"]', '.stSlider', '[data-baseweb="slider"]', '.stNumberInput',
+            'pre', 'code',
+            '[data-testid="stDataFrame"]', '.stDataFrame',
+            '[data-testid="stTable"]', '.stTable',
+            'table', 'thead', 'tbody', 'tr', 'th', 'td',
+            '[role="grid"]', '[role="treegrid"]', '[role="row"]', '[role="gridcell"]',
+            '.glideDataEditor', 'canvas',
+            '[data-testid="stPlotlyChart"]', '.js-plotly-plot', '.plotly', 'svg.main-svg', '.draglayer',
+            '[data-baseweb="tab-list"]', '[data-baseweb="tab"]', '[role="tab"]',
+            '.stSelectbox', '[role="combobox"]', '[role="listbox"]',
+            '[data-no-swipe]', '.no-swipe'
+        ].join(', ');
 
         function getTabs() {
             return Array.from(targetDoc.querySelectorAll('button[data-baseweb="tab"], [role="tab"]'));
@@ -534,10 +556,29 @@ swipe_engine_code = """
             return 0;
         }
 
+        function isInsideScrollable(el) {
+            if (!el) return false;
+            if (el.closest && el.closest(noSwipeSelector)) return true;
+            var curr = el;
+            while (curr && curr !== targetDoc.body && curr !== targetDoc.documentElement) {
+                if (curr.nodeType === 1) {
+                    try {
+                        var style = targetWin.getComputedStyle(curr);
+                        var ox = style.overflowX;
+                        if ((ox === 'auto' || ox === 'scroll') && curr.scrollWidth > curr.clientWidth + 4) {
+                            return true;
+                        }
+                    } catch(errStyle) {}
+                }
+                curr = curr.parentElement;
+            }
+            return false;
+        }
+
         targetDoc.addEventListener('touchstart', function(e) {
             if (!e.touches || e.touches.length !== 1) return;
             var t = e.target;
-            if (t.closest('input, textarea, select, video, .stVideo, [role="slider"], .stSlider, .stNumberInput, pre, code, button')) {
+            if (isInsideScrollable(t)) {
                 return;
             }
 
@@ -555,6 +596,16 @@ swipe_engine_code = """
 
         targetDoc.addEventListener('touchmove', function(e) {
             if (!isTracking || !e.touches || e.touches.length !== 1) return;
+            var moveTarget = e.target;
+            if (isInsideScrollable(moveTarget)) {
+                isTracking = false;
+                if (activePanel) {
+                    activePanel.style.transform = '';
+                    activePanel.style.transition = '';
+                }
+                return;
+            }
+
             currentX = e.touches[0].clientX;
             var currentY = e.touches[0].clientY;
             var diffX = currentX - startX;
