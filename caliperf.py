@@ -166,6 +166,14 @@ except Exception as _e_bio:
     def generate_annotated_frame_on_demand(video_path, target_time_sec):
         return None
 
+try:
+    from ui.calibration_tutorial import render_tutorial_button, open_calibration_tutorial
+except Exception:
+    def render_tutorial_button(key="btn_tuto_calibration_3d"):
+        pass
+    def open_calibration_tutorial():
+        pass
+
 
 def get_persisted_temp_video_path(uploaded_file) -> str:
     """Enregistre le fichier vidéo uploadé sur le disque temporaire pour OpenCV."""
@@ -1168,31 +1176,29 @@ role_label, role_badge_cls, role_icon = get_role_badge_info(u_role)
 
 col_brand, col_u_info, col_nav_actions = st.columns([2.4, 2.2, 1.4])
 with col_brand:
-    st.markdown("""
-        <div class="app-brand-banner" style="margin-bottom:0;">
-            <div style="display:flex; align-items:center; gap:8px;">
-                <div style="background: linear-gradient(135deg, #00f0ff, #0077ff); padding: 5px 8px; border-radius: 9px;">
-                    <span style="font-size: 15px;">⚡</span>
-                </div>
-                <div>
-                    <span style="font-size: 1.15rem; font-weight:800; letter-spacing: -0.02em;">CALIPERF</span>
-                    <span style="color:#00f0ff; font-weight:800; font-size:1.15rem;">PRO</span>
-                </div>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
+    st.markdown("""<div class="app-brand-banner" style="margin-bottom:0;">
+<div style="display:flex; align-items:center; gap:8px;">
+<div style="background: linear-gradient(135deg, #00f0ff, #0077ff); padding: 5px 8px; border-radius: 9px;">
+<span style="font-size: 15px;">⚡</span>
+</div>
+<div>
+<span style="font-size: 1.15rem; font-weight:800; letter-spacing: -0.02em;">CALIPERF</span>
+<span style="color:#00f0ff; font-weight:800; font-size:1.15rem;">PRO</span>
+</div>
+</div>
+</div>""", unsafe_allow_html=True)
 
 with col_u_info:
     avatar_html = render_avatar_html(u_avatar, u_name, size=34)
-    st.markdown(f"""
-        <div style="display:flex; align-items:center; gap:8px; padding: 4px 8px; background: rgba(255,255,255,0.04); border-radius: 10px; border: 1px solid rgba(255,255,255,0.08);">
-            {avatar_html}
-            <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-                <b style="font-size: 0.84rem; color: #f8fafc; display:block; line-height:1.2;">{u_name}</b>
-                <span class="{role_badge_cls}" style="font-size: 0.65rem; padding: 1px 6px;">{role_icon} {role_label}</span>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
+    u_card_html = (
+        f'<div style="display:flex;align-items:center;gap:8px;padding:4px 8px;background:rgba(255,255,255,0.04);border-radius:10px;border:1px solid rgba(255,255,255,0.08);">'
+        f'{avatar_html}'
+        f'<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'
+        f'<b style="font-size:0.84rem;color:#f8fafc;display:block;line-height:1.2;">{u_name}</b>'
+        f'<span class="{role_badge_cls}" style="font-size:0.65rem;padding:1px 6px;">{role_icon} {role_label}</span>'
+        f'</div></div>'
+    )
+    st.markdown(u_card_html, unsafe_allow_html=True)
 
 with col_nav_actions:
     col_na1, col_na2 = st.columns(2)
@@ -1719,18 +1725,16 @@ with tab_studio:
 # COMPARTIMENT 2 : BIBLIOTHÈQUE & CALIBRAGE 3D (PERSISTANCE GOOGLE SHEETS)
 # ==============================================================================
 with tab_calib:
-    st.markdown("""
-        <div class="cali-card" style="margin-bottom: 0.8rem;">
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-                <div>
-                    <h3 style="margin:0; font-size:1.15rem; color:#f1f5f9;">📐 Bibliothèque & Calibrage 3D</h3>
-                    <p style="margin:2px 0 0 0; font-size:0.8rem; color:#94a3b8;">
-                        Construisez votre base en 2 étapes : créez vos mouvements avec 3 angles (Face, 3/4, Profil), puis associez une vidéo de référence à chaque angle.
-                    </p>
-                </div>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
+    col_calib_title, col_calib_tuto = st.columns([2.6, 1.4])
+    with col_calib_title:
+        st.markdown("""<div style="margin-bottom: 0.4rem;">
+<h3 style="margin:0; font-size:1.15rem; color:#f1f5f9;">📐 Bibliothèque & Calibrage 3D</h3>
+<p style="margin:2px 0 0 0; font-size:0.8rem; color:#94a3b8;">
+Construisez votre base en 2 étapes : créez vos mouvements avec 3 angles (Face, 3/4, Profil), puis associez une vidéo de référence à chaque angle.
+</p>
+</div>""", unsafe_allow_html=True)
+    with col_calib_tuto:
+        render_tutorial_button(key="btn_tuto_calib_header")
 
     df_base = load_baselines_table()
     distinct_figures = [str(x).strip() for x in df_base["exercise"].unique() if str(x).strip()] if not df_base.empty and "exercise" in df_base.columns else []

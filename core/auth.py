@@ -186,37 +186,10 @@ def render_avatar_html(avatar_data: str, name: str, size: int = 38) -> str:
     initial = clean_name[0].upper()
 
     if avatar_data and avatar_data.startswith("data:image"):
-        return f"""
-            <img src="{avatar_data}" alt="{clean_name}" style="
-                width: {size}px;
-                height: {size}px;
-                border-radius: 50%;
-                object-fit: cover;
-                border: 2px solid rgba(0, 240, 255, 0.4);
-                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-                display: inline-block;
-                vertical-align: middle;
-            " />
-        """
+        img_style = f"width:{size}px;height:{size}px;border-radius:50%;object-fit:cover;border:2px solid rgba(0,240,255,0.4);box-shadow:0 2px 8px rgba(0,0,0,0.3);display:inline-block;vertical-align:middle;"
+        return f'<img src="{avatar_data}" alt="{clean_name}" style="{img_style}" />'
     else:
         # Cercle avec dégradé et initiale
         font_size = max(11, int(size * 0.42))
-        return f"""
-            <div style="
-                width: {size}px;
-                height: {size}px;
-                border-radius: 50%;
-                background: linear-gradient(135deg, #00f0ff, #0077ff);
-                color: #030712;
-                font-weight: 800;
-                font-size: {font_size}px;
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                border: 2px solid rgba(255, 255, 255, 0.2);
-                box-shadow: 0 2px 8px rgba(0, 240, 255, 0.3);
-                vertical-align: middle;
-            ">
-                {initial}
-            </div>
-        """
+        div_style = f"width:{size}px;height:{size}px;border-radius:50%;background:linear-gradient(135deg,#00f0ff,#0077ff);color:#030712;font-weight:800;font-size:{font_size}px;display:inline-flex;align-items:center;justify-content:center;border:2px solid rgba(255,255,255,0.2);box-shadow:0 2px 8px rgba(0,240,255,0.3);vertical-align:middle;"
+        return f'<div style="{div_style}">{initial}</div>'
