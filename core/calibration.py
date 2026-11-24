@@ -204,85 +204,153 @@ def _get_gspread_client_and_sheet():
         return None, None
 
 
+def _merge_baselines_data(local_df: pd.DataFrame, remote_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Fusionne intelligemment les données locales et distantes sans jamais écraser ou perdre
+    les figures ajoutées localement ou à distance.
+    Priorité :
+    1. Si un ID existe des deux côtés :
+       - Si l'un est 'calibrated' et l'autre 'empty', on conserve 'calibrated'.
+       - Si les deux sont 'calibrated', on conserve celui qui a des données valides.
+       - Si les deux ont des données valides, on garde la version la plus complète.
+    2. Si un ID n'existe que d'un côté (local ou distant), on le CONSERVE impérativement.
+    """
+    if local_df is None or local_df.empty:
+        return remote_df.copy() if remote_df is not None and not remote_df.empty else pd.DataFrame(columns=BASELINES_COLUMNS)
+    if remote_df is None or remote_df.empty:
+        return local_df.copy()
+
+    records_map = {}
+
+    # D'abord intégrer le local
+    for _, row in local_df.iterrows():
+        rid = str(row.get("id", "")).strip()
+        if rid:
+            records_map[rid] = dict(row)
+
+    # Ensuite fusionner avec le distant
+    for _, row in remote_df.iterrows():
+        rid = str(row.get("id", "")).strip()
+        if not rid:
+            continue
+        if rid not in records_map:
+            # Figure existant sur le distant mais pas encore en local
+            records_map[rid] = dict(row)
+        else:
+            # Conflit : vérifier le statut
+            local_row = records_map[rid]
+            loc_status = str(local_row.get("status", "")).strip().lower()
+            rem_status = str(row.get("status", "")).strip().lower()
+
+            if rem_status == "calibrated" and loc_status != "calibrated":
+                records_map[rid] = dict(row)
+            elif rem_status == "calibrated" and loc_status == "calibrated":
+                rem_mf = str(row.get("mean_features", "")).strip()
+                loc_mf = str(local_row.get("mean_features", "")).strip()
+                if rem_mf and rem_mf != "[]" and (not loc_mf or loc_mf == "[]"):
+                    records_map[rid] = dict(row)
+
+    merged_list = list(records_map.values())
+    if not merged_list:
+        return pd.DataFrame(columns=BASELINES_COLUMNS)
+
+    merged_df = pd.DataFrame(merged_list)
+    for c in BASELINES_COLUMNS:
+        if c not in merged_df.columns:
+            merged_df[c] = ""
+    return merged_df[BASELINES_COLUMNS]
+
+
 def _fetch_baselines_table_internal() -> pd.DataFrame:
-    """Lit l'onglet Baselines_3D depuis Google Sheets, ou repli sur le fichier JSON local."""
+    """Lit l'onglet Baselines_3D depuis Google Sheets et fusionne avec le fichier JSON local."""
+    local_df = _load_local_baselines_json()
+    remote_df = None
+
     # 1. Essai avec streamlit-gsheets
     conn = _get_gsheets_connection()
     if conn is not None:
         try:
-            df = conn.read(worksheet=WORKSHEET_NAME, ttl=600)
+            # ttl=0 pour éviter tout cache périmé
+            df = conn.read(worksheet=WORKSHEET_NAME, ttl=0)
             if df is not None and not df.empty:
                 df = df.fillna("")
                 for c in BASELINES_COLUMNS:
                     if c not in df.columns:
                         df[c] = ""
-                # Synchroniser la copie locale
-                _save_local_baselines_json(df[BASELINES_COLUMNS])
-                return df[BASELINES_COLUMNS]
+                remote_df = df[BASELINES_COLUMNS]
         except Exception:
             pass
 
-    # 2. Essai avec gspread direct
-    gc, sh = _get_gspread_client_and_sheet()
-    if sh is not None:
-        try:
-            worksheet = None
+    # 2. Essai avec gspread direct si streamlit-gsheets n'a rien renvoyé
+    if remote_df is None or remote_df.empty:
+        gc, sh = _get_gspread_client_and_sheet()
+        if sh is not None:
             try:
-                worksheet = sh.worksheet(WORKSHEET_NAME)
+                worksheet = None
+                try:
+                    worksheet = sh.worksheet(WORKSHEET_NAME)
+                except Exception:
+                    pass
+                if worksheet:
+                    records = worksheet.get_all_records()
+                    if records:
+                        df = pd.DataFrame(records).fillna("")
+                        for c in BASELINES_COLUMNS:
+                            if c not in df.columns:
+                                df[c] = ""
+                        remote_df = df[BASELINES_COLUMNS]
             except Exception:
-                # Création si absent
-                worksheet = sh.add_worksheet(title=WORKSHEET_NAME, rows=50, cols=len(BASELINES_COLUMNS))
-                worksheet.append_row(BASELINES_COLUMNS)
+                pass
 
-            records = worksheet.get_all_records()
-            if records:
-                df = pd.DataFrame(records).fillna("")
-                for c in BASELINES_COLUMNS:
-                    if c not in df.columns:
-                        df[c] = ""
-                _save_local_baselines_json(df[BASELINES_COLUMNS])
-                return df[BASELINES_COLUMNS]
-            else:
-                return pd.DataFrame(columns=BASELINES_COLUMNS)
-        except Exception:
-            pass
+    # Fusion intelligente : conserve toujours les créations locales même si remote est en retard ou en lecture seule
+    if remote_df is not None and not remote_df.empty:
+        merged_df = _merge_baselines_data(local_df, remote_df)
+        _save_local_baselines_json(merged_df)
+        return merged_df
 
-    # 3. Repli sur le stockage JSON local
-    return _load_local_baselines_json()
+    return local_df
 
 
-if HAS_STREAMLIT:
-    @st.cache_data(ttl=600, show_spinner=False)
-    def load_baselines_table() -> pd.DataFrame:
-        """Charge la table Baselines_3D avec cache Streamlit (TTL=10 min)."""
-        return _fetch_baselines_table_internal()
-else:
-    def load_baselines_table() -> pd.DataFrame:
-        return _fetch_baselines_table_internal()
+def load_baselines_table(force_refresh: bool = False) -> pd.DataFrame:
+    """Charge la table Baselines_3D avec mémorisation en session state pour une réactivité instantanée."""
+    if HAS_STREAMLIT:
+        if not force_refresh and "baselines_df" in st.session_state and isinstance(st.session_state["baselines_df"], pd.DataFrame):
+            return st.session_state["baselines_df"].copy()
+
+    df = _fetch_baselines_table_internal()
+    if HAS_STREAMLIT:
+        st.session_state["baselines_df"] = df.copy()
+    return df
 
 
 def clear_baselines_cache():
     """Invalide le cache de lecture lors de toute modification."""
-    if HAS_STREAMLIT and hasattr(load_baselines_table, "clear"):
-        try:
-            load_baselines_table.clear()
-        except Exception:
-            pass
+    if HAS_STREAMLIT:
+        if "baselines_df" in st.session_state:
+            del st.session_state["baselines_df"]
+        if hasattr(load_baselines_table, "clear"):
+            try:
+                load_baselines_table.clear()
+            except Exception:
+                pass
 
 
 def _save_baselines_table_internal(df: pd.DataFrame) -> Tuple[bool, str]:
-    """Sauvegarde la table Baselines_3D dans Google Sheets et synchronise le JSON local."""
+    """Sauvegarde la table Baselines_3D en session, en local (JSON) et tente Google Sheets."""
     clean_df = df.copy().fillna("")
     for c in BASELINES_COLUMNS:
         if c not in clean_df.columns:
             clean_df[c] = ""
     clean_df = clean_df[BASELINES_COLUMNS]
 
-    # Toujours synchroniser le JSON local d'abord
-    _save_local_baselines_json(clean_df)
-    clear_baselines_cache()
+    # 1. Mise à jour immédiate en session state
+    if HAS_STREAMLIT:
+        st.session_state["baselines_df"] = clean_df.copy()
 
-    # Sauvegarder dans Google Sheets via streamlit-gsheets si disponible
+    # 2. Synchronisation immédiate du JSON local
+    _save_local_baselines_json(clean_df)
+
+    # 3. Sauvegarder dans Google Sheets via streamlit-gsheets si disponible
     conn = _get_gsheets_connection()
     if conn is not None:
         try:
@@ -295,7 +363,7 @@ def _save_baselines_table_internal(df: pd.DataFrame) -> Tuple[bool, str]:
         except Exception as e_conn:
             print(f"Avertissement st.connection update : {e_conn}")
 
-    # Sauvegarder via gspread direct si disponible
+    # 4. Sauvegarder via gspread direct si disponible
     gc, sh = _get_gspread_client_and_sheet()
     if sh is not None:
         try:
@@ -313,7 +381,7 @@ def _save_baselines_table_internal(df: pd.DataFrame) -> Tuple[bool, str]:
         except Exception as e_gsp:
             print(f"Avertissement gspread update : {e_gsp}")
 
-    return True, "Enregistré avec succès dans la base de données locale (JSON synchronisé) !"
+    return True, "Enregistré dans la bibliothèque locale (synchronisé)"
 
 
 # ==============================================================================
@@ -334,7 +402,7 @@ def create_figure_slots(exercise_name: str, exo_type: str = "isometric") -> Tupl
     df = load_baselines_table().copy()
 
     # Vérifier si la figure existe déjà
-    existing_figures = [str(x).strip().lower() for x in df["exercise"].unique()]
+    existing_figures = [str(x).strip().lower() for x in df["exercise"].unique() if str(x).strip()]
     if clean_name.lower() in existing_figures:
         return False, f"La figure '{clean_name}' existe déjà dans la bibliothèque."
 
@@ -379,7 +447,7 @@ def save_calibrated_slot(
     rb_str = json.dumps(rom_bounds) if rom_bounds else ""
 
     # Recherche de l'emplacement existant
-    match_mask = (df["exercise"].str.lower() == clean_name.lower()) & (df["camera_view"] == clean_view)
+    match_mask = (df["exercise"].astype(str).str.strip().str.lower() == clean_name.lower()) & (df["camera_view"] == clean_view)
 
     if match_mask.any():
         idx = df[match_mask].index[0]
@@ -428,7 +496,7 @@ def delete_figure(exercise_name: str) -> Tuple[bool, str]:
     df = load_baselines_table().copy()
     clean_name = exercise_name.strip().lower()
     before_len = len(df)
-    df = df[df["exercise"].str.lower() != clean_name].reset_index(drop=True)
+    df = df[df["exercise"].astype(str).str.strip().str.lower() != clean_name].reset_index(drop=True)
 
     if len(df) == before_len:
         return False, f"Figure '{exercise_name}' introuvable."

@@ -1441,16 +1441,21 @@ with tab_calib:
 
     df_base = load_baselines_table()
 
-    # Bouton discret export sauvegarde JSON
-    col_exp_info, col_exp_btn = st.columns([2, 1])
+    # Barre d'actions bibliothèque
+    col_exp_info, col_refresh, col_exp_btn = st.columns([1.8, 1, 1.2])
     with col_exp_info:
         calib_count = len(df_base[df_base["status"] == "calibrated"]) if not df_base.empty and "status" in df_base.columns else 0
+        distinct_count = len([str(x).strip() for x in df_base["exercise"].unique() if str(x).strip()]) if not df_base.empty and "exercise" in df_base.columns else 0
         total_slots = len(df_base)
-        st.caption(f"📊 Emplacements : {total_slots} ({calib_count} calibrés) | Stockage : Google Sheets 'Baselines_3D'")
+        st.caption(f"📚 {distinct_count} figure(s) | {total_slots} emplacements ({calib_count} calibrés)")
+    with col_refresh:
+        if st.button("🔄 Actualiser", help="Forcer le rechargement depuis Google Sheets", use_container_width=True):
+            load_baselines_table(force_refresh=True)
+            st.rerun()
     with col_exp_btn:
         json_backup = export_baselines_json()
         st.download_button(
-            label="💾 Exporter sauvegarde JSON",
+            label="💾 Sauvegarde JSON",
             data=json_backup,
             file_name=f"caliperf_baselines_3d_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
             mime="application/json",
@@ -1475,8 +1480,9 @@ with tab_calib:
                 c_type = "isometric" if new_exo_type == "Isométrique" else "dynamic"
                 ok_c, msg_c = create_figure_slots(new_exo_input, c_type)
                 if ok_c:
+                    st.session_state["input_new_exo_name"] = ""
                     st.success(f"✅ {msg_c}")
-                    time.sleep(0.5)
+                    time.sleep(0.4)
                     st.rerun()
                 else:
                     st.error(msg_c)
@@ -1486,11 +1492,11 @@ with tab_calib:
     # --------------------------------------------------------------------------
     st.markdown("<h4 style='margin: 0.8rem 0 0.4rem 0; font-size:1rem; color:#f1f5f9;'>📚 Répertoire des mouvements créés</h4>", unsafe_allow_html=True)
 
-    if df_base.empty:
+    distinct_figures = [str(x).strip() for x in df_base["exercise"].unique() if str(x).strip()] if not df_base.empty else []
+
+    if not distinct_figures:
         st.info("ℹ️ Votre bibliothèque est vide pour l'instant. Utilisez l'Étape A ci-dessus pour ajouter vos premières figures !")
     else:
-        distinct_figures = list(df_base["exercise"].unique())
-
         for fig_name in distinct_figures:
             sub_df = df_base[df_base["exercise"] == fig_name]
             fig_type = sub_df["type"].iloc[0] if not sub_df.empty else "isometric"
@@ -1550,11 +1556,11 @@ with tab_calib:
     # ÉTAPE B : ASSOCIER UNE VIDÉO DE CALIBRAGE À UN EMPLACEMENT
     # --------------------------------------------------------------------------
     st.markdown("<hr style='border:0; border-top:1px solid rgba(255,255,255,0.08); margin:18px 0 12px 0;'>", unsafe_allow_html=True)
-    with st.expander("2️⃣ Étape B : Associer une vidéo de calibrage à un emplacement", expanded=not df_base.empty):
-        if df_base.empty:
+    with st.expander("2️⃣ Étape B : Associer une vidéo de calibrage à un emplacement", expanded=(len(distinct_figures) > 0)):
+        if not distinct_figures:
             st.warning("⚠️ Veuillez d'abord créer au moins une figure dans l'Étape A ci-dessus.")
         else:
-            distinct_exos = list(df_base["exercise"].unique())
+            distinct_exos = distinct_figures
             col_sel_exo, col_sel_ang = st.columns([1.5, 1])
             with col_sel_exo:
                 chosen_exo = st.selectbox("Figure à calibrer :", distinct_exos, key="select_calib_exo_step_b")
