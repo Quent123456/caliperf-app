@@ -86,7 +86,7 @@ def _build_tutorial_content():
         with st.container(border=True):
             st.markdown("##### 2. Distance & Cadrage")
             st.markdown("""
-                - ✅ **Distance : 2.5 à 4 mètres**.
+                - ✅ **Distance : 2.5 à 4 mètres** (soit environ **3 à 4 grands pas** par rapport au smartphone).
                 - ✅ L'athlète doit occuper **60 % à 80 % du cadre** (orientation paysage recommandée, ou portrait si le corps entier reste visible de la tête aux pieds).
             """)
 
@@ -99,10 +99,11 @@ def _build_tutorial_content():
 
     with r2:
         with st.container(border=True):
-            st.markdown("##### 4. Hauteur & Inclinaison")
+            st.markdown("##### 4. Hauteur & Prise de vue (Pratique)")
             st.markdown("""
-                - ✅ **Hauteur : au niveau du bassin** de l'athlète (~50 cm pour le sol, ~1.5 m pour la barre fixe / barres parallèles).
-                - ✅ **Axe optique horizontal (0°)** : smartphone rigoureusement vertical, sans plongée ni contre-plongée.
+                - ✅ **Au sol ou sur parallettes basses :** Téléphone posé au sol (calé simplement contre une gourde ou bouteille d'eau).
+                - ✅ **Sur parallettes hautes ou barre :** Surélever le téléphone si possible (sur une chaise ou un banc à ~1 m).
+                - ✅ **Contre-plongée tolérée :** Pas besoin d'un trépied ni d'être à 90° droit comme un piquet ! Une **légère contre-plongée naturelle** (smartphone incliné vers le haut au sol) est **parfaitement acceptée** par l'extraction 3D tant que le corps entier est cadré.
             """)
 
         with st.container(border=True):

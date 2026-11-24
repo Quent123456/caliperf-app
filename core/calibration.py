@@ -231,6 +231,30 @@ def _get_gspread_client_and_sheet():
         return None, None
 
 
+def _fetch_sheets_baselines_if_available() -> Optional[pd.DataFrame]:
+    """Tente de lire l'onglet Baselines_3D depuis Google Sheets si configuré."""
+    gc, sh = _get_gspread_client_and_sheet()
+    if sh is None:
+        return None
+    try:
+        ws = sh.worksheet(WORKSHEET_NAME)
+        records = ws.get_all_records()
+        if records and isinstance(records, list):
+            df = pd.DataFrame(records)
+            for c in BASELINES_COLUMNS:
+                if c not in df.columns:
+                    if c == "owner":
+                        df[c] = "admin"
+                    elif c == "is_master":
+                        df[c] = True
+                    else:
+                        df[c] = ""
+            return df[BASELINES_COLUMNS]
+    except Exception:
+        pass
+    return None
+
+
 # ==============================================================================
 # CHARGEMENT ET SAUVEGARDE UNIFIÉS
 # ==============================================================================
@@ -238,9 +262,22 @@ def _get_gspread_client_and_sheet():
 def load_baselines_table(force_refresh: bool = False) -> pd.DataFrame:
     """
     Charge la table Baselines_3D.
-    Source de vérité principale : st.session_state.db["baselines_3d"].
-    Repli local transparent : caliperf_db.json puis config/baselines_3d.json.
+    1. Si force_refresh ou premier chargement : tente de charger/synchroniser depuis Google Sheets.
+    2. Source de vérité en mémoire : st.session_state.db["baselines_3d"].
+    3. Repli local transparent : caliperf_db.json puis config/baselines_3d.json.
     """
+    # 1. Vérification Google Sheets (une seule fois par session pour ménager le quota API, ou si force_refresh)
+    if HAS_STREAMLIT and hasattr(st, "session_state"):
+        if force_refresh or not st.session_state.get("_gsheets_baselines_synced", False):
+            st.session_state["_gsheets_baselines_synced"] = True
+            sheets_df = _fetch_sheets_baselines_if_available()
+            if sheets_df is not None and not sheets_df.empty:
+                if "db" in st.session_state and isinstance(st.session_state.db, dict):
+                    st.session_state.db["baselines_3d"] = sheets_df.to_dict(orient="records")
+                _save_local_baselines_json(sheets_df)
+                return sheets_df
+
+    # 2. Source de vérité session_state
     if HAS_STREAMLIT and hasattr(st, "session_state") and "db" in st.session_state:
         db = st.session_state.db
         if isinstance(db, dict) and "baselines_3d" in db and isinstance(db["baselines_3d"], list):
@@ -256,7 +293,7 @@ def load_baselines_table(force_refresh: bool = False) -> pd.DataFrame:
                             df[c] = ""
                 return df[BASELINES_COLUMNS]
 
-    # Sinon charger depuis le disque (caliperf_db.json ou config/baselines_3d.json)
+    # 3. Sinon charger depuis le disque (caliperf_db.json ou config/baselines_3d.json)
     local_df = _load_local_baselines_json()
     if not local_df.empty:
         if HAS_STREAMLIT and hasattr(st, "session_state") and "db" in st.session_state:
@@ -267,8 +304,9 @@ def load_baselines_table(force_refresh: bool = False) -> pd.DataFrame:
 
 
 def clear_baselines_cache():
-    """Invalide le cache si besoin."""
-    pass
+    """Invalide le cache de synchronisation pour forcer la relecture Google Sheets au besoin."""
+    if HAS_STREAMLIT and hasattr(st, "session_state"):
+        st.session_state["_gsheets_baselines_synced"] = False
 
 
 def _save_baselines_table_internal(df: pd.DataFrame) -> Tuple[bool, str]:
@@ -333,6 +371,7 @@ def _save_baselines_table_internal(df: pd.DataFrame) -> Tuple[bool, str]:
         except Exception as e_gsp:
             print(f"Avertissement synchronisation Google Sheets : {e_gsp}")
 
+    clear_baselines_cache()
     return True, "Enregistré avec succès !"
 
 
