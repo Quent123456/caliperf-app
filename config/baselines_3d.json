@@ -2,7 +2,7 @@
   "schema_version": "2.0",
   "metadata": {
     "description": "Bibliothèque de baselines 3D CaliPerf (calibrée par l'utilisateur)",
-    "updated_at": "2026-11-24 14:03"
+    "updated_at": "2026-11-24 14:31"
   },
   "columns": [
     "id",
@@ -14,9 +14,6 @@
     "std_features",
     "rom_bounds"
   ],
-  "deleted_exercises": [
-    "maltese hold",
-    "straddle planche"
-  ],
+  "deleted_exercises": [],
   "prototypes": []
 }

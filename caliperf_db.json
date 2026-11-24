@@ -9,6 +9,7 @@
     }
   },
   "evaluations": [],
+  "baselines_3d": [],
   "settings": {
     "form_url": "https://docs.google.com/forms/d/e/1FAIpQLSe-eaoZyDbe2ZTl_NfNKbkeDYKyEdRX_zchoK-Xjef7tGZGIA/formResponse",
     "entry_nom": "entry.1847695661",
@@ -17,6 +18,9 @@
     "entry_rpe": "entry.46344190",
     "admin_pwd": "admin",
     "auto_advance": true,
-    "send_to_google": true
+    "send_to_google": true,
+    "sync_mode": "google_forms",
+    "webhook_url": "",
+    "gemini_api_key": ""
   }
 }

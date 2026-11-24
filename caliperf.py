@@ -189,6 +189,7 @@ def get_default_db():
             }
         },
         "evaluations": [],
+        "baselines_3d": [],
         "settings": {
             "sync_mode": "google_forms",  # "google_forms", "gsheet_webhook", "local_only"
             "webhook_url": "",
@@ -229,6 +230,20 @@ def load_db():
 
         if "evaluations" not in raw:
             raw["evaluations"] = []
+        if "baselines_3d" not in raw:
+            raw["baselines_3d"] = []
+        if not raw["baselines_3d"]:
+            try:
+                base_cfg = os.path.join(os.path.dirname(__file__), "config", "baselines_3d.json")
+                if os.path.exists(base_cfg):
+                    with open(base_cfg, "r", encoding="utf-8") as bf:
+                        b_raw = json.load(bf)
+                    protos = b_raw.get("prototypes", [])
+                    if protos:
+                        raw["baselines_3d"] = protos
+            except Exception:
+                pass
+
         if "settings" not in raw:
             raw["settings"] = get_default_db()["settings"]
         else:
@@ -246,10 +261,28 @@ def load_db():
         return get_default_db()
 
 def save_db(data):
-    """Sauvegarde atomique dans caliperf_db.json."""
+    """Sauvegarde atomique dans caliperf_db.json et synchronise config/baselines_3d.json."""
     try:
         with open(DB_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
+
+        if "baselines_3d" in data and isinstance(data["baselines_3d"], list):
+            base_cfg = os.path.join(os.path.dirname(__file__), "config", "baselines_3d.json")
+            os.makedirs(os.path.dirname(base_cfg), exist_ok=True)
+            payload = {
+                "schema_version": "2.0",
+                "metadata": {
+                    "description": "Bibliothèque de baselines 3D CaliPerf (calibrée par l'utilisateur)",
+                    "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M")
+                },
+                "columns": [
+                    "id", "exercise", "camera_view", "type", "status", "mean_features", "std_features", "rom_bounds"
+                ],
+                "deleted_exercises": [],
+                "prototypes": data["baselines_3d"]
+            }
+            with open(base_cfg, "w", encoding="utf-8") as bf:
+                json.dump(payload, bf, indent=2, ensure_ascii=False)
     except Exception as e:
         st.error(f"Erreur de sauvegarde: {e}")
 
@@ -1442,26 +1475,11 @@ with tab_calib:
     df_base = load_baselines_table()
     distinct_figures = [str(x).strip() for x in df_base["exercise"].unique() if str(x).strip()] if not df_base.empty and "exercise" in df_base.columns else []
 
-    # Barre d'actions bibliothèque
-    col_exp_info, col_refresh, col_exp_btn = st.columns([1.8, 1, 1.2])
-    with col_exp_info:
-        calib_count = len(df_base[df_base["status"] == "calibrated"]) if not df_base.empty and "status" in df_base.columns else 0
-        distinct_count = len(distinct_figures)
-        total_slots = len(df_base)
-        st.caption(f"📚 {distinct_count} figure(s) | {total_slots} emplacements ({calib_count} calibrés)")
-    with col_refresh:
-        if st.button("🔄 Actualiser", help="Forcer le rechargement depuis Google Sheets", use_container_width=True):
-            load_baselines_table(force_refresh=True)
-            st.rerun()
-    with col_exp_btn:
-        json_backup = export_baselines_json()
-        st.download_button(
-            label="💾 Sauvegarde JSON",
-            data=json_backup,
-            file_name=f"caliperf_baselines_3d_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
-            mime="application/json",
-            use_container_width=True
-        )
+    # Synthèse de la bibliothèque
+    calib_count = len(df_base[df_base["status"] == "calibrated"]) if not df_base.empty and "status" in df_base.columns else 0
+    distinct_count = len(distinct_figures)
+    total_slots = len(df_base)
+    st.caption(f"📚 **{distinct_count}** figure(s) enregistrée(s) • **{calib_count}** angle(s) validé(s) sur {total_slots} emplacements")
 
     # --------------------------------------------------------------------------
     # ÉTAPE A : CRÉER UNE FIGURE DANS LA BIBLIOTHÈQUE (3 ANGLES)
@@ -1490,7 +1508,7 @@ with tab_calib:
                         st.error(msg_c)
 
     # --------------------------------------------------------------------------
-    # VUE D'ENSEMBLE DE LA BIBLIOTHÈQUE
+    # VUE D'ENSEMBLE DE LA BIBLIOTHÈQUE (MENU DÉROULANT PAR FIGURE)
     # --------------------------------------------------------------------------
     st.markdown("<h4 style='margin: 0.8rem 0 0.4rem 0; font-size:1rem; color:#f1f5f9;'>📚 Répertoire des mouvements créés</h4>", unsafe_allow_html=True)
 
@@ -1503,68 +1521,49 @@ with tab_calib:
             sub_df = df_base[df_base["exercise"] == fig_name]
             fig_type = sub_df["type"].iloc[0] if not sub_df.empty else "isometric"
             type_label = "Isométrique" if fig_type == "isometric" else "Dynamique"
-            type_badge = "badge-cyan" if fig_type == "isometric" else "badge-amber"
 
-            # Calcul des angles validés
             calib_rows = sub_df[sub_df["status"] == "calibrated"]
             nb_calib = len(calib_rows)
+            calib_icon = "🟢" if nb_calib == 3 else ("🟡" if nb_calib > 0 else "⚪")
             calib_ratio = f"{nb_calib}/3 validé{'s' if nb_calib > 1 else ''}"
-            summary_color = "#10b981" if nb_calib == 3 else ("#00f0ff" if nb_calib > 0 else "#94a3b8")
-
             clean_key = re.sub(r'[^a-zA-Z0-9]+', '_', fig_name.lower()).strip('_')
 
-            with st.container():
-                st.markdown(f"""
-                    <div class="cali-card" style="padding: 10px 14px; margin-bottom: 6px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-                            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                                <b style="font-size:1.05rem; color:#f1f5f9;">{fig_name}</b>
-                                <span class="{type_badge}">{type_label}</span>
-                                <span style="font-size:0.75rem; font-weight:600; color:{summary_color}; background:rgba(255,255,255,0.06); padding:2px 8px; border-radius:10px;">
-                                    {calib_ratio}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
+            with st.expander(f"{calib_icon} {fig_name}  •  {type_label}  ({calib_ratio})", expanded=False):
+                st.markdown("<div style='margin-bottom:8px;'></div>", unsafe_allow_html=True)
+                for v_name in VALID_CAMERA_VIEWS:
+                    v_row = sub_df[sub_df["camera_view"] == v_name]
+                    is_cal = not v_row.empty and v_row.iloc[0]["status"] == "calibrated"
 
-                col_exp_angles, col_del_fig = st.columns([4, 1.2])
-                with col_del_fig:
-                    if st.button("🗑️ Supprimer", key=f"del_fig_{clean_key}", help=f"Supprimer définitivement {fig_name}", use_container_width=True):
+                    c_v1, c_v2, c_v3 = st.columns([1.2, 2, 1.2])
+                    with c_v1:
+                        st.markdown(f"<b>Angle {v_name}</b>", unsafe_allow_html=True)
+                    with c_v2:
+                        if is_cal:
+                            st.markdown("<span style='color:#10b981; font-weight:600;'>✅ Calibré</span>", unsafe_allow_html=True)
+                        else:
+                            st.markdown("<span style='color:#94a3b8;'>⏳ En attente de vidéo</span>", unsafe_allow_html=True)
+                    with c_v3:
+                        if is_cal:
+                            slot_id = v_row.iloc[0]["id"]
+                            if st.button("🔄 Réinit.", key=f"reset_{slot_id}", help=f"Réinitialiser l'angle {v_name}", use_container_width=True):
+                                ok_r, msg_r = reset_slot(slot_id)
+                                if ok_r:
+                                    st.toast(f"✅ {msg_r}")
+                                    time.sleep(0.3)
+                                    st.rerun()
+                                else:
+                                    st.error(msg_r)
+                        else:
+                            st.caption("-")
+
+                st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+                col_d_space, col_d_btn = st.columns([2.5, 1.5])
+                with col_d_btn:
+                    if st.button("🗑️ Supprimer la figure", key=f"del_fig_{clean_key}", help=f"Supprimer définitivement {fig_name}", use_container_width=True):
                         ok_d, msg_d = delete_figure(fig_name)
                         st.toast(f"✅ {msg_d}")
                         time.sleep(0.3)
                         st.rerun()
-
-                with col_exp_angles:
-                    with st.expander(f"📐 Voir les 3 angles ({fig_name})", expanded=False):
-                        for v_name in VALID_CAMERA_VIEWS:
-                            v_row = sub_df[sub_df["camera_view"] == v_name]
-                            is_cal = not v_row.empty and v_row.iloc[0]["status"] == "calibrated"
-
-                            c_v1, c_v2, c_v3 = st.columns([1.2, 2, 1])
-                            with c_v1:
-                                st.markdown(f"<b>{v_name}</b>", unsafe_allow_html=True)
-                            with c_v2:
-                                if is_cal:
-                                    st.markdown("<span style='color:#10b981; font-size:0.85rem;'>✅ Validé (Calibré)</span>", unsafe_allow_html=True)
-                                else:
-                                    st.markdown("<span style='color:#94a3b8; font-size:0.85rem;'>⏳ En attente de vidéo</span>", unsafe_allow_html=True)
-                            with c_v3:
-                                if is_cal:
-                                    slot_id = v_row.iloc[0]["id"]
-                                    if st.button("🔄 Réinit.", key=f"reset_{slot_id}", help=f"Réinitialiser l'angle {v_name}", use_container_width=True):
-                                        ok_r, msg_r = reset_slot(slot_id)
-                                        if ok_r:
-                                            st.toast(f"✅ Angle {v_name} réinitialisé")
-                                            time.sleep(0.3)
-                                            st.rerun()
-                                        else:
-                                            st.error(msg_r)
-                                else:
-                                    st.caption("-")
-
-                st.markdown("<hr style='border:0; border-top:1px solid rgba(255,255,255,0.05); margin:6px 0 10px 0;'>", unsafe_allow_html=True)
 
     # --------------------------------------------------------------------------
     # ÉTAPE B : ASSOCIER UNE VIDÉO DE CALIBRAGE À UN EMPLACEMENT

@@ -1,9 +1,9 @@
 """
-core/calibration.py - Gestion de la bibliothèque de prototypes 3D CaliPerf & Persistance Google Sheets
+core/calibration.py - Gestion de la bibliothèque de prototypes 3D CaliPerf & Persistance
 Architecture :
-- Stockage persistant dans l'onglet 'Baselines_3D' de Google Sheets (via st.secrets)
-- Cache Streamlit @st.cache_data(ttl=600) avec invalidation instantanée (.clear()) lors des modifications
-- Fallback local transparent dans config/baselines_3d.json pour le mode hors-ligne
+- Source de vérité unique & réactive : st.session_state.db["baselines_3d"] synchronisé dans caliperf_db.json
+- Sauvegarde locale transparente dans config/baselines_3d.json pour versioning et repli
+- Synchronisation Google Sheets optionnelle (onglet 'Baselines_3D') si un compte de service est configuré
 - Création en 2 étapes :
     Étape A : Création de la figure (3 angles générés : Face, 3/4, Profil avec status="empty")
     Étape B : Association d'une vidéo de calibrage -> extraction 3D et passage en status="calibrated"
@@ -25,6 +25,7 @@ except ImportError:
     HAS_STREAMLIT = False
 
 DEFAULT_BASELINES_PATH = os.path.join(os.path.dirname(__file__), "..", "config", "baselines_3d.json")
+DB_FILE_PATH = os.path.join(os.path.dirname(__file__), "..", "caliperf_db.json")
 WORKSHEET_NAME = "Baselines_3D"
 BASELINES_COLUMNS = [
     "id",
@@ -60,7 +61,23 @@ def make_slot_id(exercise: str, camera_view: str) -> str:
 # ==============================================================================
 
 def _load_local_baselines_json(path: str = DEFAULT_BASELINES_PATH) -> pd.DataFrame:
-    """Charge la table depuis le fichier JSON local."""
+    """Charge la table depuis le fichier JSON local ou depuis caliperf_db.json."""
+    # 1. Vérifie d'abord caliperf_db.json
+    if os.path.exists(DB_FILE_PATH):
+        try:
+            with open(DB_FILE_PATH, "r", encoding="utf-8") as f:
+                db_data = json.load(f)
+            b_list = db_data.get("baselines_3d", [])
+            if b_list and isinstance(b_list, list):
+                df = pd.DataFrame(b_list)
+                for col in BASELINES_COLUMNS:
+                    if col not in df.columns:
+                        df[col] = ""
+                return df[BASELINES_COLUMNS]
+        except Exception:
+            pass
+
+    # 2. Vérifie config/baselines_3d.json
     if not os.path.exists(path):
         return pd.DataFrame(columns=BASELINES_COLUMNS)
 
@@ -93,24 +110,8 @@ def _load_local_baselines_json(path: str = DEFAULT_BASELINES_PATH) -> pd.DataFra
         return pd.DataFrame(columns=BASELINES_COLUMNS)
 
 
-def _load_deleted_exercises(path: str = DEFAULT_BASELINES_PATH) -> set:
-    """Charge l'ensemble des figures marquées comme supprimées (tombstones)."""
-    if not os.path.exists(path):
-        return set()
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return set(str(x).strip().lower() for x in data.get("deleted_exercises", []) if str(x).strip())
-    except Exception:
-        return set()
-
-
-def _save_local_baselines_json(
-    df: pd.DataFrame,
-    deleted_exercises: Optional[set] = None,
-    path: str = DEFAULT_BASELINES_PATH
-) -> bool:
-    """Enregistre le DataFrame et les figures supprimées dans le fichier JSON local."""
+def _save_local_baselines_json(df: pd.DataFrame, path: str = DEFAULT_BASELINES_PATH) -> bool:
+    """Enregistre le DataFrame dans le fichier JSON local."""
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         records = []
@@ -145,10 +146,6 @@ def _save_local_baselines_json(
                 "rom_bounds": rb_val
             })
 
-        current_deleted = _load_deleted_exercises(path)
-        if deleted_exercises is not None:
-            current_deleted = set(str(x).strip().lower() for x in deleted_exercises if str(x).strip())
-
         payload = {
             "schema_version": "2.0",
             "metadata": {
@@ -156,7 +153,7 @@ def _save_local_baselines_json(
                 "updated_at": time.strftime("%Y-%m-%d %H:%M")
             },
             "columns": BASELINES_COLUMNS,
-            "deleted_exercises": sorted(list(current_deleted)),
+            "deleted_exercises": [],
             "prototypes": records
         }
 
@@ -169,22 +166,11 @@ def _save_local_baselines_json(
 
 
 # ==============================================================================
-# GESTION PERSISTANCE GOOGLE SHEETS (ONGLET 'Baselines_3D')
+# GESTION OPTIONNELLE GOOGLE SHEETS
 # ==============================================================================
 
-def _get_gsheets_connection():
-    """Tente d'instancier la connexion Streamlit GSheets."""
-    if not HAS_STREAMLIT:
-        return None
-    try:
-        from streamlit_gsheets import GSheetsConnection
-        return st.connection("gsheets", type=GSheetsConnection)
-    except Exception:
-        return None
-
-
 def _get_gspread_client_and_sheet():
-    """Tente une connexion directe gspread via secrets.toml si st.connection n'est pas dispo."""
+    """Tente une connexion directe gspread via secrets.toml si un compte de service est configuré."""
     if not HAS_STREAMLIT or not hasattr(st, "secrets"):
         return None, None
     try:
@@ -225,165 +211,83 @@ def _get_gspread_client_and_sheet():
         return None, None
 
 
-def _merge_baselines_data(local_df: pd.DataFrame, remote_df: pd.DataFrame) -> pd.DataFrame:
+# ==============================================================================
+# CHARGEMENT ET SAUVEGARDE UNIFIÉS
+# ==============================================================================
+
+def load_baselines_table(force_refresh: bool = False) -> pd.DataFrame:
     """
-    Fusionne intelligemment les données locales et distantes sans jamais écraser ou perdre
-    les figures ajoutées localement ou à distance, tout en respectant les suppressions (tombstones).
+    Charge la table Baselines_3D.
+    Source de vérité principale : st.session_state.db["baselines_3d"].
+    Repli local transparent : caliperf_db.json puis config/baselines_3d.json.
     """
-    deleted_set = _load_deleted_exercises()
-
-    records_map = {}
-
-    # D'abord intégrer le local (en ignorant les figures supprimées)
-    if local_df is not None and not local_df.empty:
-        for _, row in local_df.iterrows():
-            rid = str(row.get("id", "")).strip()
-            exo = str(row.get("exercise", "")).strip().lower()
-            if rid and exo not in deleted_set:
-                records_map[rid] = dict(row)
-
-    # Ensuite fusionner avec le distant (en filtrant formellement les figures supprimées)
-    if remote_df is not None and not remote_df.empty:
-        for _, row in remote_df.iterrows():
-            rid = str(row.get("id", "")).strip()
-            exo = str(row.get("exercise", "")).strip().lower()
-            if not rid or exo in deleted_set:
-                continue
-            if rid not in records_map:
-                records_map[rid] = dict(row)
-            else:
-                local_row = records_map[rid]
-                loc_status = str(local_row.get("status", "")).strip().lower()
-                rem_status = str(row.get("status", "")).strip().lower()
-
-                if rem_status == "calibrated" and loc_status != "calibrated":
-                    records_map[rid] = dict(row)
-                elif rem_status == "calibrated" and loc_status == "calibrated":
-                    rem_mf = str(row.get("mean_features", "")).strip()
-                    loc_mf = str(local_row.get("mean_features", "")).strip()
-                    if rem_mf and rem_mf != "[]" and (not loc_mf or loc_mf == "[]"):
-                        records_map[rid] = dict(row)
-
-    merged_list = list(records_map.values())
-    if not merged_list:
-        return pd.DataFrame(columns=BASELINES_COLUMNS)
-
-    merged_df = pd.DataFrame(merged_list)
-    for c in BASELINES_COLUMNS:
-        if c not in merged_df.columns:
-            merged_df[c] = ""
-    return merged_df[BASELINES_COLUMNS]
-
-
-def _fetch_baselines_table_internal() -> pd.DataFrame:
-    """Lit l'onglet Baselines_3D depuis Google Sheets et fusionne avec le fichier JSON local."""
-    local_df = _load_local_baselines_json()
-    remote_df = None
-
-    # 1. Essai avec streamlit-gsheets
-    conn = _get_gsheets_connection()
-    if conn is not None:
-        try:
-            # ttl=0 pour éviter tout cache périmé
-            df = conn.read(worksheet=WORKSHEET_NAME, ttl=0)
-            if df is not None and not df.empty:
-                df = df.fillna("")
+    if HAS_STREAMLIT and hasattr(st, "session_state") and "db" in st.session_state:
+        db = st.session_state.db
+        if isinstance(db, dict) and "baselines_3d" in db and isinstance(db["baselines_3d"], list):
+            if db["baselines_3d"]:
+                df = pd.DataFrame(db["baselines_3d"])
                 for c in BASELINES_COLUMNS:
                     if c not in df.columns:
                         df[c] = ""
-                remote_df = df[BASELINES_COLUMNS]
-        except Exception:
-            pass
+                return df[BASELINES_COLUMNS]
 
-    # 2. Essai avec gspread direct si streamlit-gsheets n'a rien renvoyé
-    if remote_df is None or remote_df.empty:
-        gc, sh = _get_gspread_client_and_sheet()
-        if sh is not None:
-            try:
-                worksheet = None
-                try:
-                    worksheet = sh.worksheet(WORKSHEET_NAME)
-                except Exception:
-                    pass
-                if worksheet:
-                    records = worksheet.get_all_records()
-                    if records:
-                        df = pd.DataFrame(records).fillna("")
-                        for c in BASELINES_COLUMNS:
-                            if c not in df.columns:
-                                df[c] = ""
-                        remote_df = df[BASELINES_COLUMNS]
-            except Exception:
-                pass
+    # Sinon charger depuis le disque (caliperf_db.json ou config/baselines_3d.json)
+    local_df = _load_local_baselines_json()
+    if not local_df.empty:
+        if HAS_STREAMLIT and hasattr(st, "session_state") and "db" in st.session_state:
+            st.session_state.db["baselines_3d"] = local_df.to_dict(orient="records")
+        return local_df
 
-    # Fusion intelligente : conserve toujours les créations locales et respecte les suppressions
-    if remote_df is not None and not remote_df.empty:
-        merged_df = _merge_baselines_data(local_df, remote_df)
-        _save_local_baselines_json(merged_df)
-        return merged_df
-
-    # Filtrer aussi le local par deleted_set au cas où
-    deleted_set = _load_deleted_exercises()
-    if deleted_set and not local_df.empty:
-        local_df = local_df[~local_df["exercise"].astype(str).str.strip().str.lower().isin(deleted_set)].reset_index(drop=True)
-
-    return local_df
-
-
-def load_baselines_table(force_refresh: bool = False) -> pd.DataFrame:
-    """Charge la table Baselines_3D avec mémorisation en session state pour une réactivité instantanée."""
-    if HAS_STREAMLIT:
-        if not force_refresh and "baselines_df" in st.session_state and isinstance(st.session_state["baselines_df"], pd.DataFrame):
-            return st.session_state["baselines_df"].copy()
-
-    df = _fetch_baselines_table_internal()
-    if HAS_STREAMLIT:
-        st.session_state["baselines_df"] = df.copy()
-    return df
+    return pd.DataFrame(columns=BASELINES_COLUMNS)
 
 
 def clear_baselines_cache():
-    """Invalide le cache de lecture lors de toute modification."""
-    if HAS_STREAMLIT:
-        if hasattr(load_baselines_table, "clear"):
-            try:
-                load_baselines_table.clear()
-            except Exception:
-                pass
+    """Invalide le cache si besoin."""
+    pass
 
 
-def _save_baselines_table_internal(
-    df: pd.DataFrame,
-    deleted_exercises: Optional[set] = None
-) -> Tuple[bool, str]:
-    """Sauvegarde la table Baselines_3D en session, en local (JSON) et tente Google Sheets."""
+def _save_baselines_table_internal(df: pd.DataFrame) -> Tuple[bool, str]:
+    """
+    Sauvegarde atomique et immédiate de la bibliothèque dans :
+    1. st.session_state.db["baselines_3d"]
+    2. caliperf_db.json
+    3. config/baselines_3d.json
+    4. Google Sheets (optionnel si gspread + service account configuré)
+    """
     clean_df = df.copy().fillna("")
     for c in BASELINES_COLUMNS:
         if c not in clean_df.columns:
             clean_df[c] = ""
     clean_df = clean_df[BASELINES_COLUMNS]
+    records = clean_df.to_dict(orient="records")
 
-    # 1. Mise à jour immédiate en session state
-    if HAS_STREAMLIT:
-        st.session_state["baselines_df"] = clean_df.copy()
+    # 1. Mise à jour en session state
+    if HAS_STREAMLIT and hasattr(st, "session_state") and "db" in st.session_state:
+        st.session_state.db["baselines_3d"] = records
 
-    # 2. Synchronisation immédiate du JSON local avec tombstones
-    _save_local_baselines_json(clean_df, deleted_exercises=deleted_exercises)
+    # 2. Sauvegarde atomique dans caliperf_db.json
+    try:
+        from caliperf import save_db
+        if HAS_STREAMLIT and hasattr(st, "session_state") and "db" in st.session_state:
+            save_db(st.session_state.db)
+    except Exception:
+        pass
 
-    # 3. Sauvegarder dans Google Sheets via streamlit-gsheets si disponible
-    conn = _get_gsheets_connection()
-    if conn is not None:
-        try:
-            try:
-                conn.update(worksheet=WORKSHEET_NAME, data=clean_df)
-                return True, "Enregistré avec succès dans Google Sheets (Baselines_3D) !"
-            except Exception:
-                conn.create(worksheet=WORKSHEET_NAME, data=clean_df)
-                return True, "Onglet 'Baselines_3D' créé et enregistré dans Google Sheets !"
-        except Exception as e_conn:
-            print(f"Avertissement st.connection update : {e_conn}")
+    # Écriture directe de sécurité dans caliperf_db.json
+    try:
+        if os.path.exists(DB_FILE_PATH):
+            with open(DB_FILE_PATH, "r", encoding="utf-8") as f:
+                f_db = json.load(f)
+            f_db["baselines_3d"] = records
+            with open(DB_FILE_PATH, "w", encoding="utf-8") as f:
+                json.dump(f_db, f, indent=2, ensure_ascii=False)
+    except Exception:
+        pass
 
-    # 4. Sauvegarder via gspread direct si disponible
+    # 3. Synchronisation immédiate du JSON local config/baselines_3d.json
+    _save_local_baselines_json(clean_df)
+
+    # 4. Synchronisation optionnelle Google Sheets si service account disponible
     gc, sh = _get_gspread_client_and_sheet()
     if sh is not None:
         try:
@@ -395,13 +299,11 @@ def _save_baselines_table_internal(
             ws.clear()
             header = BASELINES_COLUMNS
             data_rows = clean_df.values.tolist()
-            all_content = [header] + data_rows
-            ws.update("A1", all_content)
-            return True, "Enregistré avec succès dans Google Sheets via gspread !"
+            ws.update("A1", [header] + data_rows)
         except Exception as e_gsp:
-            print(f"Avertissement gspread update : {e_gsp}")
+            print(f"Avertissement synchronisation Google Sheets : {e_gsp}")
 
-    return True, "Enregistré dans la bibliothèque locale (synchronisé)"
+    return True, "Enregistré avec succès !"
 
 
 # ==============================================================================
@@ -418,12 +320,6 @@ def create_figure_slots(exercise_name: str, exo_type: str = "isometric") -> Tupl
         return False, "Le nom de la figure ne peut pas être vide."
 
     clean_type = "dynamic" if "dyn" in str(exo_type).lower() else "isometric"
-
-    # Retirer du tombstone si elle avait été supprimée auparavant
-    deleted_set = _load_deleted_exercises()
-    if clean_name.lower() in deleted_set:
-        deleted_set.remove(clean_name.lower())
-
     df = load_baselines_table().copy()
 
     # Vérifier si la figure existe déjà
@@ -446,7 +342,7 @@ def create_figure_slots(exercise_name: str, exo_type: str = "isometric") -> Tupl
         })
 
     updated_df = pd.concat([df, pd.DataFrame(new_rows)], ignore_index=True)
-    ok, msg = _save_baselines_table_internal(updated_df, deleted_exercises=deleted_set)
+    ok, msg = _save_baselines_table_internal(updated_df)
     return ok, f"Figure '{clean_name}' créée avec succès (3 angles en attente) !" if ok else msg
 
 
@@ -482,7 +378,6 @@ def save_calibrated_slot(
         df.at[idx, "std_features"] = sf_str
         df.at[idx, "rom_bounds"] = rb_str
     else:
-        # Création de l'emplacement si non trouvé
         new_row = {
             "id": slot_id,
             "exercise": clean_name,
@@ -523,19 +418,16 @@ def delete_figure(exercise_name: str) -> Tuple[bool, str]:
         return False, "Nom de figure invalide."
 
     df = load_baselines_table().copy()
-    before_len = len(df)
+    if df.empty or "exercise" not in df.columns:
+        return False, "La bibliothèque est déjà vide."
+
     df = df[df["exercise"].astype(str).str.strip().str.lower() != clean_name.lower()].reset_index(drop=True)
-
-    # Enregistrer le tombstone pour empêcher la résurrection lors des syncs distantes
-    deleted_set = _load_deleted_exercises()
-    deleted_set.add(clean_name.lower())
-
-    ok, msg = _save_baselines_table_internal(df, deleted_exercises=deleted_set)
-    return True, f"Figure '{clean_name}' et ses angles supprimés définitivement !"
+    ok, msg = _save_baselines_table_internal(df)
+    return True, f"Figure '{clean_name}' supprimée avec succès."
 
 
 def export_baselines_json() -> str:
-    """Retourne la sauvegarde JSON formatée de la bibliothèque pour téléchargement immédiat."""
+    """Retourne la sauvegarde JSON formatée de la bibliothèque pour téléchargement si nécessaire."""
     df = load_baselines_table()
     records = []
     for _, row in df.iterrows():
