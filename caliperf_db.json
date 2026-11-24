@@ -9,7 +9,98 @@
     }
   },
   "evaluations": [],
-  "baselines_3d": [],
+  "baselines_3d": [
+    {
+      "id": "full_planche_face",
+      "exercise": "Full Planche",
+      "camera_view": "Face",
+      "type": "isometric",
+      "status": "empty",
+      "mean_features": "",
+      "std_features": "",
+      "rom_bounds": ""
+    },
+    {
+      "id": "full_planche_3_4",
+      "exercise": "Full Planche",
+      "camera_view": "3/4",
+      "type": "isometric",
+      "status": "empty",
+      "mean_features": "",
+      "std_features": "",
+      "rom_bounds": ""
+    },
+    {
+      "id": "full_planche_profil",
+      "exercise": "Full Planche",
+      "camera_view": "Profil",
+      "type": "isometric",
+      "status": "empty",
+      "mean_features": "",
+      "std_features": "",
+      "rom_bounds": ""
+    },
+    {
+      "id": "maltese_face",
+      "exercise": "Maltese",
+      "camera_view": "Face",
+      "type": "isometric",
+      "status": "empty",
+      "mean_features": "",
+      "std_features": "",
+      "rom_bounds": ""
+    },
+    {
+      "id": "maltese_3_4",
+      "exercise": "Maltese",
+      "camera_view": "3/4",
+      "type": "isometric",
+      "status": "empty",
+      "mean_features": "",
+      "std_features": "",
+      "rom_bounds": ""
+    },
+    {
+      "id": "maltese_profil",
+      "exercise": "Maltese",
+      "camera_view": "Profil",
+      "type": "isometric",
+      "status": "empty",
+      "mean_features": "",
+      "std_features": "",
+      "rom_bounds": ""
+    },
+    {
+      "id": "front_lever_face",
+      "exercise": "Front Lever",
+      "camera_view": "Face",
+      "type": "isometric",
+      "status": "empty",
+      "mean_features": "",
+      "std_features": "",
+      "rom_bounds": ""
+    },
+    {
+      "id": "front_lever_3_4",
+      "exercise": "Front Lever",
+      "camera_view": "3/4",
+      "type": "isometric",
+      "status": "empty",
+      "mean_features": "",
+      "std_features": "",
+      "rom_bounds": ""
+    },
+    {
+      "id": "front_lever_profil",
+      "exercise": "Front Lever",
+      "camera_view": "Profil",
+      "type": "isometric",
+      "status": "empty",
+      "mean_features": "",
+      "std_features": "",
+      "rom_bounds": ""
+    }
+  ],
   "settings": {
     "form_url": "https://docs.google.com/forms/d/e/1FAIpQLSe-eaoZyDbe2ZTl_NfNKbkeDYKyEdRX_zchoK-Xjef7tGZGIA/formResponse",
     "entry_nom": "entry.1847695661",

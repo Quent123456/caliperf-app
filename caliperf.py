@@ -929,25 +929,108 @@ def analyze_video_with_gemini(video_file, api_key):
 
 
 # ==============================================================================
-# 6. EN-TÊTE PRINCIPAL & ONGLETS FLUIDES
+# 6. PAGE D'ACCUEIL (LANDING PAGE & ACCÈS DIRECT)
 # ==============================================================================
-st.markdown("""
-    <div class="app-brand-banner">
-        <div style="display:flex; align-items:center; gap:8px;">
-            <div style="background: linear-gradient(135deg, #00f0ff, #0077ff); padding: 6px 10px; border-radius: 10px;">
-                <span style="font-size: 17px;">⚡</span>
+if "app_entered" not in st.session_state:
+    st.session_state.app_entered = False
+
+if not st.session_state.app_entered:
+    st.markdown("""
+        <div style="text-align: center; margin-top: 1.2rem; margin-bottom: 1.4rem;">
+            <div style="display: inline-flex; align-items: center; gap: 8px; background: rgba(0, 240, 255, 0.08); border: 1px solid rgba(0, 240, 255, 0.25); border-radius: 9999px; padding: 4px 14px; margin-bottom: 0.8rem;">
+                <span style="font-size: 14px;">⚡</span>
+                <span style="color: #00f0ff; font-weight: 700; font-size: 0.78rem; letter-spacing: 0.05em; text-transform: uppercase;">Moteur 3D Local & Déterministe</span>
             </div>
-            <div>
-                <span style="font-size: 1.25rem; font-weight:800; letter-spacing: -0.02em;">CALIPERF</span>
-                <span style="color:#00f0ff; font-weight:800; font-size:1.25rem;">PRO</span>
+            <h1 style="font-size: 2.3rem; font-weight: 900; letter-spacing: -0.03em; margin: 0 0 0.4rem 0; line-height: 1.15; color: #f8fafc;">
+                CALIPERF <span style="background: linear-gradient(135deg, #00f0ff, #0077ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">PRO</span>
+            </h1>
+            <p style="color: #94a3b8; font-size: 0.95rem; max-width: 500px; margin: 0 auto; line-height: 1.5;">
+                Analyse biomécanique 3D haute précision & chronométrage sans latence au service du Street Workout et de la Callisthénie.
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # 3 piliers compacts
+    col_p1, col_p2, col_p3 = st.columns(3)
+    with col_p1:
+        st.markdown("""
+            <div class="cali-card" style="text-align: center; padding: 14px 10px; margin-bottom: 10px;">
+                <div style="font-size: 1.5rem; margin-bottom: 4px;">📐</div>
+                <b style="font-size: 0.9rem; color: #f1f5f9;">Cinématique 3D</b>
+                <p style="font-size: 0.75rem; color: #94a3b8; margin: 4px 0 0 0;">Angles métriques MediaPipe invariants à la caméra</p>
+            </div>
+        """, unsafe_allow_html=True)
+    with col_p2:
+        st.markdown("""
+            <div class="cali-card" style="text-align: center; padding: 14px 10px; margin-bottom: 10px;">
+                <div style="font-size: 1.5rem; margin-bottom: 4px;">⏱️</div>
+                <b style="font-size: 0.9rem; color: #f1f5f9;">Chrono Pur TST</b>
+                <p style="font-size: 0.75rem; color: #94a3b8; margin: 4px 0 0 0;">Temps sous tension effectif & comptage de répétitions</p>
+            </div>
+        """, unsafe_allow_html=True)
+    with col_p3:
+        st.markdown("""
+            <div class="cali-card" style="text-align: center; padding: 14px 10px; margin-bottom: 10px;">
+                <div style="font-size: 1.5rem; margin-bottom: 4px;">📊</div>
+                <b style="font-size: 0.9rem; color: #f1f5f9;">Suivi & RPE</b>
+                <p style="font-size: 0.75rem; color: #94a3b8; margin: 4px 0 0 0;">Historique d'entraînement et courbes de progression</p>
+            </div>
+        """, unsafe_allow_html=True)
+
+    # Cadre "C'est parti !"
+    st.markdown("""
+        <div class="cali-card" style="text-align: center; padding: 1.6rem 1.2rem; margin-top: 0.6rem; border: 1px solid rgba(0, 240, 255, 0.35); background: radial-gradient(circle at 50% 0%, rgba(0, 240, 255, 0.1) 0%, rgba(15, 23, 42, 0.92) 75%); box-shadow: 0 10px 30px rgba(0, 240, 255, 0.12);">
+            <div style="display: inline-block; background: rgba(0, 240, 255, 0.15); border: 1px solid rgba(0, 240, 255, 0.4); padding: 8px 14px; border-radius: 12px; margin-bottom: 0.8rem;">
+                <span style="font-size: 1.4rem;">🤸‍♂️</span>
+            </div>
+            <h3 style="margin: 0 0 0.4rem 0; font-size: 1.3rem; font-weight: 800; color: #f8fafc;">
+                Prêt pour l'entraînement ?
+            </h3>
+            <p style="margin: 0 0 1.2rem 0; font-size: 0.88rem; color: #94a3b8; line-height: 1.4;">
+                Analysez vos vidéos, calibrez vos figures ou suivez les progrès de vos athlètes.
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
+
+    if st.button("🚀 C'est parti !", type="primary", use_container_width=True, key="btn_start_app"):
+        st.session_state.app_entered = True
+        st.rerun()
+
+    st.markdown("""
+        <div style="text-align: center; color: #64748b; font-size: 0.75rem; margin-top: 2rem;">
+            CaliPerf Pro v2.0 • 100% Local, Rapide & Déterministe
+        </div>
+    """, unsafe_allow_html=True)
+    st.stop()
+
+
+# ==============================================================================
+# 7. EN-TÊTE PRINCIPAL & ONGLETS FLUIDES DE L'APPLICATION
+# ==============================================================================
+col_brand, col_nav_home = st.columns([4, 1.2])
+with col_brand:
+    st.markdown("""
+        <div class="app-brand-banner">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <div style="background: linear-gradient(135deg, #00f0ff, #0077ff); padding: 6px 10px; border-radius: 10px;">
+                    <span style="font-size: 17px;">⚡</span>
+                </div>
+                <div>
+                    <span style="font-size: 1.25rem; font-weight:800; letter-spacing: -0.02em;">CALIPERF</span>
+                    <span style="color:#00f0ff; font-weight:800; font-size:1.25rem;">PRO</span>
+                </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+                <span class="badge-cyan">📲 Glissement Tactile</span>
             </div>
         </div>
-        <div style="display:flex; align-items:center; gap:6px;">
-            <span class="badge-cyan">📲 Glissement Tactile</span>
-        </div>
-    </div>
-    <div class="swipe-hint-pill">👈 Glissez l'écran de gauche à droite pour naviguer 👉</div>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
+with col_nav_home:
+    if st.button("🏠 Accueil", key="btn_return_home", help="Revenir à la page d'accueil", use_container_width=True):
+        st.session_state.app_entered = False
+        st.rerun()
+
+st.markdown('<div class="swipe-hint-pill">👈 Glissez l\'écran de gauche à droite pour naviguer 👉</div>', unsafe_allow_html=True)
 
 # Les 5 compartiments principaux
 tab_studio, tab_calib, tab_stats, tab_athletes, tab_settings = st.tabs([
@@ -1882,11 +1965,28 @@ with tab_settings:
         ```
         """)
 
+    st.markdown("<hr style='border-color: rgba(255,255,255,0.08); margin: 1rem 0;'>", unsafe_allow_html=True)
+    st.markdown("##### 💾 Sauvegarde & Restauration de la Base")
     json_bytes = json.dumps(st.session_state.db, indent=2, ensure_ascii=False).encode('utf-8')
-    st.download_button(
-        "📥 Télécharger la sauvegarde complète (JSON)",
-        data=json_bytes,
-        file_name=f"caliperf_backup_{datetime.now().strftime('%Y%m%d')}.json",
-        mime="application/json",
-        use_container_width=True
-    )
+    col_dl, col_ul = st.columns(2)
+    with col_dl:
+        st.download_button(
+            "📥 Télécharger la sauvegarde (JSON)",
+            data=json_bytes,
+            file_name=f"caliperf_backup_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
+            mime="application/json",
+            use_container_width=True
+        )
+    with col_ul:
+        uploaded_backup = st.file_uploader("Restaurer sauvegarde JSON", type=["json"], label_visibility="collapsed", key="restore_json_uploader")
+        if uploaded_backup is not None:
+            try:
+                loaded_data = json.load(uploaded_backup)
+                if isinstance(loaded_data, dict):
+                    st.session_state.db = loaded_data
+                    save_db(st.session_state.db)
+                    st.success("✅ Base restaurée avec succès !")
+                    time.sleep(0.5)
+                    st.rerun()
+            except Exception as e_res:
+                st.error(f"Erreur lors de la restauration : {e_res}")
