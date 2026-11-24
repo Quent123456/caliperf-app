@@ -1,0 +1,210 @@
+{
+  "schema_version": "1.0",
+  "metadata": {
+    "description": "Prototypes multi-angles 3D pour la reconnaissance déterministe d'exercices CaliPerf",
+    "updated_at": "2026-11-24"
+  },
+  "feature_names": [
+    "shoulder_flexion",
+    "arm_abduction",
+    "elbow_angle",
+    "hip_angle",
+    "trunk_inclination",
+    "ventral_dorsal"
+  ],
+  "default_tolerance_deg": 15.0,
+  "prototypes": [
+    {
+      "id": "full_planche_profile_default",
+      "exercise": "full_planche",
+      "display_name": "Full Planche",
+      "camera_view": "profile",
+      "type": "isometric",
+      "mean_features": [165.0, 12.0, 175.0, 172.0, 4.0, 1.0],
+      "std_features": [6.0, 4.0, 5.0, 6.0, 4.0, 0.1],
+      "stability": {
+        "max_hip_vertical_velocity": 0.15,
+        "min_hold_duration_sec": 0.4
+      },
+      "rom_bounds": null,
+      "source": "default",
+      "created_at": "2026-11-24"
+    },
+    {
+      "id": "full_planche_three_quarter_default",
+      "exercise": "full_planche",
+      "display_name": "Full Planche",
+      "camera_view": "three_quarter",
+      "type": "isometric",
+      "mean_features": [162.0, 16.0, 172.0, 168.0, 6.0, 1.0],
+      "std_features": [7.0, 5.0, 6.0, 7.0, 5.0, 0.1],
+      "stability": {
+        "max_hip_vertical_velocity": 0.15,
+        "min_hold_duration_sec": 0.4
+      },
+      "rom_bounds": null,
+      "source": "default",
+      "created_at": "2026-11-24"
+    },
+    {
+      "id": "straddle_planche_profile_default",
+      "exercise": "straddle_planche",
+      "display_name": "Straddle Planche",
+      "camera_view": "profile",
+      "type": "isometric",
+      "mean_features": [160.0, 14.0, 174.0, 168.0, 5.0, 1.0],
+      "std_features": [7.0, 4.0, 6.0, 8.0, 5.0, 0.1],
+      "stability": {
+        "max_hip_vertical_velocity": 0.15,
+        "min_hold_duration_sec": 0.4
+      },
+      "rom_bounds": null,
+      "source": "default",
+      "created_at": "2026-11-24"
+    },
+    {
+      "id": "maltese_profile_default",
+      "exercise": "maltese",
+      "display_name": "Maltese (Hirondelle)",
+      "camera_view": "profile",
+      "type": "isometric",
+      "mean_features": [140.0, 55.0, 172.0, 170.0, 4.0, 1.0],
+      "std_features": [8.0, 10.0, 6.0, 6.0, 4.0, 0.1],
+      "stability": {
+        "max_hip_vertical_velocity": 0.15,
+        "min_hold_duration_sec": 0.4
+      },
+      "rom_bounds": null,
+      "source": "default",
+      "created_at": "2026-11-24"
+    },
+    {
+      "id": "maltese_front_default",
+      "exercise": "maltese",
+      "display_name": "Maltese (Hirondelle)",
+      "camera_view": "front",
+      "type": "isometric",
+      "mean_features": [135.0, 65.0, 170.0, 168.0, 5.0, 1.0],
+      "std_features": [9.0, 12.0, 6.0, 7.0, 5.0, 0.1],
+      "stability": {
+        "max_hip_vertical_velocity": 0.15,
+        "min_hold_duration_sec": 0.4
+      },
+      "rom_bounds": null,
+      "source": "default",
+      "created_at": "2026-11-24"
+    },
+    {
+      "id": "front_lever_profile_default",
+      "exercise": "front_lever",
+      "display_name": "Front Lever",
+      "camera_view": "profile",
+      "type": "isometric",
+      "mean_features": [45.0, 12.0, 175.0, 172.0, 4.0, -1.0],
+      "std_features": [6.0, 4.0, 5.0, 6.0, 4.0, 0.1],
+      "stability": {
+        "max_hip_vertical_velocity": 0.15,
+        "min_hold_duration_sec": 0.4
+      },
+      "rom_bounds": null,
+      "source": "default",
+      "created_at": "2026-11-24"
+    },
+    {
+      "id": "front_lever_three_quarter_default",
+      "exercise": "front_lever",
+      "display_name": "Front Lever",
+      "camera_view": "three_quarter",
+      "type": "isometric",
+      "mean_features": [48.0, 16.0, 172.0, 168.0, 5.0, -1.0],
+      "std_features": [7.0, 5.0, 6.0, 7.0, 5.0, 0.1],
+      "stability": {
+        "max_hip_vertical_velocity": 0.15,
+        "min_hold_duration_sec": 0.4
+      },
+      "rom_bounds": null,
+      "source": "default",
+      "created_at": "2026-11-24"
+    },
+    {
+      "id": "pull_ups_profile_default",
+      "exercise": "pull_ups",
+      "display_name": "Tractions",
+      "camera_view": "profile",
+      "type": "dynamic",
+      "mean_features": [95.0, 16.0, 125.0, 165.0, 75.0, -1.0],
+      "std_features": [25.0, 5.0, 30.0, 10.0, 10.0, 0.1],
+      "stability": null,
+      "rom_bounds": {
+        "primary_joint": "elbow_angle",
+        "min_amplitude_deg": 25.0,
+        "lockout_angle": 155.0,
+        "inflection_angle": 85.0,
+        "min_rep_duration_sec": 0.4,
+        "max_rep_duration_sec": 9.0
+      },
+      "source": "default",
+      "created_at": "2026-11-24"
+    },
+    {
+      "id": "pull_ups_front_default",
+      "exercise": "pull_ups",
+      "display_name": "Tractions",
+      "camera_view": "front",
+      "type": "dynamic",
+      "mean_features": [90.0, 28.0, 120.0, 165.0, 75.0, -1.0],
+      "std_features": [25.0, 6.0, 30.0, 10.0, 10.0, 0.1],
+      "stability": null,
+      "rom_bounds": {
+        "primary_joint": "elbow_angle",
+        "min_amplitude_deg": 25.0,
+        "lockout_angle": 155.0,
+        "inflection_angle": 85.0,
+        "min_rep_duration_sec": 0.4,
+        "max_rep_duration_sec": 9.0
+      },
+      "source": "default",
+      "created_at": "2026-11-24"
+    },
+    {
+      "id": "push_ups_profile_default",
+      "exercise": "push_ups",
+      "display_name": "Pompes",
+      "camera_view": "profile",
+      "type": "dynamic",
+      "mean_features": [120.0, 18.0, 135.0, 165.0, 8.0, 1.0],
+      "std_features": [15.0, 5.0, 30.0, 8.0, 5.0, 0.1],
+      "stability": null,
+      "rom_bounds": {
+        "primary_joint": "elbow_angle",
+        "min_amplitude_deg": 22.0,
+        "lockout_angle": 155.0,
+        "inflection_angle": 95.0,
+        "min_rep_duration_sec": 0.4,
+        "max_rep_duration_sec": 8.0
+      },
+      "source": "default",
+      "created_at": "2026-11-24"
+    },
+    {
+      "id": "planche_push_ups_profile_default",
+      "exercise": "planche_push_ups",
+      "display_name": "Planche Push-ups",
+      "camera_view": "profile",
+      "type": "dynamic",
+      "mean_features": [150.0, 14.0, 130.0, 165.0, 5.0, 1.0],
+      "std_features": [15.0, 5.0, 30.0, 8.0, 4.0, 0.1],
+      "stability": null,
+      "rom_bounds": {
+        "primary_joint": "elbow_angle",
+        "min_amplitude_deg": 20.0,
+        "lockout_angle": 155.0,
+        "inflection_angle": 95.0,
+        "min_rep_duration_sec": 0.4,
+        "max_rep_duration_sec": 9.0
+      },
+      "source": "default",
+      "created_at": "2026-11-24"
+    }
+  ]
+}

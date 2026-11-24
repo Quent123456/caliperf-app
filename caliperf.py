@@ -32,7 +32,7 @@ except ImportError:
 
 import tempfile
 
-# Modules biomécaniques & IA hybrides CaliPerf (Couches 1, 2, 3)
+# Modules biomécaniques & Moteur 3D Local CaliPerf
 HAS_BIOMECH = False
 try:
     from services.gemini_vision import (
@@ -47,6 +47,24 @@ try:
         extract_kinematics_from_video,
         generate_annotated_frame_on_demand
     )
+    from core.biomechanics_3d import (
+        extract_3d_kinematics_from_video
+    )
+    from core.segmentation import (
+        segment_and_classify_video
+    )
+    from core.calibration import (
+        load_baselines_3d,
+        save_baselines_3d,
+        identify_exercise_1nn,
+        extract_prototype_from_video,
+        add_or_update_prototype_in_file,
+        delete_prototype_from_file
+    )
+    from core.metrics import (
+        evaluate_isometric_3d,
+        evaluate_dynamic_3d
+    )
     from core.rep_counter import (
         evaluate_isometric_figure,
         evaluate_dynamic_movement,
@@ -57,19 +75,19 @@ try:
     HAS_BIOMECH = True
 except Exception as _e_bio:
     # Définition systématique de fonctions de secours pour éviter tout NameError
-    def analyze_single_video_pipeline(video_path, api_key="", forced_exercise=None):
+    def analyze_single_video_pipeline(video_path, api_key="", forced_exercise=None, custom_tolerance=15.0):
         fn = os.path.basename(video_path)
         return {
             "video_path": video_path,
             "filename": fn,
             "exercise_key": "full_planche",
-            "exercise_display": "Auto-Détection",
+            "exercise_display": "Auto-Détection 3D",
             "type": "isometric",
+            "camera_view": "profile",
             "tut": 3.0,
             "reps": 0,
             "drift": f"Mode secours : {str(_e_bio)[:40]}",
-            "confidence": 0.8,
-            "camera_angle": "profile",
+            "confidence": 0.85,
             "kinematics": None,
             "evaluation": {},
             "ai_data": None,
@@ -91,8 +109,20 @@ except Exception as _e_bio:
     def save_exercise_thresholds(data):
         return False
 
+    def load_baselines_3d():
+        return {"prototypes": []}
+
+    def save_baselines_3d(data):
+        return False
+
+    def add_or_update_prototype_in_file(p):
+        return False, "Non disponible"
+
+    def delete_prototype_from_file(pid):
+        return False, "Non disponible"
+
     def extract_kinematics_from_video(video_path):
-        return {"timestamps": np.array([0.0]), "angles_filtered": {"elbow": np.array([180.0])}}
+        return {"timestamps": [0.0], "angles_filtered": {"elbow": [180.0]}}
 
     def generate_annotated_frame_on_demand(video_path, target_time_sec):
         return None
@@ -842,6 +872,103 @@ with tab_studio:
             label_visibility="collapsed"
         )
 
+    # --------------------------------------------------------------------------
+    # SECTION DÉDIÉE : CALIBRAGE MULTI-ANGLES (GESTION DES PROTOTYPES 3D)
+    # --------------------------------------------------------------------------
+    with st.expander("🎯 Calibrage Multi-Angles (Gestion des Prototypes 3D)", expanded=False):
+        st.markdown("<small style='color:#94a3b8;'>Enregistrez des vidéos de référence sous différents angles de vue (Profil, 3/4, Face) pour étalonner la détection automatique locale sans IA cloud.</small>", unsafe_allow_html=True)
+
+        col_cal1, col_cal2 = st.columns([1.2, 1])
+        with col_cal1:
+            calib_video = st.file_uploader(
+                "Vidéo de référence pour calibrage :",
+                type=['mp4', 'mov', 'avi'],
+                key="calib_uploader_file"
+            )
+        with col_cal2:
+            calib_exo = st.selectbox(
+                "Exercice à calibrer :",
+                [
+                    ("full_planche", "Full Planche"),
+                    ("straddle_planche", "Straddle Planche"),
+                    ("maltese", "Maltese (Hirondelle)"),
+                    ("front_lever", "Front Lever"),
+                    ("pull_ups", "Tractions"),
+                    ("push_ups", "Pompes"),
+                    ("planche_push_ups", "Planche Push-ups"),
+                    ("other", "Autre figure")
+                ],
+                format_func=lambda x: x[1],
+                key="calib_exo_select"
+            )
+            calib_cam = st.selectbox("Angle de vue caméra :", ["Profil", "3/4", "Face"], key="calib_cam_select")
+            calib_type = st.radio("Type d'exercice :", ["Isométrique", "Dynamique"], horizontal=True, key="calib_type_radio")
+
+        if calib_video is not None:
+            if st.button("🚀 Analyser & Enregistrer ce prototype de référence", key="btn_save_calib_proto", type="primary", use_container_width=True):
+                with st.spinner("Extraction cinématique 3D et enregistrement du prototype..."):
+                    try:
+                        calib_temp = get_persisted_temp_video_path(calib_video)
+                        kin_c = extract_3d_kinematics_from_video(calib_temp)
+                        seg_c = segment_and_classify_video(kin_c)
+                        c_type = "isometric" if calib_type == "Isométrique" else "dynamic"
+                        cam_code = "profile" if calib_cam == "Profil" else ("three_quarter" if calib_cam == "3/4" else "front")
+
+                        proto_new = extract_prototype_from_video(
+                            kinematics=kin_c,
+                            segmentation=seg_c,
+                            exercise_key=calib_exo[0],
+                            display_name=calib_exo[1],
+                            camera_view=cam_code,
+                            exo_type=c_type
+                        )
+                        ok_add, msg_add = add_or_update_prototype_in_file(proto_new)
+                        if ok_add:
+                            st.success(f"✅ {msg_add}")
+                            time.sleep(0.5)
+                            st.rerun()
+                        else:
+                            st.error(msg_add)
+                    except Exception as e_cal:
+                        st.error(f"Erreur de calibrage : {e_cal}")
+
+        # Liste des prototypes enregistrés
+        st.markdown("<hr style='border:0; border-top:1px solid rgba(255,255,255,0.1); margin:12px 0;'>", unsafe_allow_html=True)
+        st.markdown("<b style='font-size:0.85rem; color:#f1f5f9;'>Prototypes 3D enregistrés dans la base :</b>", unsafe_allow_html=True)
+        try:
+            cur_baselines = load_baselines_3d()
+            all_protos = cur_baselines.get("prototypes", [])
+            if all_protos:
+                p_rows = []
+                for p in all_protos:
+                    p_rows.append({
+                        "ID": p["id"],
+                        "Exercice": p.get("display_name", p["exercise"]),
+                        "Angle": p.get("camera_view", "profile"),
+                        "Type": "Isométrique" if p.get("type") == "isometric" else "Dynamique",
+                        "Source": p.get("source", "default")
+                    })
+                st.dataframe(pd.DataFrame(p_rows), use_container_width=True, hide_index=True)
+
+                col_del_id, col_del_btn = st.columns([2, 1])
+                with col_del_id:
+                    user_protos = [p["id"] for p in all_protos if p.get("source") != "default"]
+                    if user_protos:
+                        proto_to_del = st.selectbox("Sélectionner un prototype personnalisé à supprimer :", user_protos, key="sel_proto_del")
+                    else:
+                        proto_to_del = None
+                        st.caption("Seuls les prototypes personnalisés peuvent être supprimés.")
+                with col_del_btn:
+                    if proto_to_del and st.button("🗑️ Supprimer", key="btn_del_proto"):
+                        ok_d, msg_d = delete_prototype_from_file(proto_to_del)
+                        if ok_d:
+                            st.toast(f"✅ {msg_d}")
+                            st.rerun()
+                        else:
+                            st.error(msg_d)
+        except Exception as e_bp:
+            st.caption(f"Prototypes : {e_bp}")
+
     if uploaded_files:
         st.session_state.active_uploaded_files = uploaded_files
     else:
@@ -884,9 +1011,8 @@ with tab_studio:
 
         col_b_run, col_b_info = st.columns([1.5, 1])
         with col_b_run:
-            lbl_btn = f"🚀 Lancer l'Auto-Analyse par Lot ({total_files} vidéos)" if total_files > 1 else "🚀 Lancer l'Auto-Analyse de la Vidéo"
+            lbl_btn = f"🚀 Lancer l'Auto-Analyse 3D du Lot ({total_files} vidéos)" if total_files > 1 else "🚀 Lancer l'Auto-Analyse 3D"
             if st.button(lbl_btn, key="btn_run_batch_all", type="primary", use_container_width=True):
-                gem_key = get_gemini_api_key()
                 p_bar = st.progress(0.0)
                 p_txt = st.empty()
 
@@ -895,9 +1021,9 @@ with tab_studio:
                     p_txt.caption(msg)
 
                 all_temp_paths = [get_persisted_temp_video_path(f) for f in uploaded_files]
-                with st.spinner("Analyse accélérée du lot en cours (Gemini Flash + MediaPipe Pose)..."):
+                with st.spinner("Analyse cinématique 3D locale en cours (< 2.5s / vidéo)..."):
                     try:
-                        batch_res = process_video_batch_parallel(all_temp_paths, gem_key, progress_callback=_b_cb)
+                        batch_res = process_video_batch_parallel(all_temp_paths, progress_callback=_b_cb)
                         st.session_state.batch_results = batch_res
 
                         for r in batch_res:
@@ -913,19 +1039,18 @@ with tab_studio:
                             st.session_state.biomech_results[fn] = r
                             st.session_state.processed_videos.add(fn)
 
-                        st.toast(f"✅ {total_files} vidéos analysées avec succès !")
+                        st.toast(f"✅ {total_files} vidéos analysées avec succès (Moteur 3D) !")
                         time.sleep(0.3)
                         st.rerun()
                     except Exception as err_batch:
                         st.error(f"Erreur durant l'analyse par lot : {err_batch}")
 
         with col_b_info:
-            if st.button("⚡ Analyser la vidéo active (< 3s)", key="btn_run_cur_single", use_container_width=True):
-                gem_key = get_gemini_api_key()
-                with st.spinner("Analyse intelligente en cours..."):
+            if st.button("⚡ Analyser la vidéo active (3D < 2.5s)", key="btn_run_cur_single", use_container_width=True):
+                with st.spinner("Analyse cinématique 3D locale en cours..."):
                     try:
                         cur_temp_path = get_persisted_temp_video_path(files_dict[file_names[min(st.session_state.active_video_idx, total_files - 1)]])
-                        res = analyze_single_video_pipeline(cur_temp_path, gem_key)
+                        res = analyze_single_video_pipeline(cur_temp_path)
                         fn = res["filename"]
                         if fn not in st.session_state.stopwatches:
                             st.session_state.stopwatches[fn] = {
@@ -1049,66 +1174,90 @@ with tab_studio:
                 st.toast(f"✅ TST fixé à {diff_marker}s")
                 st.rerun()
 
-            # MODULE AUTO-TRACK IA & TEMPO
-            with st.expander("🤖 Auto-Track IA : Détection Mouvement & Reps", expanded=False):
-                st.markdown("<small style='color:#94a3b8;'>Quantification automatique du temps sous tension et des répétitions.</small>", unsafe_allow_html=True)
+            # MODULE AUTO-TRACK 3D DÉTERMINISTE
+            with st.expander("🤖 Auto-Track 3D Local : Détection Mouvement & Reps", expanded=False):
+                st.markdown("""
+                    <div style="background:rgba(0, 240, 255, 0.08); border-left:4px solid #00f0ff; padding:8px 12px; border-radius:8px; margin:8px 0; font-size:0.82rem; color:#e0f2fe;">
+                        🟢 <b>Moteur 100% Local Déterministe :</b> MediaPipe 3D (World Landmarks métriques), segmentation automatique de l'effort et prototypes multi-angles (1-NN).
+                    </div>
+                """, unsafe_allow_html=True)
 
-                gem_key = get_gemini_api_key()
-                if not gem_key:
-                    st.markdown("""
-                        <div style="background:rgba(245,158,11,0.12); border-left:4px solid #f59e0b; padding:8px 12px; border-radius:8px; margin:8px 0; font-size:0.82rem; color:#fde68a;">
-                            🔑 <b>Clé API Gemini requise :</b><br>
-                            Collez votre clé Google AI Studio ci-dessous pour activer l'analyse directe.
-                        </div>
-                    """, unsafe_allow_html=True)
-                    quick_k = st.text_input("Collez votre clé Gemini :", type="password", key=f"quick_key_inp_{current_fname}", placeholder="AIzaSy...")
-                    if st.button("💾 Enregistrer la clé et débloquer", key=f"btn_save_key_{current_fname}", use_container_width=True, type="primary"):
-                        if quick_k.strip():
-                            st.session_state.db["settings"]["gemini_api_key"] = quick_k.strip()
-                            st.session_state["active_gemini_key"] = quick_k.strip()
-                            save_db(st.session_state.db)
-                            st.toast("✅ Clé API enregistrée !")
+                col_tol1, col_tol2 = st.columns([1.5, 1])
+                with col_tol1:
+                    custom_tol = st.slider("Tolérance angulaire (±°)", min_value=8.0, max_value=25.0, value=15.0, step=1.0, key=f"tol_slider_{current_fname}")
+                with col_tol2:
+                    forced_opt = st.selectbox(
+                        "Forcer l'exercice :",
+                        [
+                            ("auto", "Auto (1-NN 3D)"),
+                            ("full_planche", "Full Planche"),
+                            ("straddle_planche", "Straddle Planche"),
+                            ("maltese", "Maltese"),
+                            ("front_lever", "Front Lever"),
+                            ("pull_ups", "Tractions"),
+                            ("push_ups", "Pompes"),
+                            ("planche_push_ups", "Planche Push-ups")
+                        ],
+                        format_func=lambda x: x[1],
+                        key=f"forced_exo_{current_fname}"
+                    )
+
+                if st.button("✨ Lancer l'Auto-Track 3D Rapide (< 2.5s)", key=f"ai_track_{current_fname}", use_container_width=True, type="primary"):
+                    with st.spinner("Analyse cinématique 3D locale en cours..."):
+                        try:
+                            cur_temp = get_persisted_temp_video_path(current_file)
+                            forced_key = None if forced_opt[0] == "auto" else forced_opt[0]
+                            res = analyze_single_video_pipeline(cur_temp, forced_exercise=forced_key, custom_tolerance=custom_tol)
+                            sw["tst_val"] = float(res["tut"])
+                            sw["reps"] = int(res["reps"])
+                            sw["detected_exo"] = res["exercise_display"]
+                            st.session_state.biomech_results[current_fname] = res
+                            st.session_state.processed_videos.add(current_fname)
+                            st.success(f"✅ Détection : **{res['exercise_display']}** ({res.get('camera_view', 'profil')}) | TUT = **{sw['tst_val']}s** | Reps = **{sw['reps']}**")
+                            time.sleep(0.3)
                             st.rerun()
-                else:
-                    st.markdown('<span class="badge-lime" style="margin-bottom:8px; display:inline-block;">🟢 Clé API Active</span>', unsafe_allow_html=True)
-                    if st.button("✨ Lancer l'Auto-Track Rapide (< 3s)", key=f"ai_track_{current_fname}", use_container_width=True, type="primary"):
-                        with st.spinner("Analyse intelligente (Gemini Flash + MediaPipe)..."):
-                            try:
-                                cur_temp = get_persisted_temp_video_path(current_file)
-                                res = analyze_single_video_pipeline(cur_temp, gem_key)
-                                sw["tst_val"] = float(res["tut"])
-                                sw["reps"] = int(res["reps"])
-                                sw["detected_exo"] = res["exercise_display"]
-                                st.session_state.biomech_results[current_fname] = res
-                                st.session_state.processed_videos.add(current_fname)
-                                st.success(f"✅ Détection : **{res['exercise_display']}** | TST = **{sw['tst_val']}s** | Reps = **{sw['reps']}**")
-                                time.sleep(0.3)
-                                st.rerun()
-                            except Exception as err_track:
-                                st.error(f"Erreur d'analyse Auto-Track : {err_track}")
+                        except Exception as err_track:
+                            st.error(f"Erreur d'analyse Auto-Track 3D : {err_track}")
 
-            # COURBES PLOTLY & CALIBRATION DIRECTEMENT DANS LE STUDIO
+            # COURBES PLOTLY & DIAGNOSTIC 3D DIRECTEMENT DANS LE STUDIO
             if current_fname in st.session_state.biomech_results:
                 bio_r = st.session_state.biomech_results[current_fname]
                 kin = bio_r.get("kinematics")
                 ev = bio_r.get("evaluation")
+                seg = bio_r.get("segmentation", {})
+                effort_w = seg.get("effort_window", {})
 
-                with st.expander(f"📈 Diagnostic & Courbes Plotly ({bio_r.get('exercise_display', 'Exercice')})", expanded=False):
-                    if kin and ev and HAS_PLOTLY:
+                with st.expander(f"📈 Diagnostic 3D & Courbes ({bio_r.get('exercise_display', 'Exercice')})", expanded=False):
+                    if kin and HAS_PLOTLY:
                         t_ser = kin["timestamps"]
-                        filt = kin["angles_filtered"]
-                        is_iso = ev.get("type") == "isometric"
+                        filt_features = kin.get("features_filtered") or kin.get("angles_filtered", {})
+                        is_iso = bio_r.get("type") == "isometric"
 
-                        fig_elbow = go.Figure()
-                        fig_elbow.add_trace(go.Scatter(
-                            x=t_ser, y=filt["elbow"],
-                            mode='lines', name='Coude Filtré (°)',
-                            line=dict(color='#00f0ff', width=2.5)
-                        ))
+                        # Résumé d'identification 3D
+                        st.markdown(f"""
+                            <div style="background:rgba(15,23,42,0.8); border:1px solid rgba(0,240,255,0.25); padding:8px 12px; border-radius:8px; margin-bottom:10px; font-size:0.83rem;">
+                                🎯 <b>Exercice 3D :</b> <span style="color:#00f0ff;">{bio_r.get('exercise_display')}</span> |
+                                📐 <b>Angle Caméra :</b> {bio_r.get('camera_view', 'profil').capitalize()} |
+                                💎 <b>Confiance 1-NN :</b> {int(bio_r.get('confidence', 0.95)*100)}% |
+                                ⏱️ <b>Fenêtre active :</b> {effort_w.get('start_time', 0.0)}s - {effort_w.get('end_time', 0.0)}s ({effort_w.get('duration', 0.0)}s)
+                            </div>
+                        """, unsafe_allow_html=True)
+
+                        fig_3d = go.Figure()
+                        if "elbow_angle" in filt_features:
+                            fig_3d.add_trace(go.Scatter(x=t_ser, y=filt_features["elbow_angle"], mode='lines', name='Coude 3D (°)', line=dict(color='#00f0ff', width=2.5)))
+                        elif "elbow" in filt_features:
+                            fig_3d.add_trace(go.Scatter(x=t_ser, y=filt_features["elbow"], mode='lines', name='Coude (°)', line=dict(color='#00f0ff', width=2.5)))
+
+                        if "shoulder_flexion" in filt_features:
+                            fig_3d.add_trace(go.Scatter(x=t_ser, y=filt_features["shoulder_flexion"], mode='lines', name='Épaule 3D (°)', line=dict(color='#f59e0b', width=2.0)))
+
+                        if "trunk_inclination" in filt_features:
+                            fig_3d.add_trace(go.Scatter(x=t_ser, y=filt_features["trunk_inclination"], mode='lines', name='Inclinaison Tronc (°)', line=dict(color='#10b981', width=1.8, dash='dot')))
 
                         if is_iso:
                             for hb in ev.get("hold_blocks", []):
-                                fig_elbow.add_vrect(
+                                fig_3d.add_vrect(
                                     x0=hb["start_time"], x1=hb["end_time"],
                                     fillcolor="rgba(16, 185, 129, 0.2)", layer="below", line_width=0,
                                     annotation_text=f"Tenue {hb['duration']}s", annotation_position="top left"
@@ -1116,35 +1265,52 @@ with tab_studio:
                         else:
                             reps_list = ev.get("reps_details", ev.get("reps_detail", []))
                             for rep in reps_list:
-                                fig_elbow.add_vrect(
+                                fig_3d.add_vrect(
                                     x0=rep["start_time"], x1=rep["end_time"],
                                     fillcolor="rgba(0, 240, 255, 0.15)", layer="below", line_width=0,
                                     annotation_text=f"R#{rep['rep_number']}", annotation_position="top left"
                                 )
 
-                        fig_elbow.update_layout(
-                            title="Flexion / Extension du Coude (°)",
+                        fig_3d.update_layout(
+                            title="Cinématique Articulaire 3D (°)",
                             xaxis_title="Temps (s)",
                             yaxis_title="Degrés (°)",
                             paper_bgcolor="rgba(15, 23, 42, 0.6)",
                             plot_bgcolor="rgba(15, 23, 42, 0.6)",
                             font=dict(color="#f1f5f9"),
                             margin=dict(l=30, r=20, t=35, b=35),
-                            height=260
+                            height=270,
+                            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
                         )
-                        st.plotly_chart(fig_elbow, use_container_width=True)
+                        st.plotly_chart(fig_3d, use_container_width=True)
 
-                        # Calibration
-                        st.markdown("<small style='color:#94a3b8;'>Calibration des seuils pour cet exercice :</small>", unsafe_allow_html=True)
-                        if st.button("💾 Calibrer & Enregistrer ces angles dans config JSON", key=f"btn_calib_{current_fname}", use_container_width=True):
-                            cal_ok, cal_vals, cal_msg = calibrate_and_update_thresholds(
-                                kinematics=kin,
-                                exercise_key=bio_r.get("exercise_key", "full_planche")
-                            )
-                            if cal_ok:
-                                st.success("✅ Seuils de référence mis à jour avec succès !")
-                            else:
-                                st.error(cal_msg)
+                        # Bouton d'enrichissement : Ajouter cette vidéo aux baselines multi-angles
+                        st.markdown("<hr style='border:0; border-top:1px solid rgba(255,255,255,0.08); margin:8px 0;'>", unsafe_allow_html=True)
+                        st.markdown("<b>➕ Enrichir la base multi-angles avec cette vidéo :</b>", unsafe_allow_html=True)
+                        c_b_cam, c_b_save = st.columns([1, 1.5])
+                        with c_b_cam:
+                            user_cam_view = st.selectbox("Angle de vue de cette vidéo :", ["Profil", "3/4", "Face"], key=f"sel_cam_add_{current_fname}")
+                        with c_b_save:
+                            if st.button("💾 Ajouter cette vidéo aux baselines", key=f"btn_add_to_base_{current_fname}", use_container_width=True):
+                                cam_c = "profile" if user_cam_view == "Profil" else ("three_quarter" if user_cam_view == "3/4" else "front")
+                                if seg and "effort_window" in seg:
+                                    proto_to_add = extract_prototype_from_video(
+                                        kinematics=kin,
+                                        segmentation=seg,
+                                        exercise_key=bio_r.get("exercise_key", "full_planche"),
+                                        display_name=bio_r.get("exercise_display", "Full Planche"),
+                                        camera_view=cam_c,
+                                        exo_type=bio_r.get("type", "isometric")
+                                    )
+                                    ok_b, msg_b = add_or_update_prototype_in_file(proto_to_add)
+                                    if ok_b:
+                                        st.success(f"✅ Vidéo ajoutée aux baselines ({user_cam_view}) !")
+                                        time.sleep(0.5)
+                                        st.rerun()
+                                    else:
+                                        st.error(msg_b)
+                                else:
+                                    st.warning("Données cinématiques insuffisantes pour créer un prototype.")
 
                 c_rep1, c_rep2 = st.columns(2)
                 with c_rep1:
