@@ -1440,12 +1440,13 @@ with tab_calib:
     """, unsafe_allow_html=True)
 
     df_base = load_baselines_table()
+    distinct_figures = [str(x).strip() for x in df_base["exercise"].unique() if str(x).strip()] if not df_base.empty and "exercise" in df_base.columns else []
 
     # Barre d'actions bibliothèque
     col_exp_info, col_refresh, col_exp_btn = st.columns([1.8, 1, 1.2])
     with col_exp_info:
         calib_count = len(df_base[df_base["status"] == "calibrated"]) if not df_base.empty and "status" in df_base.columns else 0
-        distinct_count = len([str(x).strip() for x in df_base["exercise"].unique() if str(x).strip()]) if not df_base.empty and "exercise" in df_base.columns else 0
+        distinct_count = len(distinct_figures)
         total_slots = len(df_base)
         st.caption(f"📚 {distinct_count} figure(s) | {total_slots} emplacements ({calib_count} calibrés)")
     with col_refresh:
@@ -1465,27 +1466,28 @@ with tab_calib:
     # --------------------------------------------------------------------------
     # ÉTAPE A : CRÉER UNE FIGURE DANS LA BIBLIOTHÈQUE (3 ANGLES)
     # --------------------------------------------------------------------------
-    with st.expander("1️⃣ Étape A : Créer un nouveau mouvement (génère 3 angles)", expanded=(df_base.empty)):
+    with st.expander("1️⃣ Étape A : Créer un nouveau mouvement (génère 3 angles)", expanded=(len(distinct_figures) == 0)):
         st.markdown("<small style='color:#94a3b8;'>Ajoutez un mouvement à votre répertoire sans vidéo. Le système créera automatiquement 3 emplacements vides (Face, 3/4, Profil) prêts pour le calibrage.</small>", unsafe_allow_html=True)
-        col_new_name, col_new_type = st.columns([1.5, 1])
-        with col_new_name:
-            new_exo_input = st.text_input("Nom de la figure :", placeholder="ex: Full Planche, Maltese, Front Lever, Tractions, Pompes, Hefesto...", key="input_new_exo_name")
-        with col_new_type:
-            new_exo_type = st.radio("Type de mouvement :", ["Isométrique", "Dynamique"], horizontal=True, key="radio_new_exo_type")
+        with st.form("form_create_exo_slots", clear_on_submit=True):
+            col_new_name, col_new_type = st.columns([1.5, 1])
+            with col_new_name:
+                new_exo_input = st.text_input("Nom de la figure :", placeholder="ex: Full Planche, Maltese, Front Lever, Tractions, Pompes, Hefesto...")
+            with col_new_type:
+                new_exo_type = st.radio("Type de mouvement :", ["Isométrique", "Dynamique"], horizontal=True)
 
-        if st.button("➕ Créer la figure (3 angles)", type="primary", use_container_width=True, key="btn_create_exo_slots"):
-            if not new_exo_input.strip():
-                st.warning("Veuillez saisir un nom pour la figure.")
-            else:
-                c_type = "isometric" if new_exo_type == "Isométrique" else "dynamic"
-                ok_c, msg_c = create_figure_slots(new_exo_input, c_type)
-                if ok_c:
-                    st.session_state["input_new_exo_name"] = ""
-                    st.success(f"✅ {msg_c}")
-                    time.sleep(0.4)
-                    st.rerun()
+            btn_submit = st.form_submit_button("➕ Créer la figure (3 angles)", type="primary", use_container_width=True)
+            if btn_submit:
+                if not new_exo_input.strip():
+                    st.warning("Veuillez saisir un nom pour la figure.")
                 else:
-                    st.error(msg_c)
+                    c_type = "isometric" if new_exo_type == "Isométrique" else "dynamic"
+                    ok_c, msg_c = create_figure_slots(new_exo_input, c_type)
+                    if ok_c:
+                        st.success(f"✅ {msg_c}")
+                        time.sleep(0.4)
+                        st.rerun()
+                    else:
+                        st.error(msg_c)
 
     # --------------------------------------------------------------------------
     # VUE D'ENSEMBLE DE LA BIBLIOTHÈQUE
