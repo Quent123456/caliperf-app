@@ -4,6 +4,10 @@ Architecture :
 - Source de vérité unique & réactive : st.session_state.db["baselines_3d"] synchronisé dans caliperf_db.json
 - Sauvegarde locale transparente dans config/baselines_3d.json pour versioning et repli
 - Synchronisation Google Sheets optionnelle (onglet 'Baselines_3D') si un compte de service est configuré
+- Système de permissions & rôles :
+    - Administrateur Principal (is_master=True, owner='admin') : bibliothèque officielle permanente, non modifiable par autrui
+    - Coachs (is_master=False, owner='username') : ajout de figures personnalisées, non supprimables par d'autres coachs
+    - Promotion : l'Administrateur peut intégrer une figure de coach dans la base officielle permanente
 - Création en 2 étapes :
     Étape A : Création de la figure (3 angles générés : Face, 3/4, Profil avec status="empty")
     Étape B : Association d'une vidéo de calibrage -> extraction 3D et passage en status="calibrated"
@@ -35,7 +39,9 @@ BASELINES_COLUMNS = [
     "status",
     "mean_features",
     "std_features",
-    "rom_bounds"
+    "rom_bounds",
+    "owner",
+    "is_master"
 ]
 VALID_CAMERA_VIEWS = ["Face", "3/4", "Profil"]
 
@@ -72,7 +78,12 @@ def _load_local_baselines_json(path: str = DEFAULT_BASELINES_PATH) -> pd.DataFra
                 df = pd.DataFrame(b_list)
                 for col in BASELINES_COLUMNS:
                     if col not in df.columns:
-                        df[col] = ""
+                        if col == "owner":
+                            df[col] = "admin"
+                        elif col == "is_master":
+                            df[col] = True
+                        else:
+                            df[col] = ""
                 return df[BASELINES_COLUMNS]
         except Exception:
             pass
@@ -98,12 +109,19 @@ def _load_local_baselines_json(path: str = DEFAULT_BASELINES_PATH) -> pd.DataFra
                 "status": str(p.get("status", "calibrated")),
                 "mean_features": json.dumps(p.get("mean_features", [])) if isinstance(p.get("mean_features"), list) else str(p.get("mean_features", "")),
                 "std_features": json.dumps(p.get("std_features", [])) if isinstance(p.get("std_features"), list) else str(p.get("std_features", "")),
-                "rom_bounds": json.dumps(p.get("rom_bounds", {})) if isinstance(p.get("rom_bounds"), dict) else str(p.get("rom_bounds", ""))
+                "rom_bounds": json.dumps(p.get("rom_bounds", {})) if isinstance(p.get("rom_bounds"), dict) else str(p.get("rom_bounds", "")),
+                "owner": str(p.get("owner", "admin")),
+                "is_master": bool(p.get("is_master", True))
             })
         df = pd.DataFrame(rows)
         for col in BASELINES_COLUMNS:
             if col not in df.columns:
-                df[col] = ""
+                if col == "owner":
+                    df[col] = "admin"
+                elif col == "is_master":
+                    df[col] = True
+                else:
+                    df[col] = ""
         return df[BASELINES_COLUMNS]
     except Exception as e:
         print(f"Erreur lecture local JSON baselines : {e}")
@@ -143,7 +161,9 @@ def _save_local_baselines_json(df: pd.DataFrame, path: str = DEFAULT_BASELINES_P
                 "status": str(row["status"]),
                 "mean_features": mf_val,
                 "std_features": sf_val,
-                "rom_bounds": rb_val
+                "rom_bounds": rb_val,
+                "owner": str(row.get("owner", "admin")),
+                "is_master": bool(row.get("is_master", True))
             })
 
         payload = {
@@ -228,7 +248,12 @@ def load_baselines_table(force_refresh: bool = False) -> pd.DataFrame:
                 df = pd.DataFrame(db["baselines_3d"])
                 for c in BASELINES_COLUMNS:
                     if c not in df.columns:
-                        df[c] = ""
+                        if c == "owner":
+                            df[c] = "admin"
+                        elif c == "is_master":
+                            df[c] = True
+                        else:
+                            df[c] = ""
                 return df[BASELINES_COLUMNS]
 
     # Sinon charger depuis le disque (caliperf_db.json ou config/baselines_3d.json)
@@ -257,7 +282,12 @@ def _save_baselines_table_internal(df: pd.DataFrame) -> Tuple[bool, str]:
     clean_df = df.copy().fillna("")
     for c in BASELINES_COLUMNS:
         if c not in clean_df.columns:
-            clean_df[c] = ""
+            if c == "owner":
+                clean_df[c] = "admin"
+            elif c == "is_master":
+                clean_df[c] = True
+            else:
+                clean_df[c] = ""
     clean_df = clean_df[BASELINES_COLUMNS]
     records = clean_df.to_dict(orient="records")
 
@@ -310,10 +340,17 @@ def _save_baselines_table_internal(df: pd.DataFrame) -> Tuple[bool, str]:
 # OPÉRATIONS MÉTIER EN 2 ÉTAPES (BIBLIOTHÈQUE / CALIBRAGE)
 # ==============================================================================
 
-def create_figure_slots(exercise_name: str, exo_type: str = "isometric") -> Tuple[bool, str]:
+def create_figure_slots(
+    exercise_name: str,
+    exo_type: str = "isometric",
+    owner: str = "admin",
+    is_master: bool = True
+) -> Tuple[bool, str]:
     """
     Étape A : Crée une nouvelle figure avec ses 3 emplacements d'angles (Face, 3/4, Profil)
     initialisés avec le statut 'empty'.
+    - Si l'administrateur crée la figure, is_master=True (officielle et permanente).
+    - Si un coach crée la figure, is_master=False (personnalisée, owner=username).
     """
     clean_name = exercise_name.strip()
     if not clean_name:
@@ -338,7 +375,9 @@ def create_figure_slots(exercise_name: str, exo_type: str = "isometric") -> Tupl
             "status": "empty",
             "mean_features": "",
             "std_features": "",
-            "rom_bounds": ""
+            "rom_bounds": "",
+            "owner": owner,
+            "is_master": is_master
         })
 
     updated_df = pd.concat([df, pd.DataFrame(new_rows)], ignore_index=True)
@@ -352,7 +391,8 @@ def save_calibrated_slot(
     exo_type: str,
     mean_features: List[float],
     std_features: List[float],
-    rom_bounds: Optional[Dict[str, Any]] = None
+    rom_bounds: Optional[Dict[str, Any]] = None,
+    owner: str = "admin"
 ) -> Tuple[bool, str]:
     """
     Étape B : Associe les données 3D analysées à un emplacement précis et passe son statut à 'calibrated'.
@@ -386,7 +426,9 @@ def save_calibrated_slot(
             "status": "calibrated",
             "mean_features": mf_str,
             "std_features": sf_str,
-            "rom_bounds": rb_str
+            "rom_bounds": rb_str,
+            "owner": owner,
+            "is_master": False
         }
         df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
 
@@ -394,14 +436,26 @@ def save_calibrated_slot(
     return ok, f"Calibrage '{clean_name}' ({clean_view}) enregistré avec succès !" if ok else msg
 
 
-def reset_slot(slot_id: str) -> Tuple[bool, str]:
-    """Réinitialise un angle de calibrage (repasse à 'empty' sans supprimer la figure)."""
+def reset_slot(slot_id: str, user_role: str = "admin", username: str = "admin") -> Tuple[bool, str]:
+    """
+    Réinitialise un angle de calibrage (repasse à 'empty' sans supprimer la figure).
+    Un coach ne peut pas réinitialiser un angle de la bibliothèque officielle de l'admin.
+    """
     df = load_baselines_table().copy()
     match = df["id"] == slot_id
     if not match.any():
         return False, f"Emplacement '{slot_id}' introuvable."
 
     idx = df[match].index[0]
+    is_master = bool(df.at[idx, "is_master"]) if "is_master" in df.columns else True
+    owner = str(df.at[idx, "owner"]) if "owner" in df.columns else "admin"
+
+    if is_master and user_role.lower() != "admin":
+        return False, "Action refusée : Seul l'administrateur peut réinitialiser une figure officielle."
+
+    if not is_master and user_role.lower() != "admin" and owner.lower() != username.lower():
+        return False, "Action refusée : Vous ne pouvez réinitialiser que vos propres figures."
+
     df.at[idx, "status"] = "empty"
     df.at[idx, "mean_features"] = ""
     df.at[idx, "std_features"] = ""
@@ -411,8 +465,16 @@ def reset_slot(slot_id: str) -> Tuple[bool, str]:
     return ok, "Emplacement réinitialisé en attente de vidéo." if ok else msg
 
 
-def delete_figure(exercise_name: str) -> Tuple[bool, str]:
-    """Supprime complètement une figure et ses 3 angles de la bibliothèque."""
+def delete_figure(
+    exercise_name: str,
+    user_role: str = "admin",
+    username: str = "admin"
+) -> Tuple[bool, str]:
+    """
+    Supprime une figure de la bibliothèque selon les règles de permission :
+    - Figure officielle (is_master=True) : supprimable UNIQUEMENT par l'administrateur principal.
+    - Figure personnalisée (is_master=False) : supprimable par son créateur ou par l'administrateur.
+    """
     clean_name = exercise_name.strip()
     if not clean_name:
         return False, "Nom de figure invalide."
@@ -421,9 +483,40 @@ def delete_figure(exercise_name: str) -> Tuple[bool, str]:
     if df.empty or "exercise" not in df.columns:
         return False, "La bibliothèque est déjà vide."
 
+    matches = df[df["exercise"].astype(str).str.strip().str.lower() == clean_name.lower()]
+    if matches.empty:
+        return False, f"Figure '{clean_name}' introuvable."
+
+    is_official = bool(matches.iloc[0].get("is_master", True))
+    fig_owner = str(matches.iloc[0].get("owner", "admin")).strip().lower()
+
+    if is_official and user_role.lower() != "admin":
+        return False, f"Action refusée : '{clean_name}' est une figure officielle permanente de l'administrateur."
+
+    if not is_official and user_role.lower() != "admin" and fig_owner != username.strip().lower():
+        return False, f"Action refusée : Vous ne pouvez supprimer que vos propres figures personnalisées."
+
     df = df[df["exercise"].astype(str).str.strip().str.lower() != clean_name.lower()].reset_index(drop=True)
     ok, msg = _save_baselines_table_internal(df)
     return True, f"Figure '{clean_name}' supprimée avec succès."
+
+
+def promote_to_master(exercise_name: str) -> Tuple[bool, str]:
+    """
+    Permet à l'administrateur d'intégrer une figure créée par un coach dans la bibliothèque
+    officielle permanente (is_master=True, owner='admin').
+    """
+    df = load_baselines_table().copy()
+    matches = df[df["exercise"].astype(str).str.strip().str.lower() == exercise_name.strip().lower()]
+    if matches.empty:
+        return False, f"Figure '{exercise_name}' introuvable."
+
+    for idx in matches.index:
+        df.at[idx, "is_master"] = True
+        df.at[idx, "owner"] = "admin"
+
+    ok, msg = _save_baselines_table_internal(df)
+    return ok, f"Figure '{exercise_name}' intégrée avec succès à la bibliothèque officielle !" if ok else msg
 
 
 def export_baselines_json() -> str:
@@ -452,7 +545,9 @@ def export_baselines_json() -> str:
             "status": str(row["status"]),
             "mean_features": mf,
             "std_features": sf,
-            "rom_bounds": rb
+            "rom_bounds": rb,
+            "owner": str(row.get("owner", "admin")),
+            "is_master": bool(row.get("is_master", True))
         })
 
     payload = {
@@ -535,7 +630,9 @@ def get_calibrated_prototypes() -> List[Dict[str, Any]]:
             "mean_features": mf,
             "std_features": sf,
             "stability": stability,
-            "rom_bounds": rb
+            "rom_bounds": rb,
+            "owner": str(row.get("owner", "admin")),
+            "is_master": bool(row.get("is_master", True))
         })
 
     return prototypes

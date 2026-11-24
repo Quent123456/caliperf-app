@@ -59,11 +59,22 @@ try:
         save_calibrated_slot,
         reset_slot,
         delete_figure,
+        promote_to_master,
         export_baselines_json,
         get_calibrated_prototypes,
         compute_active_feature_vectors,
         identify_exercise_1nn,
         VALID_CAMERA_VIEWS
+    )
+    from core.auth import (
+        hash_password,
+        verify_password,
+        process_avatar_image,
+        get_default_admin,
+        authenticate_user,
+        register_user,
+        get_role_badge_info,
+        render_avatar_html
     )
     from core.metrics import (
         evaluate_isometric_3d,
@@ -126,8 +137,22 @@ except Exception as _e_bio:
     def reset_slot(sid):
         return False, "Non disponible"
 
-    def delete_figure(name):
+    def delete_figure(name, user_role="admin", username="admin"):
         return False, "Non disponible"
+
+    def promote_to_master(exercise_name):
+        return False, "Non disponible"
+
+    from core.auth import (
+        hash_password,
+        verify_password,
+        process_avatar_image,
+        get_default_admin,
+        authenticate_user,
+        register_user,
+        get_role_badge_info,
+        render_avatar_html
+    )
 
     def export_baselines_json():
         return "{}"
@@ -180,6 +205,9 @@ DEFAULT_ENTRY_RPE = "entry.46344190"
 def get_default_db():
     return {
         "version": 2,
+        "users": {
+            "admin": get_default_admin("admin")
+        },
         "students": {
             "Élève Démo": {
                 "link": DEFAULT_FORM_URL,
@@ -227,6 +255,12 @@ def load_db():
                     }
             save_db(new_data)
             return new_data
+
+        if "users" not in raw or not isinstance(raw["users"], dict) or not raw["users"]:
+            admin_pwd = raw.get("settings", {}).get("admin_pwd", "admin")
+            raw["users"] = {
+                "admin": get_default_admin(admin_pwd)
+            }
 
         if "evaluations" not in raw:
             raw["evaluations"] = []
@@ -292,6 +326,9 @@ if "db" not in st.session_state:
 
 if "is_authenticated" not in st.session_state:
     st.session_state.is_authenticated = False
+
+if "current_user" not in st.session_state:
+    st.session_state.current_user = None
 
 if "active_video_idx" not in st.session_state:
     st.session_state.active_video_idx = 0
@@ -460,6 +497,17 @@ st.markdown("""
         background: rgba(245, 158, 11, 0.15);
         color: #f59e0b;
         border: 1px solid rgba(245, 158, 11, 0.35);
+        padding: 3px 9px;
+        border-radius: 9999px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        display: inline-block;
+    }
+
+    .badge-gold {
+        background: rgba(245, 158, 11, 0.18);
+        color: #fbbf24;
+        border: 1px solid rgba(245, 158, 11, 0.45);
         padding: 3px 9px;
         border-radius: 9999px;
         font-size: 0.72rem;
@@ -1005,30 +1053,159 @@ if not st.session_state.app_entered:
 
 
 # ==============================================================================
-# 7. EN-TÊTE PRINCIPAL & ONGLETS FLUIDES DE L'APPLICATION
+# 7. PORTAIL DE CONNEXION / INSCRIPTION (SI NON CONNECTÉ)
 # ==============================================================================
-col_brand, col_nav_home = st.columns([4, 1.2])
+if st.session_state.current_user is None:
+    st.markdown("""
+        <div style="text-align: center; margin-top: 1rem; margin-bottom: 1.4rem;">
+            <div style="display: inline-flex; align-items: center; gap: 8px; background: rgba(0, 240, 255, 0.08); border: 1px solid rgba(0, 240, 255, 0.25); border-radius: 9999px; padding: 4px 14px; margin-bottom: 0.6rem;">
+                <span style="font-size: 14px;">🔐</span>
+                <span style="color: #00f0ff; font-weight: 700; font-size: 0.78rem; letter-spacing: 0.05em; text-transform: uppercase;">Authentification</span>
+            </div>
+            <h2 style="font-size: 1.9rem; font-weight: 900; letter-spacing: -0.02em; margin: 0 0 0.3rem 0; color: #f8fafc;">
+                Espace Membres CaliPerf
+            </h2>
+            <p style="color: #94a3b8; font-size: 0.9rem; max-width: 460px; margin: 0 auto;">
+                Connectez-vous à votre espace coach ou élève, ou créez votre compte en quelques secondes.
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
+
+    tab_login, tab_register = st.tabs(["🔑 Se connecter", "📝 Créer un compte"])
+
+    with tab_login:
+        with st.form("form_login_user"):
+            l_user = st.text_input("Identifiant :", placeholder="ex: admin, coach_alex, thomas...").strip()
+            l_pass = st.text_input("Mot de passe :", type="password")
+
+            c_btn1, c_btn2 = st.columns([1.5, 1.4])
+            with c_btn1:
+                btn_login = st.form_submit_button("🚀 Se connecter", type="primary", use_container_width=True)
+            with c_btn2:
+                btn_quick_admin = st.form_submit_button("⚡ Connexion Admin Rapide", help="Connexion directe en Administrateur Principal", use_container_width=True)
+
+            if btn_login:
+                if not l_user or not l_pass:
+                    st.warning("Veuillez renseigner votre identifiant et votre mot de passe.")
+                else:
+                    auth_u = authenticate_user(l_user, l_pass, st.session_state.db.get("users", {}))
+                    if auth_u:
+                        st.session_state.current_user = auth_u
+                        st.session_state.is_authenticated = True
+                        st.toast(f"✅ Bienvenue, {auth_u['full_name']} !")
+                        time.sleep(0.3)
+                        st.rerun()
+                    else:
+                        st.error("Identifiant ou mot de passe incorrect.")
+
+            if btn_quick_admin:
+                admin_u = st.session_state.db.get("users", {}).get("admin", get_default_admin())
+                st.session_state.current_user = admin_u
+                st.session_state.is_authenticated = True
+                st.toast("✅ Connecté en tant qu'Administrateur Principal")
+                time.sleep(0.3)
+                st.rerun()
+
+    with tab_register:
+        st.markdown("<small style='color:#94a3b8;'>Rejoignez CaliPerf pour accéder à vos analyses et créer votre propre bibliothèque.</small>", unsafe_allow_html=True)
+        with st.form("form_register_user", clear_on_submit=False):
+            reg_role = st.radio("Je suis :", ["🏋️ Coach", "🤸 Élève"], horizontal=True)
+            reg_full_name = st.text_input("Nom complet / Prénom :", placeholder="ex: Alexandre Coach")
+            reg_username = st.text_input("Identifiant unique (login) :", placeholder="ex: coach_alex")
+
+            col_rp1, col_rp2 = st.columns(2)
+            with col_rp1:
+                reg_pass1 = st.text_input("Mot de passe :", type="password")
+            with col_rp2:
+                reg_pass2 = st.text_input("Confirmer le mot de passe :", type="password")
+
+            reg_avatar_upload = st.file_uploader("Photo de profil (smartphone ou PC) :", type=["jpg", "jpeg", "png", "webp"])
+
+            btn_create = st.form_submit_button("➕ Créer mon compte", type="primary", use_container_width=True)
+            if btn_create:
+                if not reg_username.strip():
+                    st.warning("Veuillez choisir un identifiant.")
+                elif not reg_pass1 or reg_pass1 != reg_pass2:
+                    st.warning("Les mots de passe ne correspondent pas ou sont vides.")
+                else:
+                    avatar_b64 = process_avatar_image(reg_avatar_upload) if reg_avatar_upload else ""
+                    role_str = "coach" if "coach" in reg_role.lower() else "eleve"
+                    if "users" not in st.session_state.db:
+                        st.session_state.db["users"] = {}
+                    ok_r, msg_r, new_usr = register_user(
+                        reg_username,
+                        reg_pass1,
+                        role_str,
+                        reg_full_name,
+                        avatar_b64,
+                        st.session_state.db["users"]
+                    )
+                    if ok_r and new_usr:
+                        save_db(st.session_state.db)
+                        st.session_state.current_user = new_usr
+                        st.session_state.is_authenticated = True
+                        st.success(f"✅ {msg_r} Bienvenue, {new_usr['full_name']} !")
+                        time.sleep(0.5)
+                        st.rerun()
+                    else:
+                        st.error(msg_r)
+
+    st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
+    if st.button("👈 Revenir à la page d'accueil", use_container_width=True):
+        st.session_state.app_entered = False
+        st.rerun()
+    st.stop()
+
+
+# ==============================================================================
+# 8. EN-TÊTE PRINCIPAL & ONGLETS FLUIDES DE L'APPLICATION
+# ==============================================================================
+curr_u = st.session_state.current_user or get_default_admin()
+u_name = curr_u.get("full_name") or curr_u.get("username", "Utilisateur")
+u_role = curr_u.get("role", "admin")
+u_avatar = curr_u.get("avatar", "")
+role_label, role_badge_cls, role_icon = get_role_badge_info(u_role)
+
+col_brand, col_u_info, col_nav_actions = st.columns([2.4, 2.2, 1.4])
 with col_brand:
     st.markdown("""
-        <div class="app-brand-banner">
+        <div class="app-brand-banner" style="margin-bottom:0;">
             <div style="display:flex; align-items:center; gap:8px;">
-                <div style="background: linear-gradient(135deg, #00f0ff, #0077ff); padding: 6px 10px; border-radius: 10px;">
-                    <span style="font-size: 17px;">⚡</span>
+                <div style="background: linear-gradient(135deg, #00f0ff, #0077ff); padding: 5px 8px; border-radius: 9px;">
+                    <span style="font-size: 15px;">⚡</span>
                 </div>
                 <div>
-                    <span style="font-size: 1.25rem; font-weight:800; letter-spacing: -0.02em;">CALIPERF</span>
-                    <span style="color:#00f0ff; font-weight:800; font-size:1.25rem;">PRO</span>
+                    <span style="font-size: 1.15rem; font-weight:800; letter-spacing: -0.02em;">CALIPERF</span>
+                    <span style="color:#00f0ff; font-weight:800; font-size:1.15rem;">PRO</span>
                 </div>
-            </div>
-            <div style="display:flex; align-items:center; gap:6px;">
-                <span class="badge-cyan">📲 Glissement Tactile</span>
             </div>
         </div>
     """, unsafe_allow_html=True)
-with col_nav_home:
-    if st.button("🏠 Accueil", key="btn_return_home", help="Revenir à la page d'accueil", use_container_width=True):
-        st.session_state.app_entered = False
-        st.rerun()
+
+with col_u_info:
+    avatar_html = render_avatar_html(u_avatar, u_name, size=34)
+    st.markdown(f"""
+        <div style="display:flex; align-items:center; gap:8px; padding: 4px 8px; background: rgba(255,255,255,0.04); border-radius: 10px; border: 1px solid rgba(255,255,255,0.08);">
+            {avatar_html}
+            <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                <b style="font-size: 0.84rem; color: #f8fafc; display:block; line-height:1.2;">{u_name}</b>
+                <span class="{role_badge_cls}" style="font-size: 0.65rem; padding: 1px 6px;">{role_icon} {role_label}</span>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+
+with col_nav_actions:
+    col_na1, col_na2 = st.columns(2)
+    with col_na1:
+        if st.button("🏠", key="btn_return_home", help="Page d'accueil", use_container_width=True):
+            st.session_state.app_entered = False
+            st.rerun()
+    with col_na2:
+        if st.button("🚪", key="btn_logout", help="Se déconnecter", use_container_width=True):
+            st.session_state.current_user = None
+            st.session_state.is_authenticated = False
+            st.session_state.app_entered = False
+            st.rerun()
 
 st.markdown('<div class="swipe-hint-pill">👈 Glissez l\'écran de gauche à droite pour naviguer 👉</div>', unsafe_allow_html=True)
 
@@ -1558,7 +1735,11 @@ with tab_calib:
     df_base = load_baselines_table()
     distinct_figures = [str(x).strip() for x in df_base["exercise"].unique() if str(x).strip()] if not df_base.empty and "exercise" in df_base.columns else []
 
-    # Synthèse de la bibliothèque
+    curr_u = st.session_state.current_user or get_default_admin()
+    u_role = curr_u.get("role", "admin")
+    u_name = curr_u.get("username", "admin")
+    is_adm = (u_role == "admin")
+
     calib_count = len(df_base[df_base["status"] == "calibrated"]) if not df_base.empty and "status" in df_base.columns else 0
     distinct_count = len(distinct_figures)
     total_slots = len(df_base)
@@ -1567,28 +1748,39 @@ with tab_calib:
     # --------------------------------------------------------------------------
     # ÉTAPE A : CRÉER UNE FIGURE DANS LA BIBLIOTHÈQUE (3 ANGLES)
     # --------------------------------------------------------------------------
-    with st.expander("1️⃣ Étape A : Créer un nouveau mouvement (génère 3 angles)", expanded=(len(distinct_figures) == 0)):
-        st.markdown("<small style='color:#94a3b8;'>Ajoutez un mouvement à votre répertoire sans vidéo. Le système créera automatiquement 3 emplacements vides (Face, 3/4, Profil) prêts pour le calibrage.</small>", unsafe_allow_html=True)
-        with st.form("form_create_exo_slots", clear_on_submit=True):
-            col_new_name, col_new_type = st.columns([1.5, 1])
-            with col_new_name:
-                new_exo_input = st.text_input("Nom de la figure :", placeholder="ex: Full Planche, Maltese, Front Lever, Tractions, Pompes, Hefesto...")
-            with col_new_type:
-                new_exo_type = st.radio("Type de mouvement :", ["Isométrique", "Dynamique"], horizontal=True)
+    if u_role == "eleve":
+        st.info("ℹ️ Mode consultation : En tant qu'élève, vous pouvez consulter les repères 3D des mouvements ci-dessous.")
+    else:
+        step_title = "1️⃣ Étape A : Créer un mouvement officiel permanent (3 angles)" if is_adm else "1️⃣ Étape A : Ajouter une figure personnalisée (3 angles)"
+        step_desc = "En tant qu'administrateur principal, vous enrichissez la bibliothèque officielle permanente (non modifiable par les coachs)." if is_adm else "Ajoutez vos propres mouvements à votre répertoire de coach. Vous pourrez les calibrer et les utiliser pour vos séances."
+        with st.expander(step_title, expanded=(len(distinct_figures) == 0)):
+            st.markdown(f"<small style='color:#94a3b8;'>{step_desc}</small>", unsafe_allow_html=True)
+            with st.form("form_create_exo_slots", clear_on_submit=True):
+                col_new_name, col_new_type = st.columns([1.5, 1])
+                with col_new_name:
+                    new_exo_input = st.text_input("Nom de la figure :", placeholder="ex: Full Planche, Maltese, Front Lever, Tractions, Pompes, Hefesto...")
+                with col_new_type:
+                    new_exo_type = st.radio("Type de mouvement :", ["Isométrique", "Dynamique"], horizontal=True)
 
-            btn_submit = st.form_submit_button("➕ Créer la figure (3 angles)", type="primary", use_container_width=True)
-            if btn_submit:
-                if not new_exo_input.strip():
-                    st.warning("Veuillez saisir un nom pour la figure.")
-                else:
-                    c_type = "isometric" if new_exo_type == "Isométrique" else "dynamic"
-                    ok_c, msg_c = create_figure_slots(new_exo_input, c_type)
-                    if ok_c:
-                        st.success(f"✅ {msg_c}")
-                        time.sleep(0.4)
-                        st.rerun()
+                btn_label = "➕ Créer la figure officielle (3 angles)" if is_adm else "➕ Ajouter ma figure de coach (3 angles)"
+                btn_submit = st.form_submit_button(btn_label, type="primary", use_container_width=True)
+                if btn_submit:
+                    if not new_exo_input.strip():
+                        st.warning("Veuillez saisir un nom pour la figure.")
                     else:
-                        st.error(msg_c)
+                        c_type = "isometric" if new_exo_type == "Isométrique" else "dynamic"
+                        ok_c, msg_c = create_figure_slots(
+                            new_exo_input,
+                            c_type,
+                            owner="admin" if is_adm else u_name,
+                            is_master=is_adm
+                        )
+                        if ok_c:
+                            st.success(f"✅ {msg_c}")
+                            time.sleep(0.4)
+                            st.rerun()
+                        else:
+                            st.error(msg_c)
 
     # --------------------------------------------------------------------------
     # VUE D'ENSEMBLE DE LA BIBLIOTHÈQUE (MENU DÉROULANT PAR FIGURE)
@@ -1605,13 +1797,19 @@ with tab_calib:
             fig_type = sub_df["type"].iloc[0] if not sub_df.empty else "isometric"
             type_label = "Isométrique" if fig_type == "isometric" else "Dynamique"
 
+            is_official = bool(sub_df["is_master"].iloc[0]) if "is_master" in sub_df.columns else True
+            fig_owner = str(sub_df["owner"].iloc[0]) if "owner" in sub_df.columns else "admin"
+
             calib_rows = sub_df[sub_df["status"] == "calibrated"]
             nb_calib = len(calib_rows)
             calib_icon = "🟢" if nb_calib == 3 else ("🟡" if nb_calib > 0 else "⚪")
             calib_ratio = f"{nb_calib}/3 validé{'s' if nb_calib > 1 else ''}"
             clean_key = re.sub(r'[^a-zA-Z0-9]+', '_', fig_name.lower()).strip('_')
 
-            with st.expander(f"{calib_icon} {fig_name}  •  {type_label}  ({calib_ratio})", expanded=False):
+            owner_badge = "👑 Officiel" if is_official else f"🏋️ @{fig_owner}"
+            exp_header = f"{calib_icon} {fig_name}  •  {type_label}  [{owner_badge}]  ({calib_ratio})"
+
+            with st.expander(exp_header, expanded=False):
                 st.markdown("<div style='margin-bottom:8px;'></div>", unsafe_allow_html=True)
                 for v_name in VALID_CAMERA_VIEWS:
                     v_row = sub_df[sub_df["camera_view"] == v_name]
@@ -1628,25 +1826,59 @@ with tab_calib:
                     with c_v3:
                         if is_cal:
                             slot_id = v_row.iloc[0]["id"]
-                            if st.button("🔄 Réinit.", key=f"reset_{slot_id}", help=f"Réinitialiser l'angle {v_name}", use_container_width=True):
-                                ok_r, msg_r = reset_slot(slot_id)
-                                if ok_r:
-                                    st.toast(f"✅ {msg_r}")
-                                    time.sleep(0.3)
-                                    st.rerun()
-                                else:
-                                    st.error(msg_r)
+                            can_reset = (is_adm) or (not is_official and fig_owner.lower() == u_name.lower())
+                            if can_reset:
+                                if st.button("🔄 Réinit.", key=f"reset_{slot_id}", help=f"Réinitialiser l'angle {v_name}", use_container_width=True):
+                                    ok_r, msg_r = reset_slot(slot_id, user_role=u_role, username=u_name)
+                                    if ok_r:
+                                        st.toast(f"✅ {msg_r}")
+                                        time.sleep(0.3)
+                                        st.rerun()
+                                    else:
+                                        st.error(msg_r)
+                            else:
+                                st.caption("🔒 Verrouillé")
                         else:
                             st.caption("-")
 
                 st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
-                col_d_space, col_d_btn = st.columns([2.5, 1.5])
-                with col_d_btn:
-                    if st.button("🗑️ Supprimer la figure", key=f"del_fig_{clean_key}", help=f"Supprimer définitivement {fig_name}", use_container_width=True):
-                        ok_d, msg_d = delete_figure(fig_name)
-                        st.toast(f"✅ {msg_d}")
-                        time.sleep(0.3)
-                        st.rerun()
+
+                if is_official:
+                    if is_adm:
+                        col_d_space, col_d_btn = st.columns([2.5, 1.5])
+                        with col_d_btn:
+                            if st.button("🗑️ Supprimer la figure", key=f"del_fig_{clean_key}", help=f"Supprimer définitivement {fig_name}", use_container_width=True):
+                                ok_d, msg_d = delete_figure(fig_name, user_role=u_role, username=u_name)
+                                st.toast(f"✅ {msg_d}")
+                                time.sleep(0.3)
+                                st.rerun()
+                    else:
+                        st.markdown("<small style='color:#00f0ff;'>🔒 Figure officielle permanente (Lecture seule, non modifiable)</small>", unsafe_allow_html=True)
+                else:
+                    if is_adm:
+                        col_prom, col_del_c = st.columns([2.2, 1.3])
+                        with col_prom:
+                            if st.button("🌟 Intégrer à la base officielle", key=f"prom_{clean_key}", help="Rendre cette figure permanente et officielle pour tous les coachs", use_container_width=True):
+                                ok_p, msg_p = promote_to_master(fig_name)
+                                st.toast(f"✅ {msg_p}")
+                                time.sleep(0.3)
+                                st.rerun()
+                        with col_del_c:
+                            if st.button("🗑️ Supprimer", key=f"del_fig_{clean_key}", use_container_width=True):
+                                ok_d, msg_d = delete_figure(fig_name, user_role=u_role, username=u_name)
+                                st.toast(f"✅ {msg_d}")
+                                time.sleep(0.3)
+                                st.rerun()
+                    elif u_role == "coach" and fig_owner.lower() == u_name.lower():
+                        col_d_space, col_d_btn = st.columns([2.5, 1.5])
+                        with col_d_btn:
+                            if st.button("🗑️ Supprimer ma figure", key=f"del_fig_{clean_key}", use_container_width=True):
+                                ok_d, msg_d = delete_figure(fig_name, user_role=u_role, username=u_name)
+                                st.toast(f"✅ {msg_d}")
+                                time.sleep(0.3)
+                                st.rerun()
+                    else:
+                        st.markdown(f"<small style='color:#94a3b8;'>Figure créée par le coach @{fig_owner} (Lecture seule)</small>", unsafe_allow_html=True)
 
     # --------------------------------------------------------------------------
     # ÉTAPE B : ASSOCIER UNE VIDÉO DE CALIBRAGE À UN EMPLACEMENT

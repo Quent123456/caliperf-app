@@ -2,7 +2,7 @@
   "schema_version": "2.0",
   "metadata": {
     "description": "Bibliothèque de baselines 3D CaliPerf (calibrée par l'utilisateur)",
-    "updated_at": "2026-11-24 14:40"
+    "updated_at": "2026-11-24 15:04"
   },
   "columns": [
     "id",
@@ -24,7 +24,9 @@
       "status": "empty",
       "mean_features": "",
       "std_features": "",
-      "rom_bounds": ""
+      "rom_bounds": "",
+      "owner": "admin",
+      "is_master": true
     },
     {
       "id": "full_planche_3_4",
@@ -34,7 +36,9 @@
       "status": "empty",
       "mean_features": "",
       "std_features": "",
-      "rom_bounds": ""
+      "rom_bounds": "",
+      "owner": "admin",
+      "is_master": true
     },
     {
       "id": "full_planche_profil",
@@ -44,7 +48,9 @@
       "status": "empty",
       "mean_features": "",
       "std_features": "",
-      "rom_bounds": ""
+      "rom_bounds": "",
+      "owner": "admin",
+      "is_master": true
     },
     {
       "id": "maltese_face",
@@ -54,7 +60,9 @@
       "status": "empty",
       "mean_features": "",
       "std_features": "",
-      "rom_bounds": ""
+      "rom_bounds": "",
+      "owner": "admin",
+      "is_master": true
     },
     {
       "id": "maltese_3_4",
@@ -64,7 +72,9 @@
       "status": "empty",
       "mean_features": "",
       "std_features": "",
-      "rom_bounds": ""
+      "rom_bounds": "",
+      "owner": "admin",
+      "is_master": true
     },
     {
       "id": "maltese_profil",
@@ -74,7 +84,9 @@
       "status": "empty",
       "mean_features": "",
       "std_features": "",
-      "rom_bounds": ""
+      "rom_bounds": "",
+      "owner": "admin",
+      "is_master": true
     },
     {
       "id": "front_lever_face",
@@ -84,7 +96,9 @@
       "status": "empty",
       "mean_features": "",
       "std_features": "",
-      "rom_bounds": ""
+      "rom_bounds": "",
+      "owner": "admin",
+      "is_master": true
     },
     {
       "id": "front_lever_3_4",
@@ -94,7 +108,9 @@
       "status": "empty",
       "mean_features": "",
       "std_features": "",
-      "rom_bounds": ""
+      "rom_bounds": "",
+      "owner": "admin",
+      "is_master": true
     },
     {
       "id": "front_lever_profil",
@@ -104,7 +120,9 @@
       "status": "empty",
       "mean_features": "",
       "std_features": "",
-      "rom_bounds": ""
+      "rom_bounds": "",
+      "owner": "admin",
+      "is_master": true
     }
   ]
 }
