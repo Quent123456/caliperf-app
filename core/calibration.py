@@ -1,20 +1,42 @@
 """
-core/calibration.py - Gestion des prototypes multi-angles et identification 1-NN 3D
-Caractéristiques :
-- Chargement / sauvegarde des prototypes dans config/baselines_3d.json
-- Ne moyenne JAMAIS les vecteurs de différents angles : chaque calibrage = 1 prototype distinct
-- Identification par Plus Proche Voisin Normalisé (1-NN) avec pénalité sur orientation ventrale/dorsale
-- Calcul du score de confiance en %
-- Fonctions d'enrichissement pour ajouter ou supprimer des prototypes
+core/calibration.py - Gestion de la bibliothèque de prototypes 3D CaliPerf & Persistance Google Sheets
+Architecture :
+- Stockage persistant dans l'onglet 'Baselines_3D' de Google Sheets (via st.secrets)
+- Cache Streamlit @st.cache_data(ttl=600) avec invalidation instantanée (.clear()) lors des modifications
+- Fallback local transparent dans config/baselines_3d.json pour le mode hors-ligne
+- Création en 2 étapes :
+    Étape A : Création de la figure (3 angles générés : Face, 3/4, Profil avec status="empty")
+    Étape B : Association d'une vidéo de calibrage -> extraction 3D et passage en status="calibrated"
+- Règle 1-NN : Comparaison UNIQUEMENT avec les prototypes dont le status est "calibrated"
 """
 
 import os
 import json
+import re
 import time
 from typing import Dict, Any, List, Optional, Tuple
 import numpy as np
+import pandas as pd
+
+try:
+    import streamlit as st
+    HAS_STREAMLIT = True
+except ImportError:
+    HAS_STREAMLIT = False
 
 DEFAULT_BASELINES_PATH = os.path.join(os.path.dirname(__file__), "..", "config", "baselines_3d.json")
+WORKSHEET_NAME = "Baselines_3D"
+BASELINES_COLUMNS = [
+    "id",
+    "exercise",
+    "camera_view",
+    "type",
+    "status",
+    "mean_features",
+    "std_features",
+    "rom_bounds"
+]
+VALID_CAMERA_VIEWS = ["Face", "3/4", "Profil"]
 
 FEATURE_KEYS = [
     "shoulder_flexion",
@@ -26,35 +48,444 @@ FEATURE_KEYS = [
 ]
 
 
-def load_baselines_3d(path: str = DEFAULT_BASELINES_PATH) -> Dict[str, Any]:
-    """Charge le fichier de calibrage multi-angles JSON."""
+def make_slot_id(exercise: str, camera_view: str) -> str:
+    """Génère un identifiant propre et unique pour chaque emplacement de calibrage."""
+    clean_exo = re.sub(r'[^a-zA-Z0-9]+', '_', exercise.strip().lower()).strip('_')
+    clean_view = "3_4" if camera_view == "3/4" else camera_view.lower()
+    return f"{clean_exo}_{clean_view}"
+
+
+# ==============================================================================
+# GESTION DU STOCKAGE LOCAL (JSON FALLBACK & CACHE)
+# ==============================================================================
+
+def _load_local_baselines_json(path: str = DEFAULT_BASELINES_PATH) -> pd.DataFrame:
+    """Charge la table depuis le fichier JSON local."""
     if not os.path.exists(path):
-        raise FileNotFoundError(f"Fichier de baselines 3D introuvable : {path}")
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+        return pd.DataFrame(columns=BASELINES_COLUMNS)
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        protos = data.get("prototypes", [])
+        if not protos:
+            return pd.DataFrame(columns=BASELINES_COLUMNS)
+
+        rows = []
+        for p in protos:
+            rows.append({
+                "id": str(p.get("id", "")),
+                "exercise": str(p.get("exercise", "")),
+                "camera_view": str(p.get("camera_view", "Profil")),
+                "type": str(p.get("type", "isometric")),
+                "status": str(p.get("status", "calibrated")),
+                "mean_features": json.dumps(p.get("mean_features", [])) if isinstance(p.get("mean_features"), list) else str(p.get("mean_features", "")),
+                "std_features": json.dumps(p.get("std_features", [])) if isinstance(p.get("std_features"), list) else str(p.get("std_features", "")),
+                "rom_bounds": json.dumps(p.get("rom_bounds", {})) if isinstance(p.get("rom_bounds"), dict) else str(p.get("rom_bounds", ""))
+            })
+        df = pd.DataFrame(rows)
+        for col in BASELINES_COLUMNS:
+            if col not in df.columns:
+                df[col] = ""
+        return df[BASELINES_COLUMNS]
+    except Exception as e:
+        print(f"Erreur lecture local JSON baselines : {e}")
+        return pd.DataFrame(columns=BASELINES_COLUMNS)
 
 
-def save_baselines_3d(data: Dict[str, Any], path: str = DEFAULT_BASELINES_PATH) -> bool:
-    """Enregistre les prototypes mis à jour dans le fichier JSON."""
+def _save_local_baselines_json(df: pd.DataFrame, path: str = DEFAULT_BASELINES_PATH) -> bool:
+    """Enregistre le DataFrame dans le fichier JSON local."""
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
+        records = []
+        for _, row in df.iterrows():
+            mf = row["mean_features"]
+            sf = row["std_features"]
+            rb = row["rom_bounds"]
+
+            try:
+                mf_val = json.loads(mf) if isinstance(mf, str) and mf.strip() else (mf if isinstance(mf, list) else [])
+            except Exception:
+                mf_val = []
+
+            try:
+                sf_val = json.loads(sf) if isinstance(sf, str) and sf.strip() else (sf if isinstance(sf, list) else [])
+            except Exception:
+                sf_val = []
+
+            try:
+                rb_val = json.loads(rb) if isinstance(rb, str) and rb.strip() else (rb if isinstance(rb, dict) else None)
+            except Exception:
+                rb_val = None
+
+            records.append({
+                "id": str(row["id"]),
+                "exercise": str(row["exercise"]),
+                "camera_view": str(row["camera_view"]),
+                "type": str(row["type"]),
+                "status": str(row["status"]),
+                "mean_features": mf_val,
+                "std_features": sf_val,
+                "rom_bounds": rb_val
+            })
+
+        payload = {
+            "schema_version": "2.0",
+            "metadata": {
+                "description": "Bibliothèque de baselines 3D CaliPerf (calibrée par l'utilisateur)",
+                "updated_at": time.strftime("%Y-%m-%d %H:%M")
+            },
+            "columns": BASELINES_COLUMNS,
+            "prototypes": records
+        }
+
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+            json.dump(payload, f, indent=2, ensure_ascii=False)
         return True
     except Exception as e:
-        print(f"Erreur de sauvegarde baselines 3D : {e}")
+        print(f"Erreur sauvegarde local JSON baselines : {e}")
         return False
 
+
+# ==============================================================================
+# GESTION PERSISTANCE GOOGLE SHEETS (ONGLET 'Baselines_3D')
+# ==============================================================================
+
+def _get_gsheets_connection():
+    """Tente d'instancier la connexion Streamlit GSheets."""
+    if not HAS_STREAMLIT:
+        return None
+    try:
+        from streamlit_gsheets import GSheetsConnection
+        return st.connection("gsheets", type=GSheetsConnection)
+    except Exception:
+        return None
+
+
+def _get_gspread_client_and_sheet():
+    """Tente une connexion directe gspread via secrets.toml si st.connection n'est pas dispo."""
+    if not HAS_STREAMLIT or not hasattr(st, "secrets"):
+        return None, None
+    try:
+        import gspread
+        from google.oauth2.service_account import Credentials
+
+        creds_dict = None
+        spreadsheet_target = None
+
+        if "connections" in st.secrets and "gsheets" in st.secrets["connections"]:
+            sec = st.secrets["connections"]["gsheets"]
+            creds_dict = sec.get("credentials") or sec.get("service_account")
+            spreadsheet_target = sec.get("spreadsheet")
+
+        if not creds_dict and "gcp_service_account" in st.secrets:
+            creds_dict = dict(st.secrets["gcp_service_account"])
+
+        if not spreadsheet_target:
+            spreadsheet_target = st.secrets.get("spreadsheet_url") or st.secrets.get("spreadsheet") or st.secrets.get("spreadsheet_name")
+
+        if not creds_dict or not spreadsheet_target:
+            return None, None
+
+        scopes = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive"
+        ]
+        credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        gc = gspread.authorize(credentials)
+
+        if str(spreadsheet_target).startswith("http"):
+            sh = gc.open_by_url(str(spreadsheet_target))
+        else:
+            sh = gc.open(str(spreadsheet_target))
+
+        return gc, sh
+    except Exception:
+        return None, None
+
+
+def _fetch_baselines_table_internal() -> pd.DataFrame:
+    """Lit l'onglet Baselines_3D depuis Google Sheets, ou repli sur le fichier JSON local."""
+    # 1. Essai avec streamlit-gsheets
+    conn = _get_gsheets_connection()
+    if conn is not None:
+        try:
+            df = conn.read(worksheet=WORKSHEET_NAME, ttl=600)
+            if df is not None and not df.empty:
+                df = df.fillna("")
+                for c in BASELINES_COLUMNS:
+                    if c not in df.columns:
+                        df[c] = ""
+                # Synchroniser la copie locale
+                _save_local_baselines_json(df[BASELINES_COLUMNS])
+                return df[BASELINES_COLUMNS]
+        except Exception:
+            pass
+
+    # 2. Essai avec gspread direct
+    gc, sh = _get_gspread_client_and_sheet()
+    if sh is not None:
+        try:
+            worksheet = None
+            try:
+                worksheet = sh.worksheet(WORKSHEET_NAME)
+            except Exception:
+                # Création si absent
+                worksheet = sh.add_worksheet(title=WORKSHEET_NAME, rows=50, cols=len(BASELINES_COLUMNS))
+                worksheet.append_row(BASELINES_COLUMNS)
+
+            records = worksheet.get_all_records()
+            if records:
+                df = pd.DataFrame(records).fillna("")
+                for c in BASELINES_COLUMNS:
+                    if c not in df.columns:
+                        df[c] = ""
+                _save_local_baselines_json(df[BASELINES_COLUMNS])
+                return df[BASELINES_COLUMNS]
+            else:
+                return pd.DataFrame(columns=BASELINES_COLUMNS)
+        except Exception:
+            pass
+
+    # 3. Repli sur le stockage JSON local
+    return _load_local_baselines_json()
+
+
+if HAS_STREAMLIT:
+    @st.cache_data(ttl=600, show_spinner=False)
+    def load_baselines_table() -> pd.DataFrame:
+        """Charge la table Baselines_3D avec cache Streamlit (TTL=10 min)."""
+        return _fetch_baselines_table_internal()
+else:
+    def load_baselines_table() -> pd.DataFrame:
+        return _fetch_baselines_table_internal()
+
+
+def clear_baselines_cache():
+    """Invalide le cache de lecture lors de toute modification."""
+    if HAS_STREAMLIT and hasattr(load_baselines_table, "clear"):
+        try:
+            load_baselines_table.clear()
+        except Exception:
+            pass
+
+
+def _save_baselines_table_internal(df: pd.DataFrame) -> Tuple[bool, str]:
+    """Sauvegarde la table Baselines_3D dans Google Sheets et synchronise le JSON local."""
+    clean_df = df.copy().fillna("")
+    for c in BASELINES_COLUMNS:
+        if c not in clean_df.columns:
+            clean_df[c] = ""
+    clean_df = clean_df[BASELINES_COLUMNS]
+
+    # Toujours synchroniser le JSON local d'abord
+    _save_local_baselines_json(clean_df)
+    clear_baselines_cache()
+
+    # Sauvegarder dans Google Sheets via streamlit-gsheets si disponible
+    conn = _get_gsheets_connection()
+    if conn is not None:
+        try:
+            try:
+                conn.update(worksheet=WORKSHEET_NAME, data=clean_df)
+                return True, "Enregistré avec succès dans Google Sheets (Baselines_3D) !"
+            except Exception:
+                conn.create(worksheet=WORKSHEET_NAME, data=clean_df)
+                return True, "Onglet 'Baselines_3D' créé et enregistré dans Google Sheets !"
+        except Exception as e_conn:
+            print(f"Avertissement st.connection update : {e_conn}")
+
+    # Sauvegarder via gspread direct si disponible
+    gc, sh = _get_gspread_client_and_sheet()
+    if sh is not None:
+        try:
+            try:
+                ws = sh.worksheet(WORKSHEET_NAME)
+            except Exception:
+                ws = sh.add_worksheet(title=WORKSHEET_NAME, rows=max(50, len(clean_df) + 10), cols=len(BASELINES_COLUMNS))
+
+            ws.clear()
+            header = BASELINES_COLUMNS
+            data_rows = clean_df.values.tolist()
+            all_content = [header] + data_rows
+            ws.update("A1", all_content)
+            return True, "Enregistré avec succès dans Google Sheets via gspread !"
+        except Exception as e_gsp:
+            print(f"Avertissement gspread update : {e_gsp}")
+
+    return True, "Enregistré avec succès dans la base de données locale (JSON synchronisé) !"
+
+
+# ==============================================================================
+# OPÉRATIONS MÉTIER EN 2 ÉTAPES (BIBLIOTHÈQUE / CALIBRAGE)
+# ==============================================================================
+
+def create_figure_slots(exercise_name: str, exo_type: str = "isometric") -> Tuple[bool, str]:
+    """
+    Étape A : Crée une nouvelle figure avec ses 3 emplacements d'angles (Face, 3/4, Profil)
+    initialisés avec le statut 'empty'.
+    """
+    clean_name = exercise_name.strip()
+    if not clean_name:
+        return False, "Le nom de la figure ne peut pas être vide."
+
+    clean_type = "dynamic" if "dyn" in str(exo_type).lower() else "isometric"
+
+    df = load_baselines_table().copy()
+
+    # Vérifier si la figure existe déjà
+    existing_figures = [str(x).strip().lower() for x in df["exercise"].unique()]
+    if clean_name.lower() in existing_figures:
+        return False, f"La figure '{clean_name}' existe déjà dans la bibliothèque."
+
+    new_rows = []
+    for view in VALID_CAMERA_VIEWS:
+        slot_id = make_slot_id(clean_name, view)
+        new_rows.append({
+            "id": slot_id,
+            "exercise": clean_name,
+            "camera_view": view,
+            "type": clean_type,
+            "status": "empty",
+            "mean_features": "",
+            "std_features": "",
+            "rom_bounds": ""
+        })
+
+    updated_df = pd.concat([df, pd.DataFrame(new_rows)], ignore_index=True)
+    ok, msg = _save_baselines_table_internal(updated_df)
+    return ok, f"Figure '{clean_name}' créée avec succès (3 angles en attente) !" if ok else msg
+
+
+def save_calibrated_slot(
+    exercise_name: str,
+    camera_view: str,
+    exo_type: str,
+    mean_features: List[float],
+    std_features: List[float],
+    rom_bounds: Optional[Dict[str, Any]] = None
+) -> Tuple[bool, str]:
+    """
+    Étape B : Associe les données 3D analysées à un emplacement précis et passe son statut à 'calibrated'.
+    """
+    clean_name = exercise_name.strip()
+    clean_view = camera_view.strip()
+    slot_id = make_slot_id(clean_name, clean_view)
+
+    df = load_baselines_table().copy()
+
+    mf_str = json.dumps([round(float(x), 1) for x in mean_features])
+    sf_str = json.dumps([max(round(float(x), 1), 2.0) for x in std_features])
+    rb_str = json.dumps(rom_bounds) if rom_bounds else ""
+
+    # Recherche de l'emplacement existant
+    match_mask = (df["exercise"].str.lower() == clean_name.lower()) & (df["camera_view"] == clean_view)
+
+    if match_mask.any():
+        idx = df[match_mask].index[0]
+        df.at[idx, "status"] = "calibrated"
+        df.at[idx, "type"] = exo_type
+        df.at[idx, "mean_features"] = mf_str
+        df.at[idx, "std_features"] = sf_str
+        df.at[idx, "rom_bounds"] = rb_str
+    else:
+        # Création de l'emplacement si non trouvé
+        new_row = {
+            "id": slot_id,
+            "exercise": clean_name,
+            "camera_view": clean_view,
+            "type": exo_type,
+            "status": "calibrated",
+            "mean_features": mf_str,
+            "std_features": sf_str,
+            "rom_bounds": rb_str
+        }
+        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+
+    ok, msg = _save_baselines_table_internal(df)
+    return ok, f"Calibrage '{clean_name}' ({clean_view}) enregistré avec succès !" if ok else msg
+
+
+def reset_slot(slot_id: str) -> Tuple[bool, str]:
+    """Réinitialise un angle de calibrage (repasse à 'empty' sans supprimer la figure)."""
+    df = load_baselines_table().copy()
+    match = df["id"] == slot_id
+    if not match.any():
+        return False, f"Emplacement '{slot_id}' introuvable."
+
+    idx = df[match].index[0]
+    df.at[idx, "status"] = "empty"
+    df.at[idx, "mean_features"] = ""
+    df.at[idx, "std_features"] = ""
+    df.at[idx, "rom_bounds"] = ""
+
+    ok, msg = _save_baselines_table_internal(df)
+    return ok, "Emplacement réinitialisé en attente de vidéo." if ok else msg
+
+
+def delete_figure(exercise_name: str) -> Tuple[bool, str]:
+    """Supprime complètement une figure et ses 3 angles de la bibliothèque."""
+    df = load_baselines_table().copy()
+    clean_name = exercise_name.strip().lower()
+    before_len = len(df)
+    df = df[df["exercise"].str.lower() != clean_name].reset_index(drop=True)
+
+    if len(df) == before_len:
+        return False, f"Figure '{exercise_name}' introuvable."
+
+    ok, msg = _save_baselines_table_internal(df)
+    return ok, f"Figure '{exercise_name}' et ses angles supprimés !" if ok else msg
+
+
+def export_baselines_json() -> str:
+    """Retourne la sauvegarde JSON formatée de la bibliothèque pour téléchargement immédiat."""
+    df = load_baselines_table()
+    records = []
+    for _, row in df.iterrows():
+        try:
+            mf = json.loads(row["mean_features"]) if str(row["mean_features"]).strip() else []
+        except Exception:
+            mf = []
+        try:
+            sf = json.loads(row["std_features"]) if str(row["std_features"]).strip() else []
+        except Exception:
+            sf = []
+        try:
+            rb = json.loads(row["rom_bounds"]) if str(row["rom_bounds"]).strip() else None
+        except Exception:
+            rb = None
+
+        records.append({
+            "id": str(row["id"]),
+            "exercise": str(row["exercise"]),
+            "camera_view": str(row["camera_view"]),
+            "type": str(row["type"]),
+            "status": str(row["status"]),
+            "mean_features": mf,
+            "std_features": sf,
+            "rom_bounds": rb
+        })
+
+    payload = {
+        "export_date": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "total_records": len(records),
+        "columns": BASELINES_COLUMNS,
+        "prototypes": records
+    }
+    return json.dumps(payload, indent=2, ensure_ascii=False)
+
+
+# ==============================================================================
+# CALCULS CINÉMATIQUES & 1-NN AVEC FILTRE STATUS='calibrated'
+# ==============================================================================
 
 def compute_active_feature_vectors(
     kinematics: Dict[str, Any],
     effort_window: Dict[str, Any]
 ) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Calcule le vecteur moyen (6D) et les écarts-types (6D) sur la fenêtre d'effort active.
-    """
-    s_idx = effort_window["start_idx"]
-    e_idx = effort_window["end_idx"]
+    """Calcule le vecteur moyen (6D) et les écarts-types (6D) sur la fenêtre active."""
+    s_idx = effort_window.get("start_idx", 0)
+    e_idx = effort_window.get("end_idx", max(0, len(kinematics["timestamps"]) - 1))
     filt = kinematics["features_filtered"]
 
     means: List[float] = []
@@ -72,43 +503,94 @@ def compute_active_feature_vectors(
     return np.array(means, dtype=np.float64), np.array(stds, dtype=np.float64)
 
 
+def get_calibrated_prototypes() -> List[Dict[str, Any]]:
+    """
+    Règle stricte : Récupère UNIQUEMENT les prototypes de la base ayant status == 'calibrated'.
+    Ignore catégoriquement les emplacements vides (status == 'empty').
+    """
+    df = load_baselines_table()
+    if df.empty or "status" not in df.columns:
+        return []
+
+    calib_rows = df[df["status"] == "calibrated"]
+    prototypes: List[Dict[str, Any]] = []
+
+    for _, row in calib_rows.iterrows():
+        try:
+            mf = json.loads(row["mean_features"]) if str(row["mean_features"]).strip() else []
+            sf = json.loads(row["std_features"]) if str(row["std_features"]).strip() else []
+        except Exception:
+            continue
+
+        if len(mf) < 6:
+            continue
+
+        try:
+            rb = json.loads(row["rom_bounds"]) if str(row["rom_bounds"]).strip() else None
+        except Exception:
+            rb = None
+
+        exo_type = str(row["type"])
+        stability = {
+            "max_hip_vertical_velocity": 0.15,
+            "min_hold_duration_sec": 0.4
+        } if exo_type == "isometric" else None
+
+        prototypes.append({
+            "id": str(row["id"]),
+            "exercise": str(row["exercise"]),
+            "display_name": str(row["exercise"]),
+            "camera_view": str(row["camera_view"]),
+            "type": exo_type,
+            "status": "calibrated",
+            "mean_features": mf,
+            "std_features": sf,
+            "stability": stability,
+            "rom_bounds": rb
+        })
+
+    return prototypes
+
+
 def identify_exercise_1nn(
     kinematics: Dict[str, Any],
     segmentation: Dict[str, Any],
-    baselines_path: str = DEFAULT_BASELINES_PATH,
+    baselines_path: Optional[str] = None,
     forced_exercise: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Identifie l'exercice et la perspective caméra par Plus Proche Voisin Normalisé (1-NN).
-    Compare la signature 3D active à tous les prototypes de type correspondant (isometric ou dynamic).
+    Classifieur 1-NN comparant la vidéo UNIQUEMENT aux lignes 'calibrated' de Baselines_3D.
+    Si aucun prototype n'est encore calibré, renvoie un statut explicite sans planter.
     """
-    baselines_cfg = load_baselines_3d(baselines_path)
-    prototypes = baselines_cfg.get("prototypes", [])
+    prototypes = get_calibrated_prototypes()
     detected_type = segmentation.get("type", "isometric")
     effort_win = segmentation.get("effort_window", {})
 
     active_means, active_stds = compute_active_feature_vectors(kinematics, effort_win)
 
+    # Si aucun prototype n'a encore été calibré par l'utilisateur
     if not prototypes:
         return {
-            "exercise": forced_exercise or "full_planche",
-            "display_name": "Full Planche",
-            "camera_view": "profile",
+            "exercise": forced_exercise or "non_calibre",
+            "display_name": forced_exercise or "Non Calibré",
+            "camera_view": "Profil",
             "type": detected_type,
-            "confidence": 0.80,
-            "distance": 0.0,
+            "confidence": 0.0,
+            "distance": 999.0,
             "matched_prototype": None,
-            "active_means": active_means.tolist(),
-            "active_stds": active_stds.tolist()
+            "status": "uncalibrated",
+            "message": "⚠️ Aucun mouvement calibré dans la bibliothèque. Créez et calibrez vos figures dans l'onglet Calibrage 3D.",
+            "active_means": [round(float(v), 1) for v in active_means],
+            "active_stds": [round(float(v), 1) for v in active_stds]
         }
 
-    # Filtrage par type (ou forçage)
+    # Filtrer par type (isométrique / dynamique)
     candidate_protos = [p for p in prototypes if p.get("type") == detected_type]
     if not candidate_protos:
         candidate_protos = prototypes
 
     if forced_exercise:
-        forced_matches = [p for p in candidate_protos if p.get("exercise") == forced_exercise]
+        forced_matches = [p for p in candidate_protos if p.get("exercise").lower() == forced_exercise.lower()]
         if forced_matches:
             candidate_protos = forced_matches
 
@@ -118,8 +600,7 @@ def identify_exercise_1nn(
         proto_means = np.array(proto["mean_features"], dtype=np.float64)
         proto_stds = np.array(proto["std_features"], dtype=np.float64)
 
-        # Pénalité stricte sur l'orientation ventrale/dorsale (indice 5)
-        # Ne doit JAMAIS confondre Planche (+1) et Front Lever (-1)
+        # Pénalité stricte sur l'orientation ventrale (+1) vs dorsale (-1)
         vd_video = active_means[5]
         vd_proto = proto_means[5]
         orient_mismatch = (vd_video * vd_proto) < 0
@@ -129,7 +610,7 @@ def identify_exercise_1nn(
         dist = float(np.sqrt(np.sum(diff**2)))
 
         if orient_mismatch:
-            dist += 150.0  # Rejet catégorique
+            dist += 150.0  # Élimine la confusion entre figures opposées
 
         distances.append((dist, proto))
 
@@ -137,121 +618,25 @@ def identify_exercise_1nn(
     best_dist, best_proto = distances[0]
     second_dist = distances[1][0] if len(distances) > 1 else (best_dist + 5.0)
 
-    # Calcul de confiance relative (%)
-    if best_dist < 1.0:
+    # Score de confiance relatif
+    if best_dist < 1.2:
         confidence = 0.98
     elif best_dist < 3.0:
-        confidence = 0.94
+        confidence = 0.92
     else:
         denom = best_dist + second_dist
         ratio = 1.0 - (best_dist / max(denom, 1e-6))
-        confidence = max(0.65, min(0.96, ratio))
+        confidence = max(0.60, min(0.95, ratio))
 
     return {
         "exercise": best_proto["exercise"],
         "display_name": best_proto.get("display_name", best_proto["exercise"]),
-        "camera_view": best_proto.get("camera_view", "profile"),
+        "camera_view": best_proto.get("camera_view", "Profil"),
         "type": best_proto.get("type", detected_type),
         "confidence": round(float(confidence), 2),
         "distance": round(float(best_dist), 2),
         "matched_prototype": best_proto,
+        "status": "calibrated",
         "active_means": [round(float(v), 1) for v in active_means],
         "active_stds": [round(float(v), 1) for v in active_stds]
     }
-
-
-def extract_prototype_from_video(
-    kinematics: Dict[str, Any],
-    segmentation: Dict[str, Any],
-    exercise_key: str,
-    display_name: str,
-    camera_view: str = "profile",
-    exo_type: Optional[str] = None
-) -> Dict[str, Any]:
-    """
-    Génère un nouveau prototype de calibrage complet à partir de la vidéo analysée.
-    """
-    effort_win = segmentation["effort_window"]
-    active_means, active_stds = compute_active_feature_vectors(kinematics, effort_win)
-    final_type = exo_type or segmentation["type"]
-
-    proto_id = f"{exercise_key}_{camera_view}_{int(time.time())}"
-
-    # Construction des bornes selon le type
-    stability = None
-    rom_bounds = None
-
-    if final_type == "isometric":
-        stability = {
-            "max_hip_vertical_velocity": 0.15,
-            "min_hold_duration_sec": 0.4
-        }
-    else:
-        filt = kinematics["features_filtered"]
-        s_idx = effort_win["start_idx"]
-        e_idx = effort_win["end_idx"]
-        el_active = filt["elbow_angle"][s_idx:e_idx + 1]
-
-        rom_bounds = {
-            "primary_joint": "elbow_angle",
-            "min_amplitude_deg": 22.0,
-            "lockout_angle": round(float(np.max(el_active)), 1) if len(el_active) > 0 else 165.0,
-            "inflection_angle": round(float(np.min(el_active)), 1) if len(el_active) > 0 else 90.0,
-            "min_rep_duration_sec": 0.4,
-            "max_rep_duration_sec": 9.0
-        }
-
-    return {
-        "id": proto_id,
-        "exercise": exercise_key,
-        "display_name": display_name,
-        "camera_view": camera_view,
-        "type": final_type,
-        "mean_features": [round(float(v), 1) for v in active_means],
-        "std_features": [max(round(float(v), 1), 2.0) for v in active_stds],
-        "stability": stability,
-        "rom_bounds": rom_bounds,
-        "source": "user_calibrated",
-        "created_at": time.strftime("%Y-%m-%d")
-    }
-
-
-def add_or_update_prototype_in_file(
-    prototype_data: Dict[str, Any],
-    baselines_path: str = DEFAULT_BASELINES_PATH
-) -> Tuple[bool, str]:
-    """Ajoute ou remplace un prototype dans le fichier JSON."""
-    try:
-        config = load_baselines_3d(baselines_path)
-        prototypes = config.get("prototypes", [])
-
-        # Remplacement si même id
-        idx = next((i for i, p in enumerate(prototypes) if p.get("id") == prototype_data["id"]), -1)
-        if idx >= 0:
-            prototypes[idx] = prototype_data
-        else:
-            prototypes.append(prototype_data)
-
-        config["prototypes"] = prototypes
-        save_baselines_3d(config, baselines_path)
-        return True, f"Prototype '{prototype_data.get('display_name')}' ({prototype_data.get('camera_view')}) enregistré !"
-    except Exception as e:
-        return False, f"Erreur lors de l'enregistrement du prototype : {e}"
-
-
-def delete_prototype_from_file(
-    prototype_id: str,
-    baselines_path: str = DEFAULT_BASELINES_PATH
-) -> Tuple[bool, str]:
-    """Supprime un prototype par son identifiant."""
-    try:
-        config = load_baselines_3d(baselines_path)
-        prototypes = config.get("prototypes", [])
-        new_protos = [p for p in prototypes if p.get("id") != prototype_id]
-        if len(new_protos) == len(prototypes):
-            return False, f"Prototype '{prototype_id}' introuvable."
-        config["prototypes"] = new_protos
-        save_baselines_3d(config, baselines_path)
-        return True, f"Prototype '{prototype_id}' supprimé."
-    except Exception as e:
-        return False, f"Erreur suppression : {e}"

@@ -54,12 +54,16 @@ try:
         segment_and_classify_video
     )
     from core.calibration import (
-        load_baselines_3d,
-        save_baselines_3d,
+        load_baselines_table,
+        create_figure_slots,
+        save_calibrated_slot,
+        reset_slot,
+        delete_figure,
+        export_baselines_json,
+        get_calibrated_prototypes,
+        compute_active_feature_vectors,
         identify_exercise_1nn,
-        extract_prototype_from_video,
-        add_or_update_prototype_in_file,
-        delete_prototype_from_file
+        VALID_CAMERA_VIEWS
     )
     from core.metrics import (
         evaluate_isometric_3d,
@@ -74,20 +78,21 @@ try:
     )
     HAS_BIOMECH = True
 except Exception as _e_bio:
+    VALID_CAMERA_VIEWS = ["Face", "3/4", "Profil"]
     # Définition systématique de fonctions de secours pour éviter tout NameError
     def analyze_single_video_pipeline(video_path, api_key="", forced_exercise=None, custom_tolerance=15.0):
         fn = os.path.basename(video_path)
         return {
             "video_path": video_path,
             "filename": fn,
-            "exercise_key": "full_planche",
+            "exercise_key": "non_calibre",
             "exercise_display": "Auto-Détection 3D",
             "type": "isometric",
-            "camera_view": "profile",
+            "camera_view": "Profil",
             "tut": 3.0,
             "reps": 0,
             "drift": f"Mode secours : {str(_e_bio)[:40]}",
-            "confidence": 0.85,
+            "confidence": 0.0,
             "kinematics": None,
             "evaluation": {},
             "ai_data": None,
@@ -109,17 +114,26 @@ except Exception as _e_bio:
     def save_exercise_thresholds(data):
         return False
 
-    def load_baselines_3d():
-        return {"prototypes": []}
+    def load_baselines_table():
+        return pd.DataFrame(columns=["id", "exercise", "camera_view", "type", "status", "mean_features", "std_features", "rom_bounds"])
 
-    def save_baselines_3d(data):
-        return False
-
-    def add_or_update_prototype_in_file(p):
+    def create_figure_slots(name, exo_type):
         return False, "Non disponible"
 
-    def delete_prototype_from_file(pid):
+    def save_calibrated_slot(name, view, exo_type, means, stds, rom=None):
         return False, "Non disponible"
+
+    def reset_slot(sid):
+        return False, "Non disponible"
+
+    def delete_figure(name):
+        return False, "Non disponible"
+
+    def export_baselines_json():
+        return "{}"
+
+    def get_calibrated_prototypes():
+        return []
 
     def extract_kinematics_from_video(video_path):
         return {"timestamps": [0.0], "angles_filtered": {"elbow": [180.0]}}
@@ -902,9 +916,10 @@ st.markdown("""
     <div class="swipe-hint-pill">👈 Glissez l'écran de gauche à droite pour naviguer 👉</div>
 """, unsafe_allow_html=True)
 
-# Les 4 compartiments principaux
-tab_studio, tab_stats, tab_athletes, tab_settings = st.tabs([
-    "🎥 Studio & Batch IA",
+# Les 5 compartiments principaux
+tab_studio, tab_calib, tab_stats, tab_athletes, tab_settings = st.tabs([
+    "🎥 Studio",
+    "📐 Calibrage 3D",
     "📊 Stats",
     "👥 Athlètes",
     "⚙️ Réglages"
@@ -922,103 +937,6 @@ with tab_studio:
             accept_multiple_files=True,
             label_visibility="collapsed"
         )
-
-    # --------------------------------------------------------------------------
-    # SECTION DÉDIÉE : CALIBRAGE MULTI-ANGLES (GESTION DES PROTOTYPES 3D)
-    # --------------------------------------------------------------------------
-    with st.expander("🎯 Calibrage Multi-Angles (Gestion des Prototypes 3D)", expanded=False):
-        st.markdown("<small style='color:#94a3b8;'>Enregistrez des vidéos de référence sous différents angles de vue (Profil, 3/4, Face) pour étalonner la détection automatique locale sans IA cloud.</small>", unsafe_allow_html=True)
-
-        col_cal1, col_cal2 = st.columns([1.2, 1])
-        with col_cal1:
-            calib_video = st.file_uploader(
-                "Vidéo de référence pour calibrage :",
-                type=['mp4', 'mov', 'avi'],
-                key="calib_uploader_file"
-            )
-        with col_cal2:
-            calib_exo = st.selectbox(
-                "Exercice à calibrer :",
-                [
-                    ("full_planche", "Full Planche"),
-                    ("straddle_planche", "Straddle Planche"),
-                    ("maltese", "Maltese (Hirondelle)"),
-                    ("front_lever", "Front Lever"),
-                    ("pull_ups", "Tractions"),
-                    ("push_ups", "Pompes"),
-                    ("planche_push_ups", "Planche Push-ups"),
-                    ("other", "Autre figure")
-                ],
-                format_func=lambda x: x[1],
-                key="calib_exo_select"
-            )
-            calib_cam = st.selectbox("Angle de vue caméra :", ["Profil", "3/4", "Face"], key="calib_cam_select")
-            calib_type = st.radio("Type d'exercice :", ["Isométrique", "Dynamique"], horizontal=True, key="calib_type_radio")
-
-        if calib_video is not None:
-            if st.button("🚀 Analyser & Enregistrer ce prototype de référence", key="btn_save_calib_proto", type="primary", use_container_width=True):
-                with st.spinner("Extraction cinématique 3D et enregistrement du prototype..."):
-                    try:
-                        calib_temp = get_persisted_temp_video_path(calib_video)
-                        kin_c = extract_3d_kinematics_from_video(calib_temp)
-                        seg_c = segment_and_classify_video(kin_c)
-                        c_type = "isometric" if calib_type == "Isométrique" else "dynamic"
-                        cam_code = "profile" if calib_cam == "Profil" else ("three_quarter" if calib_cam == "3/4" else "front")
-
-                        proto_new = extract_prototype_from_video(
-                            kinematics=kin_c,
-                            segmentation=seg_c,
-                            exercise_key=calib_exo[0],
-                            display_name=calib_exo[1],
-                            camera_view=cam_code,
-                            exo_type=c_type
-                        )
-                        ok_add, msg_add = add_or_update_prototype_in_file(proto_new)
-                        if ok_add:
-                            st.success(f"✅ {msg_add}")
-                            time.sleep(0.5)
-                            st.rerun()
-                        else:
-                            st.error(msg_add)
-                    except Exception as e_cal:
-                        st.error(f"Erreur de calibrage : {e_cal}")
-
-        # Liste des prototypes enregistrés
-        st.markdown("<hr style='border:0; border-top:1px solid rgba(255,255,255,0.1); margin:12px 0;'>", unsafe_allow_html=True)
-        st.markdown("<b style='font-size:0.85rem; color:#f1f5f9;'>Prototypes 3D enregistrés dans la base :</b>", unsafe_allow_html=True)
-        try:
-            cur_baselines = load_baselines_3d()
-            all_protos = cur_baselines.get("prototypes", [])
-            if all_protos:
-                p_rows = []
-                for p in all_protos:
-                    p_rows.append({
-                        "ID": p["id"],
-                        "Exercice": p.get("display_name", p["exercise"]),
-                        "Angle": p.get("camera_view", "profile"),
-                        "Type": "Isométrique" if p.get("type") == "isometric" else "Dynamique",
-                        "Source": p.get("source", "default")
-                    })
-                st.dataframe(pd.DataFrame(p_rows), use_container_width=True, hide_index=True)
-
-                col_del_id, col_del_btn = st.columns([2, 1])
-                with col_del_id:
-                    user_protos = [p["id"] for p in all_protos if p.get("source") != "default"]
-                    if user_protos:
-                        proto_to_del = st.selectbox("Sélectionner un prototype personnalisé à supprimer :", user_protos, key="sel_proto_del")
-                    else:
-                        proto_to_del = None
-                        st.caption("Seuls les prototypes personnalisés peuvent être supprimés.")
-                with col_del_btn:
-                    if proto_to_del and st.button("🗑️ Supprimer", key="btn_del_proto"):
-                        ok_d, msg_d = delete_prototype_from_file(proto_to_del)
-                        if ok_d:
-                            st.toast(f"✅ {msg_d}")
-                            st.rerun()
-                        else:
-                            st.error(msg_d)
-        except Exception as e_bp:
-            st.caption(f"Prototypes : {e_bp}")
 
     if uploaded_files:
         st.session_state.active_uploaded_files = uploaded_files
@@ -1335,33 +1253,33 @@ with tab_studio:
                         )
                         st.plotly_chart(fig_3d, use_container_width=True)
 
-                        # Bouton d'enrichissement : Ajouter cette vidéo aux baselines multi-angles
+                        # Bouton d'enrichissement : Associer cette vidéo à la bibliothèque 3D
                         st.markdown("<hr style='border:0; border-top:1px solid rgba(255,255,255,0.08); margin:8px 0;'>", unsafe_allow_html=True)
-                        st.markdown("<b>➕ Enrichir la base multi-angles avec cette vidéo :</b>", unsafe_allow_html=True)
+                        st.markdown("<b>➕ Enregistrer ce calibrage dans la bibliothèque 3D :</b>", unsafe_allow_html=True)
                         c_b_cam, c_b_save = st.columns([1, 1.5])
                         with c_b_cam:
-                            user_cam_view = st.selectbox("Angle de vue de cette vidéo :", ["Profil", "3/4", "Face"], key=f"sel_cam_add_{current_fname}")
+                            user_cam_view = st.selectbox("Angle de vue de cette vidéo :", VALID_CAMERA_VIEWS, key=f"sel_cam_add_{current_fname}")
                         with c_b_save:
-                            if st.button("💾 Ajouter cette vidéo aux baselines", key=f"btn_add_to_base_{current_fname}", use_container_width=True):
-                                cam_c = "profile" if user_cam_view == "Profil" else ("three_quarter" if user_cam_view == "3/4" else "front")
+                            if st.button("💾 Enregistrer dans Baselines_3D", key=f"btn_add_to_base_{current_fname}", use_container_width=True):
                                 if seg and "effort_window" in seg:
-                                    proto_to_add = extract_prototype_from_video(
-                                        kinematics=kin,
-                                        segmentation=seg,
-                                        exercise_key=bio_r.get("exercise_key", "full_planche"),
-                                        display_name=bio_r.get("exercise_display", "Full Planche"),
-                                        camera_view=cam_c,
-                                        exo_type=bio_r.get("type", "isometric")
+                                    means_v, stds_v = compute_active_feature_vectors(kin, seg["effort_window"])
+                                    exo_lbl = bio_r.get("exercise_display", "Figure")
+                                    exo_tp = bio_r.get("type", "isometric")
+                                    ok_b, msg_b = save_calibrated_slot(
+                                        exercise_name=exo_lbl,
+                                        camera_view=user_cam_view,
+                                        exo_type=exo_tp,
+                                        mean_features=means_v.tolist(),
+                                        std_features=stds_v.tolist()
                                     )
-                                    ok_b, msg_b = add_or_update_prototype_in_file(proto_to_add)
                                     if ok_b:
-                                        st.success(f"✅ Vidéo ajoutée aux baselines ({user_cam_view}) !")
+                                        st.success(f"✅ {exo_lbl} ({user_cam_view}) calibré dans Baselines_3D !")
                                         time.sleep(0.5)
                                         st.rerun()
                                     else:
                                         st.error(msg_b)
                                 else:
-                                    st.warning("Données cinématiques insuffisantes pour créer un prototype.")
+                                    st.warning("Données cinématiques insuffisantes pour enregistrer un calibrage.")
 
                 c_rep1, c_rep2 = st.columns(2)
                 with c_rep1:
@@ -1505,7 +1423,221 @@ with tab_studio:
 
 
 # ==============================================================================
-# COMPARTIMENT 2 : STATS & PROGRESSION PURE (TST & RPE)
+# COMPARTIMENT 2 : BIBLIOTHÈQUE & CALIBRAGE 3D (PERSISTANCE GOOGLE SHEETS)
+# ==============================================================================
+with tab_calib:
+    st.markdown("""
+        <div class="cali-card" style="margin-bottom: 0.8rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                <div>
+                    <h3 style="margin:0; font-size:1.15rem; color:#f1f5f9;">📐 Bibliothèque & Calibrage 3D</h3>
+                    <p style="margin:2px 0 0 0; font-size:0.8rem; color:#94a3b8;">
+                        Construisez votre base en 2 étapes : créez vos mouvements avec 3 angles (Face, 3/4, Profil), puis associez une vidéo de référence à chaque angle.
+                    </p>
+                </div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    df_base = load_baselines_table()
+
+    # Bouton discret export sauvegarde JSON
+    col_exp_info, col_exp_btn = st.columns([2, 1])
+    with col_exp_info:
+        calib_count = len(df_base[df_base["status"] == "calibrated"]) if not df_base.empty and "status" in df_base.columns else 0
+        total_slots = len(df_base)
+        st.caption(f"📊 Emplacements : {total_slots} ({calib_count} calibrés) | Stockage : Google Sheets 'Baselines_3D'")
+    with col_exp_btn:
+        json_backup = export_baselines_json()
+        st.download_button(
+            label="💾 Exporter sauvegarde JSON",
+            data=json_backup,
+            file_name=f"caliperf_baselines_3d_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
+            mime="application/json",
+            use_container_width=True
+        )
+
+    # --------------------------------------------------------------------------
+    # ÉTAPE A : CRÉER UNE FIGURE DANS LA BIBLIOTHÈQUE (3 ANGLES)
+    # --------------------------------------------------------------------------
+    with st.expander("1️⃣ Étape A : Créer un nouveau mouvement (génère 3 angles)", expanded=(df_base.empty)):
+        st.markdown("<small style='color:#94a3b8;'>Ajoutez un mouvement à votre répertoire sans vidéo. Le système créera automatiquement 3 emplacements vides (Face, 3/4, Profil) prêts pour le calibrage.</small>", unsafe_allow_html=True)
+        col_new_name, col_new_type = st.columns([1.5, 1])
+        with col_new_name:
+            new_exo_input = st.text_input("Nom de la figure :", placeholder="ex: Full Planche, Maltese, Front Lever, Tractions, Pompes, Hefesto...", key="input_new_exo_name")
+        with col_new_type:
+            new_exo_type = st.radio("Type de mouvement :", ["Isométrique", "Dynamique"], horizontal=True, key="radio_new_exo_type")
+
+        if st.button("➕ Créer la figure (3 angles)", type="primary", use_container_width=True, key="btn_create_exo_slots"):
+            if not new_exo_input.strip():
+                st.warning("Veuillez saisir un nom pour la figure.")
+            else:
+                c_type = "isometric" if new_exo_type == "Isométrique" else "dynamic"
+                ok_c, msg_c = create_figure_slots(new_exo_input, c_type)
+                if ok_c:
+                    st.success(f"✅ {msg_c}")
+                    time.sleep(0.5)
+                    st.rerun()
+                else:
+                    st.error(msg_c)
+
+    # --------------------------------------------------------------------------
+    # VUE D'ENSEMBLE DE LA BIBLIOTHÈQUE
+    # --------------------------------------------------------------------------
+    st.markdown("<h4 style='margin: 0.8rem 0 0.4rem 0; font-size:1rem; color:#f1f5f9;'>📚 Répertoire des mouvements créés</h4>", unsafe_allow_html=True)
+
+    if df_base.empty:
+        st.info("ℹ️ Votre bibliothèque est vide pour l'instant. Utilisez l'Étape A ci-dessus pour ajouter vos premières figures !")
+    else:
+        distinct_figures = list(df_base["exercise"].unique())
+
+        for fig_name in distinct_figures:
+            sub_df = df_base[df_base["exercise"] == fig_name]
+            fig_type = sub_df["type"].iloc[0] if not sub_df.empty else "isometric"
+            type_label = "Isométrique" if fig_type == "isometric" else "Dynamique"
+            type_badge = "badge-cyan" if fig_type == "isometric" else "badge-amber"
+
+            with st.container():
+                st.markdown(f"""
+                    <div class="cali-card" style="padding: 10px 14px; margin-bottom: 8px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                            <b style="font-size:1rem; color:#f1f5f9;">{fig_name}</b>
+                            <span class="{type_badge}">{type_label}</span>
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+
+                cols_view = st.columns(3)
+                for idx_v, v_name in enumerate(VALID_CAMERA_VIEWS):
+                    with cols_view[idx_v]:
+                        v_row = sub_df[sub_df["camera_view"] == v_name]
+                        if not v_row.empty and v_row.iloc[0]["status"] == "calibrated":
+                            st.markdown(f"""
+                                <div style="background:rgba(16,185,129,0.12); border-left:3px solid #10b981; padding:6px 10px; border-radius:6px; font-size:0.78rem; margin-bottom:4px;">
+                                    <b>{v_name}</b><br>
+                                    <span style="color:#6ee7b7;">✅ Calibré</span>
+                                </div>
+                            """, unsafe_allow_html=True)
+                            slot_id = v_row.iloc[0]["id"]
+                            if st.button("🔄 Réinit.", key=f"reset_{slot_id}", help=f"Réinitialiser l'angle {v_name}", use_container_width=True):
+                                ok_r, msg_r = reset_slot(slot_id)
+                                if ok_r:
+                                    st.toast(f"✅ Angle {v_name} réinitialisé")
+                                    time.sleep(0.3)
+                                    st.rerun()
+                                else:
+                                    st.error(msg_r)
+                        else:
+                            st.markdown(f"""
+                                <div style="background:rgba(100,116,139,0.12); border-left:3px solid #64748b; padding:6px 10px; border-radius:6px; font-size:0.78rem; margin-bottom:4px;">
+                                    <b>{v_name}</b><br>
+                                    <span style="color:#94a3b8;">⏳ En attente</span>
+                                </div>
+                            """, unsafe_allow_html=True)
+
+                col_del_f1, col_del_f2 = st.columns([3, 1])
+                with col_del_f2:
+                    if st.button("🗑️ Supprimer", key=f"del_fig_{fig_name}", help=f"Supprimer la figure {fig_name}", use_container_width=True):
+                        ok_d, msg_d = delete_figure(fig_name)
+                        if ok_d:
+                            st.toast(f"✅ {msg_d}")
+                            time.sleep(0.3)
+                            st.rerun()
+                        else:
+                            st.error(msg_d)
+
+    # --------------------------------------------------------------------------
+    # ÉTAPE B : ASSOCIER UNE VIDÉO DE CALIBRAGE À UN EMPLACEMENT
+    # --------------------------------------------------------------------------
+    st.markdown("<hr style='border:0; border-top:1px solid rgba(255,255,255,0.08); margin:18px 0 12px 0;'>", unsafe_allow_html=True)
+    with st.expander("2️⃣ Étape B : Associer une vidéo de calibrage à un emplacement", expanded=not df_base.empty):
+        if df_base.empty:
+            st.warning("⚠️ Veuillez d'abord créer au moins une figure dans l'Étape A ci-dessus.")
+        else:
+            distinct_exos = list(df_base["exercise"].unique())
+            col_sel_exo, col_sel_ang = st.columns([1.5, 1])
+            with col_sel_exo:
+                chosen_exo = st.selectbox("Figure à calibrer :", distinct_exos, key="select_calib_exo_step_b")
+            with col_sel_ang:
+                sub_chosen = df_base[df_base["exercise"] == chosen_exo]
+                angle_options = VALID_CAMERA_VIEWS
+
+                def _fmt_angle_status(ang):
+                    match_ang = sub_chosen[sub_chosen["camera_view"] == ang]
+                    if not match_ang.empty and match_ang.iloc[0]["status"] == "calibrated":
+                        return f"{ang} (✅ Déjà calibré)"
+                    return f"{ang} (⏳ En attente)"
+
+                chosen_angle = st.selectbox("Angle de vue :", angle_options, format_func=_fmt_angle_status, key="select_calib_angle_step_b")
+
+            calib_video_upload = st.file_uploader(
+                f"Vidéo de calibrage pour {chosen_exo} ({chosen_angle}) - 3 à 5 secondes recommandées :",
+                type=['mp4', 'mov', 'avi'],
+                key="uploader_calib_video_step_b"
+            )
+
+            if calib_video_upload is not None:
+                if st.button(f"🚀 Analyser et enregistrer ce calibrage ({chosen_angle})", type="primary", use_container_width=True, key="btn_run_calib_step_b"):
+                    with st.spinner("Extraction cinématique MediaPipe 3D, auto-trimming et calcul biomécanique..."):
+                        try:
+                            temp_cal_path = get_persisted_temp_video_path(calib_video_upload)
+                            kin_cal = extract_3d_kinematics_from_video(temp_cal_path)
+                            seg_cal = segment_and_classify_video(kin_cal)
+
+                            fig_type_current = sub_chosen["type"].iloc[0] if not sub_chosen.empty else seg_cal["type"]
+                            means_cal, stds_cal = compute_active_feature_vectors(kin_cal, seg_cal["effort_window"])
+
+                            rom_data = None
+                            if fig_type_current == "dynamic":
+                                filt_c = kin_cal["features_filtered"]
+                                s_i = seg_cal["effort_window"]["start_idx"]
+                                e_i = seg_cal["effort_window"]["end_idx"]
+                                el_act = filt_c["elbow_angle"][s_i:e_i + 1]
+                                rom_data = {
+                                    "primary_joint": "elbow_angle",
+                                    "min_amplitude_deg": 20.0,
+                                    "lockout_angle": round(float(np.max(el_act)), 1) if len(el_act) > 0 else 165.0,
+                                    "inflection_angle": round(float(np.min(el_act)), 1) if len(el_act) > 0 else 90.0,
+                                    "min_rep_duration_sec": 0.4,
+                                    "max_rep_duration_sec": 9.0
+                                }
+
+                            ok_save, msg_save = save_calibrated_slot(
+                                exercise_name=chosen_exo,
+                                camera_view=chosen_angle,
+                                exo_type=fig_type_current,
+                                mean_features=means_cal.tolist(),
+                                std_features=stds_cal.tolist(),
+                                rom_bounds=rom_data
+                            )
+
+                            if ok_save:
+                                st.success(f"✅ {msg_save}")
+
+                                # Aperçu des 6 angles 3D extraits
+                                st.markdown("##### 📐 Aperçu biomécanique 3D extrait :")
+                                c_m1, c_m2, c_m3 = st.columns(3)
+                                c_m1.metric("Coude", f"{means_cal[2]:.1f}°", f"± {stds_cal[2]:.1f}°")
+                                c_m1.metric("Épaule (Flexion)", f"{means_cal[0]:.1f}°", f"± {stds_cal[0]:.1f}°")
+                                c_m2.metric("Écartement Bras", f"{means_cal[1]:.1f}°", f"± {stds_cal[1]:.1f}°")
+                                c_m2.metric("Hanche (Alignement)", f"{means_cal[3]:.1f}°", f"± {stds_cal[3]:.1f}°")
+                                c_m3.metric("Inclinaison Tronc", f"{means_cal[4]:.1f}°", f"± {stds_cal[4]:.1f}°")
+                                vd_label = "Ventrale (+1, Face au sol)" if means_cal[5] >= 0 else "Dorsale (-1, Dos au sol)"
+                                c_m3.metric("Orientation Buste", vd_label)
+
+                                if rom_data:
+                                    st.info(f"Amplitude dynamique détectée : Lockout = {rom_data['lockout_angle']}° | Inflexion = {rom_data['inflection_angle']}°")
+
+                                time.sleep(1.0)
+                                st.rerun()
+                            else:
+                                st.error(msg_save)
+                        except Exception as err_c:
+                            st.error(f"Erreur d'analyse de calibrage : {err_c}")
+
+
+# ==============================================================================
+# COMPARTIMENT 3 : STATS & PROGRESSION PURE (TST & RPE)
 # ==============================================================================
 with tab_stats:
     st.markdown("### 📊 Statistiques & Suivi TST / RPE")

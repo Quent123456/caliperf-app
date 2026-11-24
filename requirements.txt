@@ -7,3 +7,6 @@ opencv-python-headless>=4.8.0
 mediapipe>=0.10.0
 scipy>=1.11.0
 numpy>=1.24.0
+st-gsheets-connection>=0.0.3
+gspread>=5.10.0
+google-auth>=2.0.0

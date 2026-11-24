@@ -338,57 +338,62 @@ def analyze_single_video_pipeline(
     # 2. Segmentation temporelle et classification statique/dynamique
     segmentation = segment_and_classify_video(kin_3d)
 
-    # 3. Identification 1-NN multi-angles
+    # 3. Identification 1-NN multi-angles (prototypes calibrés uniquement)
     ident = identify_exercise_1nn(kin_3d, segmentation, forced_exercise=forced_exercise)
-    proto = ident.get("matched_prototype") or {
-        "exercise": ident["exercise"],
-        "display_name": ident["display_name"],
-        "type": ident["type"]
-    }
+    proto = ident.get("matched_prototype")
+    is_uncalibrated = (proto is None or ident.get("status") == "uncalibrated")
 
-    # 4. Quantification biomécanique exacte selon le prototype
-    final_type = ident["type"]
+    # 4. Quantification biomécanique
+    final_type = ident.get("type", "isometric")
     eval_res: Dict[str, Any] = {}
     final_tut = 0.0
     final_reps = 0
     drift_str = "Stable"
+    status_str = "✅ 3D Calibré"
 
-    if final_type == "isometric":
-        eval_res = evaluate_isometric_3d(kin_3d, segmentation, proto, tolerance_deg=custom_tolerance)
-        final_tut = float(eval_res.get("effective_tut", 0.0))
-        final_reps = 0
-        drift_data = eval_res.get("angular_drift", {})
-        if drift_data:
-            drift_str = f"{drift_data.get('alignment_drift_deg', 0.0):+0.1f}° alignement | Max: {eval_res.get('max_continuous_hold', 0.0)}s"
-        else:
-            drift_str = f"Maintien stable ({final_tut}s)"
+    if is_uncalibrated:
+        drift_str = "⚠️ Aucune figure calibrée dans la bibliothèque"
+        status_str = "⏳ Non Calibré"
+        # Estimation de sécurité de la durée d'effort
+        if segmentation.get("effort_window", {}).get("duration", 0.0) > 0.5:
+            final_tut = round(segmentation["effort_window"]["duration"] * 0.75, 2)
     else:
-        eval_res = evaluate_dynamic_3d(kin_3d, segmentation, proto)
-        final_tut = float(eval_res.get("active_tut", 0.0))
-        final_reps = int(eval_res.get("valid_reps_count", 0))
-        drift_str = f"Tempo : {eval_res.get('average_rep_duration', 0.0)}s/rep ({final_reps} reps)"
+        if final_type == "isometric":
+            eval_res = evaluate_isometric_3d(kin_3d, segmentation, proto, tolerance_deg=custom_tolerance)
+            final_tut = float(eval_res.get("effective_tut", 0.0))
+            final_reps = 0
+            drift_data = eval_res.get("angular_drift", {})
+            if drift_data:
+                drift_str = f"{drift_data.get('alignment_drift_deg', 0.0):+0.1f}° alignement | Max: {eval_res.get('max_continuous_hold', 0.0)}s"
+            else:
+                drift_str = f"Maintien stable ({final_tut}s)"
+        else:
+            eval_res = evaluate_dynamic_3d(kin_3d, segmentation, proto)
+            final_tut = float(eval_res.get("active_tut", 0.0))
+            final_reps = int(eval_res.get("valid_reps_count", 0))
+            drift_str = f"Tempo : {eval_res.get('average_rep_duration', 0.0)}s/rep ({final_reps} reps)"
 
-    # Sécurité temps minimum si effort détecté
-    if final_tut == 0.0 and segmentation.get("effort_window", {}).get("duration", 0.0) > 0.5:
-        final_tut = round(segmentation["effort_window"]["duration"] * 0.75, 2)
+        # Sécurité temps minimum si effort détecté
+        if final_tut == 0.0 and segmentation.get("effort_window", {}).get("duration", 0.0) > 0.5:
+            final_tut = round(segmentation["effort_window"]["duration"] * 0.75, 2)
 
     return {
         "video_path": video_path,
         "filename": os.path.basename(video_path),
         "exercise_key": ident["exercise"],
         "exercise_display": ident["display_name"],
-        "camera_view": ident.get("camera_view", "profile"),
+        "camera_view": ident.get("camera_view", "Profil"),
         "type": final_type,
         "tut": round(float(final_tut), 2),
         "reps": int(final_reps),
         "drift": drift_str[:65],
-        "confidence": ident.get("confidence", 0.95),
+        "confidence": ident.get("confidence", 0.0 if is_uncalibrated else 0.95),
         "kinematics": kin_3d,
         "segmentation": segmentation,
         "evaluation": eval_res,
         "identification": ident,
         "ai_data": None,
-        "status": "✅ 3D Calibré"
+        "status": status_str
     }
 
 
