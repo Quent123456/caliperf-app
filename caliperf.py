@@ -1505,54 +1505,66 @@ with tab_calib:
             type_label = "Isométrique" if fig_type == "isometric" else "Dynamique"
             type_badge = "badge-cyan" if fig_type == "isometric" else "badge-amber"
 
+            # Calcul des angles validés
+            calib_rows = sub_df[sub_df["status"] == "calibrated"]
+            nb_calib = len(calib_rows)
+            calib_ratio = f"{nb_calib}/3 validé{'s' if nb_calib > 1 else ''}"
+            summary_color = "#10b981" if nb_calib == 3 else ("#00f0ff" if nb_calib > 0 else "#94a3b8")
+
+            clean_key = re.sub(r'[^a-zA-Z0-9]+', '_', fig_name.lower()).strip('_')
+
             with st.container():
                 st.markdown(f"""
-                    <div class="cali-card" style="padding: 10px 14px; margin-bottom: 8px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                            <b style="font-size:1rem; color:#f1f5f9;">{fig_name}</b>
-                            <span class="{type_badge}">{type_label}</span>
+                    <div class="cali-card" style="padding: 10px 14px; margin-bottom: 6px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                <b style="font-size:1.05rem; color:#f1f5f9;">{fig_name}</b>
+                                <span class="{type_badge}">{type_label}</span>
+                                <span style="font-size:0.75rem; font-weight:600; color:{summary_color}; background:rgba(255,255,255,0.06); padding:2px 8px; border-radius:10px;">
+                                    {calib_ratio}
+                                </span>
+                            </div>
                         </div>
                     </div>
                 """, unsafe_allow_html=True)
 
-                cols_view = st.columns(3)
-                for idx_v, v_name in enumerate(VALID_CAMERA_VIEWS):
-                    with cols_view[idx_v]:
-                        v_row = sub_df[sub_df["camera_view"] == v_name]
-                        if not v_row.empty and v_row.iloc[0]["status"] == "calibrated":
-                            st.markdown(f"""
-                                <div style="background:rgba(16,185,129,0.12); border-left:3px solid #10b981; padding:6px 10px; border-radius:6px; font-size:0.78rem; margin-bottom:4px;">
-                                    <b>{v_name}</b><br>
-                                    <span style="color:#6ee7b7;">✅ Calibré</span>
-                                </div>
-                            """, unsafe_allow_html=True)
-                            slot_id = v_row.iloc[0]["id"]
-                            if st.button("🔄 Réinit.", key=f"reset_{slot_id}", help=f"Réinitialiser l'angle {v_name}", use_container_width=True):
-                                ok_r, msg_r = reset_slot(slot_id)
-                                if ok_r:
-                                    st.toast(f"✅ Angle {v_name} réinitialisé")
-                                    time.sleep(0.3)
-                                    st.rerun()
-                                else:
-                                    st.error(msg_r)
-                        else:
-                            st.markdown(f"""
-                                <div style="background:rgba(100,116,139,0.12); border-left:3px solid #64748b; padding:6px 10px; border-radius:6px; font-size:0.78rem; margin-bottom:4px;">
-                                    <b>{v_name}</b><br>
-                                    <span style="color:#94a3b8;">⏳ En attente</span>
-                                </div>
-                            """, unsafe_allow_html=True)
-
-                col_del_f1, col_del_f2 = st.columns([3, 1])
-                with col_del_f2:
-                    if st.button("🗑️ Supprimer", key=f"del_fig_{fig_name}", help=f"Supprimer la figure {fig_name}", use_container_width=True):
+                col_exp_angles, col_del_fig = st.columns([4, 1.2])
+                with col_del_fig:
+                    if st.button("🗑️ Supprimer", key=f"del_fig_{clean_key}", help=f"Supprimer définitivement {fig_name}", use_container_width=True):
                         ok_d, msg_d = delete_figure(fig_name)
-                        if ok_d:
-                            st.toast(f"✅ {msg_d}")
-                            time.sleep(0.3)
-                            st.rerun()
-                        else:
-                            st.error(msg_d)
+                        st.toast(f"✅ {msg_d}")
+                        time.sleep(0.3)
+                        st.rerun()
+
+                with col_exp_angles:
+                    with st.expander(f"📐 Voir les 3 angles ({fig_name})", expanded=False):
+                        for v_name in VALID_CAMERA_VIEWS:
+                            v_row = sub_df[sub_df["camera_view"] == v_name]
+                            is_cal = not v_row.empty and v_row.iloc[0]["status"] == "calibrated"
+
+                            c_v1, c_v2, c_v3 = st.columns([1.2, 2, 1])
+                            with c_v1:
+                                st.markdown(f"<b>{v_name}</b>", unsafe_allow_html=True)
+                            with c_v2:
+                                if is_cal:
+                                    st.markdown("<span style='color:#10b981; font-size:0.85rem;'>✅ Validé (Calibré)</span>", unsafe_allow_html=True)
+                                else:
+                                    st.markdown("<span style='color:#94a3b8; font-size:0.85rem;'>⏳ En attente de vidéo</span>", unsafe_allow_html=True)
+                            with c_v3:
+                                if is_cal:
+                                    slot_id = v_row.iloc[0]["id"]
+                                    if st.button("🔄 Réinit.", key=f"reset_{slot_id}", help=f"Réinitialiser l'angle {v_name}", use_container_width=True):
+                                        ok_r, msg_r = reset_slot(slot_id)
+                                        if ok_r:
+                                            st.toast(f"✅ Angle {v_name} réinitialisé")
+                                            time.sleep(0.3)
+                                            st.rerun()
+                                        else:
+                                            st.error(msg_r)
+                                else:
+                                    st.caption("-")
+
+                st.markdown("<hr style='border:0; border-top:1px solid rgba(255,255,255,0.05); margin:6px 0 10px 0;'>", unsafe_allow_html=True)
 
     # --------------------------------------------------------------------------
     # ÉTAPE B : ASSOCIER UNE VIDÉO DE CALIBRAGE À UN EMPLACEMENT

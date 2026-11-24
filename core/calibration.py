@@ -93,8 +93,24 @@ def _load_local_baselines_json(path: str = DEFAULT_BASELINES_PATH) -> pd.DataFra
         return pd.DataFrame(columns=BASELINES_COLUMNS)
 
 
-def _save_local_baselines_json(df: pd.DataFrame, path: str = DEFAULT_BASELINES_PATH) -> bool:
-    """Enregistre le DataFrame dans le fichier JSON local."""
+def _load_deleted_exercises(path: str = DEFAULT_BASELINES_PATH) -> set:
+    """Charge l'ensemble des figures marquées comme supprimées (tombstones)."""
+    if not os.path.exists(path):
+        return set()
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return set(str(x).strip().lower() for x in data.get("deleted_exercises", []) if str(x).strip())
+    except Exception:
+        return set()
+
+
+def _save_local_baselines_json(
+    df: pd.DataFrame,
+    deleted_exercises: Optional[set] = None,
+    path: str = DEFAULT_BASELINES_PATH
+) -> bool:
+    """Enregistre le DataFrame et les figures supprimées dans le fichier JSON local."""
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         records = []
@@ -129,6 +145,10 @@ def _save_local_baselines_json(df: pd.DataFrame, path: str = DEFAULT_BASELINES_P
                 "rom_bounds": rb_val
             })
 
+        current_deleted = _load_deleted_exercises(path)
+        if deleted_exercises is not None:
+            current_deleted = set(str(x).strip().lower() for x in deleted_exercises if str(x).strip())
+
         payload = {
             "schema_version": "2.0",
             "metadata": {
@@ -136,6 +156,7 @@ def _save_local_baselines_json(df: pd.DataFrame, path: str = DEFAULT_BASELINES_P
                 "updated_at": time.strftime("%Y-%m-%d %H:%M")
             },
             "columns": BASELINES_COLUMNS,
+            "deleted_exercises": sorted(list(current_deleted)),
             "prototypes": records
         }
 
@@ -207,48 +228,41 @@ def _get_gspread_client_and_sheet():
 def _merge_baselines_data(local_df: pd.DataFrame, remote_df: pd.DataFrame) -> pd.DataFrame:
     """
     Fusionne intelligemment les données locales et distantes sans jamais écraser ou perdre
-    les figures ajoutées localement ou à distance.
-    Priorité :
-    1. Si un ID existe des deux côtés :
-       - Si l'un est 'calibrated' et l'autre 'empty', on conserve 'calibrated'.
-       - Si les deux sont 'calibrated', on conserve celui qui a des données valides.
-       - Si les deux ont des données valides, on garde la version la plus complète.
-    2. Si un ID n'existe que d'un côté (local ou distant), on le CONSERVE impérativement.
+    les figures ajoutées localement ou à distance, tout en respectant les suppressions (tombstones).
     """
-    if local_df is None or local_df.empty:
-        return remote_df.copy() if remote_df is not None and not remote_df.empty else pd.DataFrame(columns=BASELINES_COLUMNS)
-    if remote_df is None or remote_df.empty:
-        return local_df.copy()
+    deleted_set = _load_deleted_exercises()
 
     records_map = {}
 
-    # D'abord intégrer le local
-    for _, row in local_df.iterrows():
-        rid = str(row.get("id", "")).strip()
-        if rid:
-            records_map[rid] = dict(row)
-
-    # Ensuite fusionner avec le distant
-    for _, row in remote_df.iterrows():
-        rid = str(row.get("id", "")).strip()
-        if not rid:
-            continue
-        if rid not in records_map:
-            # Figure existant sur le distant mais pas encore en local
-            records_map[rid] = dict(row)
-        else:
-            # Conflit : vérifier le statut
-            local_row = records_map[rid]
-            loc_status = str(local_row.get("status", "")).strip().lower()
-            rem_status = str(row.get("status", "")).strip().lower()
-
-            if rem_status == "calibrated" and loc_status != "calibrated":
+    # D'abord intégrer le local (en ignorant les figures supprimées)
+    if local_df is not None and not local_df.empty:
+        for _, row in local_df.iterrows():
+            rid = str(row.get("id", "")).strip()
+            exo = str(row.get("exercise", "")).strip().lower()
+            if rid and exo not in deleted_set:
                 records_map[rid] = dict(row)
-            elif rem_status == "calibrated" and loc_status == "calibrated":
-                rem_mf = str(row.get("mean_features", "")).strip()
-                loc_mf = str(local_row.get("mean_features", "")).strip()
-                if rem_mf and rem_mf != "[]" and (not loc_mf or loc_mf == "[]"):
+
+    # Ensuite fusionner avec le distant (en filtrant formellement les figures supprimées)
+    if remote_df is not None and not remote_df.empty:
+        for _, row in remote_df.iterrows():
+            rid = str(row.get("id", "")).strip()
+            exo = str(row.get("exercise", "")).strip().lower()
+            if not rid or exo in deleted_set:
+                continue
+            if rid not in records_map:
+                records_map[rid] = dict(row)
+            else:
+                local_row = records_map[rid]
+                loc_status = str(local_row.get("status", "")).strip().lower()
+                rem_status = str(row.get("status", "")).strip().lower()
+
+                if rem_status == "calibrated" and loc_status != "calibrated":
                     records_map[rid] = dict(row)
+                elif rem_status == "calibrated" and loc_status == "calibrated":
+                    rem_mf = str(row.get("mean_features", "")).strip()
+                    loc_mf = str(local_row.get("mean_features", "")).strip()
+                    if rem_mf and rem_mf != "[]" and (not loc_mf or loc_mf == "[]"):
+                        records_map[rid] = dict(row)
 
     merged_list = list(records_map.values())
     if not merged_list:
@@ -302,11 +316,16 @@ def _fetch_baselines_table_internal() -> pd.DataFrame:
             except Exception:
                 pass
 
-    # Fusion intelligente : conserve toujours les créations locales même si remote est en retard ou en lecture seule
+    # Fusion intelligente : conserve toujours les créations locales et respecte les suppressions
     if remote_df is not None and not remote_df.empty:
         merged_df = _merge_baselines_data(local_df, remote_df)
         _save_local_baselines_json(merged_df)
         return merged_df
+
+    # Filtrer aussi le local par deleted_set au cas où
+    deleted_set = _load_deleted_exercises()
+    if deleted_set and not local_df.empty:
+        local_df = local_df[~local_df["exercise"].astype(str).str.strip().str.lower().isin(deleted_set)].reset_index(drop=True)
 
     return local_df
 
@@ -326,8 +345,6 @@ def load_baselines_table(force_refresh: bool = False) -> pd.DataFrame:
 def clear_baselines_cache():
     """Invalide le cache de lecture lors de toute modification."""
     if HAS_STREAMLIT:
-        if "baselines_df" in st.session_state:
-            del st.session_state["baselines_df"]
         if hasattr(load_baselines_table, "clear"):
             try:
                 load_baselines_table.clear()
@@ -335,7 +352,10 @@ def clear_baselines_cache():
                 pass
 
 
-def _save_baselines_table_internal(df: pd.DataFrame) -> Tuple[bool, str]:
+def _save_baselines_table_internal(
+    df: pd.DataFrame,
+    deleted_exercises: Optional[set] = None
+) -> Tuple[bool, str]:
     """Sauvegarde la table Baselines_3D en session, en local (JSON) et tente Google Sheets."""
     clean_df = df.copy().fillna("")
     for c in BASELINES_COLUMNS:
@@ -347,8 +367,8 @@ def _save_baselines_table_internal(df: pd.DataFrame) -> Tuple[bool, str]:
     if HAS_STREAMLIT:
         st.session_state["baselines_df"] = clean_df.copy()
 
-    # 2. Synchronisation immédiate du JSON local
-    _save_local_baselines_json(clean_df)
+    # 2. Synchronisation immédiate du JSON local avec tombstones
+    _save_local_baselines_json(clean_df, deleted_exercises=deleted_exercises)
 
     # 3. Sauvegarder dans Google Sheets via streamlit-gsheets si disponible
     conn = _get_gsheets_connection()
@@ -399,6 +419,11 @@ def create_figure_slots(exercise_name: str, exo_type: str = "isometric") -> Tupl
 
     clean_type = "dynamic" if "dyn" in str(exo_type).lower() else "isometric"
 
+    # Retirer du tombstone si elle avait été supprimée auparavant
+    deleted_set = _load_deleted_exercises()
+    if clean_name.lower() in deleted_set:
+        deleted_set.remove(clean_name.lower())
+
     df = load_baselines_table().copy()
 
     # Vérifier si la figure existe déjà
@@ -421,7 +446,7 @@ def create_figure_slots(exercise_name: str, exo_type: str = "isometric") -> Tupl
         })
 
     updated_df = pd.concat([df, pd.DataFrame(new_rows)], ignore_index=True)
-    ok, msg = _save_baselines_table_internal(updated_df)
+    ok, msg = _save_baselines_table_internal(updated_df, deleted_exercises=deleted_set)
     return ok, f"Figure '{clean_name}' créée avec succès (3 angles en attente) !" if ok else msg
 
 
@@ -493,16 +518,20 @@ def reset_slot(slot_id: str) -> Tuple[bool, str]:
 
 def delete_figure(exercise_name: str) -> Tuple[bool, str]:
     """Supprime complètement une figure et ses 3 angles de la bibliothèque."""
+    clean_name = exercise_name.strip()
+    if not clean_name:
+        return False, "Nom de figure invalide."
+
     df = load_baselines_table().copy()
-    clean_name = exercise_name.strip().lower()
     before_len = len(df)
-    df = df[df["exercise"].astype(str).str.strip().str.lower() != clean_name].reset_index(drop=True)
+    df = df[df["exercise"].astype(str).str.strip().str.lower() != clean_name.lower()].reset_index(drop=True)
 
-    if len(df) == before_len:
-        return False, f"Figure '{exercise_name}' introuvable."
+    # Enregistrer le tombstone pour empêcher la résurrection lors des syncs distantes
+    deleted_set = _load_deleted_exercises()
+    deleted_set.add(clean_name.lower())
 
-    ok, msg = _save_baselines_table_internal(df)
-    return ok, f"Figure '{exercise_name}' et ses angles supprimés !" if ok else msg
+    ok, msg = _save_baselines_table_internal(df, deleted_exercises=deleted_set)
+    return True, f"Figure '{clean_name}' et ses angles supprimés définitivement !"
 
 
 def export_baselines_json() -> str:
