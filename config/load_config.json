@@ -1,0 +1,58 @@
+{
+  "version": "1.0",
+  "load_coefficients": {
+    "default_isometric": 1.4,
+    "default_dynamic": 1.1,
+    "by_exercise": {
+      "maltese": 2.4,
+      "iron_cross": 2.5,
+      "victorian": 2.6,
+      "full_planche": 2.1,
+      "straddle_planche": 1.7,
+      "front_lever": 1.6,
+      "back_lever": 1.4,
+      "hefesto": 2.0,
+      "planche_push_ups": 1.9,
+      "muscle_ups": 1.5,
+      "tractions": 1.1,
+      "pull_ups": 1.1,
+      "dips": 1.0,
+      "pompes": 0.8,
+      "push_ups": 0.8
+    }
+  },
+  "tendon_stress_exercises": [
+    "Maltese",
+    "Full Planche",
+    "Straddle Planche",
+    "Front Lever",
+    "Hefesto",
+    "Iron Cross",
+    "Victorian",
+    "Planche Push-ups"
+  ],
+  "ewma": {
+    "acute_days": 7,
+    "chronic_days": 28,
+    "min_chronic_floor": 1.0
+  },
+  "acwr_zones": {
+    "underload_max": 0.80,
+    "sweet_spot_min": 0.80,
+    "sweet_spot_max": 1.30,
+    "caution_max": 1.50,
+    "high_risk_min": 1.50
+  },
+  "tendon_stress": {
+    "weekly_moderate_threshold": 600.0,
+    "weekly_high_threshold": 1200.0,
+    "weekly_max_gauge": 2000.0
+  },
+  "fatigue": {
+    "isometric_slice_sec": 1.0,
+    "isometric_drift_warning_deg": 8.0,
+    "velocity_loss_low_pct": 10.0,
+    "velocity_loss_moderate_pct": 25.0,
+    "velocity_loss_high_pct": 40.0
+  }
+}

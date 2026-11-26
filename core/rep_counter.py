@@ -318,19 +318,21 @@ def analyze_single_video_pipeline(
     video_path: str,
     api_key: str = "",
     forced_exercise: Optional[str] = None,
-    custom_tolerance: float = 15.0
+    custom_tolerance: float = 15.0,
+    user: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Exécute le pipeline 100% local, déterministe et ultra-rapide (< 2.5s) :
     1. Extraction cinématique 3D métrique via pose_world_landmarks et filtrage Butterworth.
     2. Découpage automatique de la fenêtre d'effort (Auto-Trimming) et séparation Statique vs Dynamique.
     3. Reconnaissance d'exercice par Plus Proche Voisin Normalisé (1-NN) contre les prototypes multi-angles.
-    4. Quantification exacte du TUT effectif et des répétitions selon le prototype apparié.
+    4. Quantification exacte du TUT effectif, des répétitions et de la fatigue intra-série.
     """
     from core.biomechanics_3d import extract_3d_kinematics_from_video
     from core.segmentation import segment_and_classify_video
     from core.calibration import identify_exercise_1nn
     from core.metrics import evaluate_isometric_3d, evaluate_dynamic_3d
+    from core.fatigue_analysis import analyze_intra_set_fatigue
 
     # 1. Extraction 3D avec cache sur hash vidéo
     kin_3d = extract_3d_kinematics_from_video(video_path)
@@ -338,8 +340,8 @@ def analyze_single_video_pipeline(
     # 2. Segmentation temporelle et classification statique/dynamique
     segmentation = segment_and_classify_video(kin_3d)
 
-    # 3. Identification 1-NN multi-angles (prototypes calibrés uniquement)
-    ident = identify_exercise_1nn(kin_3d, segmentation, forced_exercise=forced_exercise)
+    # 3. Identification 1-NN multi-angles (prototypes calibrés scopés à l'utilisateur)
+    ident = identify_exercise_1nn(kin_3d, segmentation, forced_exercise=forced_exercise, user=user)
     proto = ident.get("matched_prototype")
     is_uncalibrated = (proto is None or ident.get("status") == "uncalibrated")
 
@@ -354,7 +356,6 @@ def analyze_single_video_pipeline(
     if is_uncalibrated:
         drift_str = "⚠️ Aucune figure calibrée dans la bibliothèque"
         status_str = "⏳ Non Calibré"
-        # Estimation de sécurité de la durée d'effort
         if segmentation.get("effort_window", {}).get("duration", 0.0) > 0.5:
             final_tut = round(segmentation["effort_window"]["duration"] * 0.75, 2)
     else:
@@ -373,9 +374,11 @@ def analyze_single_video_pipeline(
             final_reps = int(eval_res.get("valid_reps_count", 0))
             drift_str = f"Tempo : {eval_res.get('average_rep_duration', 0.0)}s/rep ({final_reps} reps)"
 
-        # Sécurité temps minimum si effort détecté
         if final_tut == 0.0 and segmentation.get("effort_window", {}).get("duration", 0.0) > 0.5:
             final_tut = round(segmentation["effort_window"]["duration"] * 0.75, 2)
+
+    # 5. Indice de fatigue intra-série (dérive Δθ ou perte de vélocité %)
+    fatigue_res = analyze_intra_set_fatigue(kin_3d, segmentation, evaluation=eval_res, exo_type=final_type)
 
     return {
         "video_path": video_path,
@@ -392,6 +395,7 @@ def analyze_single_video_pipeline(
         "segmentation": segmentation,
         "evaluation": eval_res,
         "identification": ident,
+        "fatigue": fatigue_res,
         "ai_data": None,
         "status": status_str
     }
@@ -399,14 +403,17 @@ def analyze_single_video_pipeline(
 
 def process_video_batch_parallel(
     video_paths: List[str],
-    api_key: str,
-    progress_callback: Optional[Callable[[float, str], None]] = None
+    api_key: str = "",
+    progress_callback: Optional[Callable[[float, str], None]] = None,
+    user: Optional[Dict[str, Any]] = None,
+    cleanup_after: bool = False,
 ) -> List[Dict[str, Any]]:
     """
-    Traite un lot de vidéos (ex: 10 vidéos) en parallèle via ThreadPoolExecutor.
-    Temps total cible : sous les 5 secondes pour le lot complet.
+    Traite un lot de vidéos en bornant la mémoire RAM (max 2 workers concurrents + gc.collect).
     """
     import concurrent.futures
+    import gc
+    from core.video_io import cleanup_temp_file_and_gc
 
     total = len(video_paths)
     if total == 0:
@@ -414,13 +421,13 @@ def process_video_batch_parallel(
 
     results: List[Dict[str, Any]] = [None] * total
     completed = 0
-
-    max_workers = min(6, max(2, os.cpu_count() or 4))
+    max_workers = min(2, max(1, os.cpu_count() or 2))
 
     def _worker(idx_and_path):
         idx, path = idx_and_path
         try:
-            return idx, analyze_single_video_pipeline(path, api_key)
+            res = analyze_single_video_pipeline(path, api_key, user=user)
+            return idx, res
         except Exception as e:
             return idx, {
                 "video_path": path,
@@ -432,12 +439,19 @@ def process_video_batch_parallel(
                 "reps": 0,
                 "drift": f"Analyse secours : {str(e)[:30]}",
                 "confidence": 0.8,
-                "camera_angle": "profile",
+                "camera_view": "Profil",
                 "kinematics": None,
+                "segmentation": None,
                 "evaluation": {},
+                "fatigue": {"available": False},
                 "ai_data": None,
                 "status": "⚠️ Repli secours"
             }
+        finally:
+            if cleanup_after:
+                cleanup_temp_file_and_gc(path)
+            else:
+                gc.collect()
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [executor.submit(_worker, (i, p)) for i, p in enumerate(video_paths)]
@@ -452,5 +466,57 @@ def process_video_batch_parallel(
                 tut = res["tut"]
                 reps = res["reps"]
                 progress_callback(frac, f"Traitement ({completed}/{total}) : {fn} -> {exo} ({tut}s, {reps} reps)")
+
+    return results
+
+
+def process_uploaded_batch_streaming(
+    uploaded_files: List[Any],
+    user: Optional[Dict[str, Any]] = None,
+    progress_callback: Optional[Callable[[float, str], None]] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Traite un lot jusqu'à 10 vidéos uploadées en écriture/suppression flux par fichier
+    afin de maintenir la consommation RAM bien sous le plafond de 1 Go.
+    """
+    from core.video_io import temporary_video_file
+
+    total = len(uploaded_files)
+    if total == 0:
+        return []
+
+    results: List[Dict[str, Any]] = []
+    for idx, up_f in enumerate(uploaded_files):
+        orig_name = getattr(up_f, "name", f"video_{idx + 1}.mp4")
+        try:
+            with temporary_video_file(up_f) as tmp_path:
+                res = analyze_single_video_pipeline(tmp_path, api_key="", user=user)
+                res["filename"] = orig_name
+        except Exception as e:
+            res = {
+                "video_path": "",
+                "filename": orig_name,
+                "exercise_key": "full_planche",
+                "exercise_display": "Auto-Détecté",
+                "type": "isometric",
+                "tut": 3.0,
+                "reps": 0,
+                "drift": f"Analyse secours : {str(e)[:30]}",
+                "confidence": 0.8,
+                "camera_view": "Profil",
+                "kinematics": None,
+                "segmentation": None,
+                "evaluation": {},
+                "fatigue": {"available": False},
+                "ai_data": None,
+                "status": "⚠️ Repli secours"
+            }
+
+        results.append(res)
+        if progress_callback:
+            progress_callback(
+                (idx + 1) / float(total),
+                f"Traitement ({idx + 1}/{total}) : {orig_name} -> {res['exercise_display']} ({res['tut']}s, {res['reps']} reps)"
+            )
 
     return results

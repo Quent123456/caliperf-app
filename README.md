@@ -1,37 +1,17 @@
-# ⚡ Caliperf V2 - Studio de Vidéo-Coaching & Analyse TST
+# ⚡ CaliPerf Pro — Plateforme Biomécanique 3D, Charge & Suivi Longitudinal SQL
 
-Caliperf V2 est une application haute vélocité dédiée aux coachs sportifs (Calisthenics, Street Lifting, Force Athlétique, Musculation) pour chronométrer le Temps Sous Tension (TST) et évaluer le RPE des athlètes avec un maximum de fluidité sur mobile et ordinateur.
+CaliPerf Pro est une application autonome dédiée au coaching de Callisthénie, Street Workout et Street Lifting : analyse cinématique 3D (`pose_world_landmarks`), contrôle qualité vidéo avant calibration, quantification de charge pondérée, dérive technique intra-série, suivi longitudinal ACWR (EWMA 7j/28j), jauge de stress tendineux et persistance relationnelle SQL.
 
----
+## Fonctionnalités Clés
+- **Persistance SQL autonome (`SQLAlchemy`) :** PostgreSQL cloud via `st.secrets["DATABASE_URL"]` avec bascule automatique sur SQLite local (`data/caliperf.db`). Zéro dépendance à Google Sheets / Google Forms.
+- **Multi-utilisateurs isolés & persistance `F5` :** Comptes `Coach` et `Élève` protégés par `hashlib.pbkdf2_hmac`, codes d'invitation coach, sélecteur d'athlète latéral et jeton signé HMAC dans `?session=` conservant la session au rafraîchissement.
+- **Quality Control Gate 3D (`core/quality_control.py`) :** Évalue en passe unique cadrage (`0.03–0.97`), occupation (`45–85 %`), visibilité (`>= 0.80`), cadence (`FPS >= 24`), stabilité angulaire 3D et cohérence de l'angle déclaré avant sauvegarde dans `baselines_3d`.
+- **Pont Vidéo → Charge & Dérive Intra-Série :** Calcul automatique de la charge externe pondérée (UA), du `sRPE`, de la dérive $\Delta\theta$ seconde par seconde (isométrique) et de la perte de vélocité `%` (dynamique).
+- **Dashboard Longitudinal & Exports :** Ratio ACWR EWMA, Monotonie/Contrainte de Foster, Stress Tendineux Haute Intensité, exports CSV (`utf-8-sig`) et Excel multi-onglets (`.xlsx` via `openpyxl`).
+- **RAM maîtrisée (< 1 Go) :** Écriture/lecture vidéo en flux via `tempfile.NamedTemporaryFile` + suppression explicite et `gc.collect()` après chaque vidéo.
 
-## 🚀 Fonctionnalités Clés
-
-### 1. 📱 Expérience Mobile Fluid Swipe (Glissement en continu)
-- **Transition tactile continue** : Glissez votre doigt sur l'écran pour voyager entre les sections (`Studio`, `Stats`, `Athlètes`, `Réglages`). La page suivante glisse progressivement sous votre doigt en temps réel avec une physique naturelle.
-- **Interface adaptée aux encoches (Safe Area)** : Le haut de l'écran est parfaitement dimensionné pour ne jamais être masqué par la barre d'état ou l'encoche de votre smartphone.
-- **Vidéo optimisée (40% de l'écran max)** : Permet de regarder l'athlète tout en manipulant le chronomètre et les repères sans défilement vertical inutile.
-
-### 2. 🎯 Logique Pure : Temps Sous Tension (TST) & RPE
-- **Aucun multiplicateur complexe** : L'application se concentre sur les fondamentaux réels du coaching :
-  - **TST** : Temps Sous Tension précis au centième de seconde.
-  - **RPE** : Échelle de perception de l'effort de 1 à 10 avec indicateur visuel de réserve (RIR).
-  - **Répétitions & Tempo** : Calcul automatique du tempo moyen par répétition ($TST / Reps$).
-
-### 3. 🤖 Module Auto-Track IA (Vision & Mouvement)
-- **Détection automatique par IA** : Grâce à l'intégration de Gemini Vision, l'application peut analyser la vidéo pour détecter automatiquement le début de l'effort, la fin du mouvement, le TST et le nombre de répétitions valides.
-- Prépare le terrain vers l'automatisation complète de vos analyses.
-
-### 4. 🌐 Enregistrement & Synchronisation
-- **Local d'abord** : Fonctionne 100% hors-ligne dans la salle de sport grâce à `caliperf_db.json`.
-- **Google Sheets Direct** : Synchronisation en direct via Webhook sans passer par un formulaire intermédiaire.
-- **Google Forms Legacy** : Prise en charge de votre ancien formulaire Google si vous souhaitez conserver votre flux existant.
-- **Export CSV** : Téléchargement de l'historique complet en 1 clic.
-
----
-
-## 🛠️ Démarrage Rapide
-
+## Démarrage rapide
 ```powershell
+pip install -r requirements.txt
 streamlit run caliperf.py
 ```
-Accès depuis votre navigateur : `http://localhost:8501`.

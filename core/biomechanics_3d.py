@@ -14,6 +14,7 @@ Caractéristiques clés :
 - Mise en cache intelligente indexée sur le hash MD5 du fichier vidéo
 """
 
+import gc
 import os
 import hashlib
 from typing import Dict, Any, List, Optional, Tuple
@@ -188,9 +189,9 @@ def _run_3d_extraction_from_video(
 
     try:
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        real_fps = float(cap.get(cv2.CAP_PROP_FPS) or 30.0)
-        if real_fps <= 0.0 or np.isnan(real_fps):
-            real_fps = 30.0
+        raw_fps_val = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+        fps_metadata_valid = bool(raw_fps_val > 0.0 and not np.isnan(raw_fps_val))
+        real_fps = raw_fps_val if fps_metadata_valid else 30.0
 
         # Échantillonnage pour atteindre target_fps (extrêmement rapide)
         stride = 1
@@ -207,6 +208,7 @@ def _run_3d_extraction_from_video(
         )
 
         timestamps: List[float] = []
+        raw_frame_timestamps_ms: List[float] = []
         raw_shoulder_flex: List[float] = []
         raw_arm_abduct: List[float] = []
         raw_elbow: List[float] = []
@@ -215,7 +217,13 @@ def _run_3d_extraction_from_video(
         raw_ventral_dorsal: List[float] = []
         raw_hip_y: List[float] = []
         detection_valid: List[bool] = []
-        cached_landmarks_2d: List[Optional[Any]] = []
+        landmarks_2d_list: List[np.ndarray] = []
+        frame_dim: Tuple[int, int] = (0, 0)
+
+        def _empty_xyv() -> np.ndarray:
+            arr = np.full((33, 3), np.nan, dtype=np.float32)
+            arr[:, 2] = 0.0
+            return arr
 
         with mp_vision.PoseLandmarker.create_from_options(options) as landmarker:
             rot_code = detect_optimal_rotation(cap, landmarker, max_width=max_width)
@@ -226,6 +234,9 @@ def _run_3d_extraction_from_video(
                 ret, frame_bgr = cap.read()
                 if not ret or frame_bgr is None:
                     break
+
+                pos_ms = float(cap.get(cv2.CAP_PROP_POS_MSEC) or 0.0)
+                raw_frame_timestamps_ms.append(pos_ms)
 
                 if frame_idx % stride != 0:
                     frame_idx += 1
@@ -242,6 +253,9 @@ def _run_3d_extraction_from_video(
                     new_w = max_width
                     new_h = max(1, int(h * scale))
                     frame_bgr = cv2.resize(frame_bgr, (new_w, new_h), interpolation=cv2.INTER_AREA)
+                    frame_dim = (new_w, new_h)
+                else:
+                    frame_dim = (w, h)
 
                 frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
                 mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
@@ -304,10 +318,15 @@ def _run_3d_extraction_from_video(
                     raw_hip_y.append(float(hip_mid[1]))
                     detection_valid.append(True)
 
+                    xyv = _empty_xyv()
                     if res.pose_landmarks and len(res.pose_landmarks) > 0:
-                        cached_landmarks_2d.append(res.pose_landmarks[0])
-                    else:
-                        cached_landmarks_2d.append(None)
+                        lm2d = res.pose_landmarks[0]
+                        for lm_idx, lm in enumerate(lm2d[:33]):
+                            vis_v = getattr(lm, "visibility", 0.0)
+                            xyv[lm_idx, 0] = float(lm.x)
+                            xyv[lm_idx, 1] = float(lm.y)
+                            xyv[lm_idx, 2] = float(vis_v) if vis_v is not None else 0.0
+                    landmarks_2d_list.append(xyv)
                 else:
                     # Répétition de la dernière frame valide si dispo
                     timestamps.append(curr_time)
@@ -319,7 +338,7 @@ def _run_3d_extraction_from_video(
                     raw_ventral_dorsal.append(raw_ventral_dorsal[-1] if raw_ventral_dorsal else 1.0)
                     raw_hip_y.append(raw_hip_y[-1] if raw_hip_y else 0.0)
                     detection_valid.append(False)
-                    cached_landmarks_2d.append(None)
+                    landmarks_2d_list.append(_empty_xyv())
 
                 frame_idx += 1
 
@@ -334,6 +353,7 @@ def _run_3d_extraction_from_video(
             raw_ventral_dorsal = [1.0]
             raw_hip_y = [0.0]
             detection_valid = [False]
+            landmarks_2d_list = [_empty_xyv()]
 
         # Conversion en np.ndarray et filtrage passe-bas Butterworth
         arr_ts = np.array(timestamps, dtype=np.float64)
@@ -365,9 +385,15 @@ def _run_3d_extraction_from_video(
         return {
             "video_path": video_path,
             "fps": effective_fps,
+            "raw_fps": round(raw_fps_val, 3) if fps_metadata_valid else 0.0,
+            "fps_metadata_valid": fps_metadata_valid,
+            "stride": int(stride),
             "dt": dt,
+            "total_frames_raw": int(total_frames),
+            "frame_size": frame_dim,
             "duration": round(float(arr_ts[-1] if len(arr_ts) > 0 else 0.0), 2),
             "timestamps": arr_ts,
+            "raw_frame_timestamps_ms": np.array(raw_frame_timestamps_ms, dtype=np.float64),
             "features_raw": {
                 "shoulder_flexion": arr_sh_flex,
                 "arm_abduction": arr_arm_abd,
@@ -386,11 +412,13 @@ def _run_3d_extraction_from_video(
                 "ventral_dorsal": filt_vd,
                 "hip_vertical_velocity": filt_hip_vel
             },
+            "landmarks_2d_xyv": np.stack(landmarks_2d_list, axis=0).astype(np.float32),
             "detection_valid_mask": np.array(detection_valid, dtype=bool),
             "rotation_applied": rot_code
         }
     finally:
         cap.release()
+        gc.collect()
 
 
 # ==============================================================================
@@ -398,11 +426,11 @@ def _run_3d_extraction_from_video(
 # ==============================================================================
 
 if HAS_STREAMLIT:
-    @st.cache_data(show_spinner=False, max_entries=50)
-    def _extract_3d_kinematics_cached(video_path: str, video_hash: str) -> Dict[str, Any]:
+    @st.cache_data(show_spinner=False, max_entries=15, ttl=3600)
+    def _extract_3d_kinematics_cached(video_path: str, video_hash: str, schema_version: int = 2) -> Dict[str, Any]:
         return _run_3d_extraction_from_video(video_path)
 else:
-    def _extract_3d_kinematics_cached(video_path: str, video_hash: str) -> Dict[str, Any]:
+    def _extract_3d_kinematics_cached(video_path: str, video_hash: str, schema_version: int = 2) -> Dict[str, Any]:
         return _run_3d_extraction_from_video(video_path)
 
 
@@ -412,4 +440,4 @@ def extract_3d_kinematics_from_video(video_path: str) -> Dict[str, Any]:
     Utilise le cache si la vidéo a déjà été analysée (recalcul instantané < 0.01s).
     """
     v_hash = compute_video_hash(video_path)
-    return _extract_3d_kinematics_cached(video_path, v_hash)
+    return _extract_3d_kinematics_cached(video_path, v_hash, schema_version=2)

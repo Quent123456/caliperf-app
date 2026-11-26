@@ -96,19 +96,18 @@ def _build_tutorial_content():
 
     with r2:
         with st.container(border=True):
-            st.markdown("##### 4. Hauteur & Prise de vue (Pratique)")
+            st.markdown("##### 4. Hauteur & Prise de vue")
             st.markdown(
-                "- ✅ **Au sol ou sur parallettes basses :** Téléphone posé au sol (calé simplement contre une gourde ou bouteille d'eau).\n"
-                "- ✅ **Sur parallettes hautes ou barre :** Surélever le téléphone si possible (sur une chaise ou un banc à ~1 m).\n"
-                "- ✅ **Contre-plongée tolérée :** Pas besoin d'un trépied ni d'être à 90° droit comme un piquet ! Une **légère contre-plongée naturelle** (smartphone incliné vers le haut au sol) est **parfaitement acceptée** par l'extraction 3D tant que le corps entier est cadré."
+                "- ✅ **Hauteur bassin à 0° recommandé** (trépied ou support stable à niveau).\n"
+                "- ✅ **Tolérance pratique au sol :** pour les figures basses ou sur parallettes, poser le smartphone au sol contre une gourde avec légère contre-plongée est accepté tant que le corps entier reste cadré."
             )
 
         with st.container(border=True):
-            st.markdown("##### 5. Tenue & Éclairage")
+            st.markdown("##### 5. Tenue, Éclairage & Miroirs")
             st.markdown(
-                "- ✅ **Vêtements ajustés** et contrastant clairement avec le sol ou le mur d'arrière-plan.\n"
+                "- ✅ **Vêtements près du corps** contrastant clairement avec l'arrière-plan.\n"
                 "- ✅ **Éclairage frontal ou latéral uniforme**.\n"
-                "- ❌ **Éviter les contre-jours intenses** (fenêtres lumineuses ou spots directs derrière l'athlète)."
+                "- ❌ **Aucun contre-jour ni reflet dans un miroir** (évite les inversions squelettiques MediaPipe)."
             )
 
     st.info(
@@ -117,7 +116,7 @@ def _build_tutorial_content():
         "pour vous et vos athlètes."
     )
 
-    if st.button("✅ J'ai compris", type="primary", use_container_width=True, key="btn_close_tuto_modal"):
+    if st.button("J'ai compris", type="primary", use_container_width=True, key="btn_close_tuto_modal"):
         st.rerun()
 
 
@@ -136,5 +135,5 @@ else:
 
 def render_tutorial_button(key: str = "btn_tuto_calibration_3d"):
     """Rend un bouton compact discret permettant d'ouvrir la modale du tutoriel."""
-    if st.button("📖 Tuto calibration 3D", key=key, use_container_width=True, type="secondary"):
+    if st.button("📖 Tuto calibration figure 3D", key=key, use_container_width=True, type="secondary"):
         open_calibration_tutorial()

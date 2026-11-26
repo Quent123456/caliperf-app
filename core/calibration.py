@@ -1,26 +1,21 @@
 """
-core/calibration.py - Gestion de la bibliothèque de prototypes 3D CaliPerf & Persistance
-Architecture :
-- Source de vérité unique & réactive : st.session_state.db["baselines_3d"] synchronisé dans caliperf_db.json
-- Sauvegarde locale transparente dans config/baselines_3d.json pour versioning et repli
-- Synchronisation Google Sheets optionnelle (onglet 'Baselines_3D') si un compte de service est configuré
-- Système de permissions & rôles :
-    - Administrateur Principal (is_master=True, owner='admin') : bibliothèque officielle permanente, non modifiable par autrui
-    - Coachs (is_master=False, owner='username') : ajout de figures personnalisées, non supprimables par d'autres coachs
-    - Promotion : l'Administrateur peut intégrer une figure de coach dans la base officielle permanente
-- Création en 2 étapes :
-    Étape A : Création de la figure (3 angles générés : Face, 3/4, Profil avec status="empty")
-    Étape B : Association d'une vidéo de calibrage -> extraction 3D et passage en status="calibrated"
-- Règle 1-NN : Comparaison UNIQUEMENT avec les prototypes dont le status est "calibrated"
+core/calibration.py - Gestion SQL de la bibliothèque de prototypes 3D CaliPerf & Classifieur 1-NN.
+Architecture autonome (zéro Google Sheets) avec isolation stricte multi-utilisateurs :
+- Coach : possède et gère ses propres baselines, contrôle `is_shared` pour ses élèves, et
+  peut consulter/utiliser les figures officielles partagées du coach administrateur principal ('admin')
+  sans pouvoir les modifier ni voir les baselines privées/partagées d'autres coachs tiers.
+- Élève : accède en lecture/reconnaissance 1-NN uniquement aux baselines `is_shared=True`
+  de son coach attitré (plus le catalogue officiel partagé s'il est sans coach).
+- Tout enregistrement de calibrage transite par le Quality Control Gate et persiste `quality_score`.
 """
 
-import os
 import json
 import re
 import time
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
+from sqlalchemy import and_, or_, func
 
 try:
     import streamlit as st
@@ -28,11 +23,16 @@ try:
 except ImportError:
     HAS_STREAMLIT = False
 
-DEFAULT_BASELINES_PATH = os.path.join(os.path.dirname(__file__), "..", "config", "baselines_3d.json")
-DB_FILE_PATH = os.path.join(os.path.dirname(__file__), "..", "caliperf_db.json")
-WORKSHEET_NAME = "Baselines_3D"
+from core.auth import is_master_coach, normalize_role
+from core.database import Baseline3D, User, get_db_session
+
 BASELINES_COLUMNS = [
     "id",
+    "slot_key",
+    "owner_id",
+    "owner",
+    "is_shared",
+    "is_master",
     "exercise",
     "camera_view",
     "type",
@@ -40,8 +40,7 @@ BASELINES_COLUMNS = [
     "mean_features",
     "std_features",
     "rom_bounds",
-    "owner",
-    "is_master"
+    "quality_score",
 ]
 VALID_CAMERA_VIEWS = ["Face", "3/4", "Profil"]
 
@@ -51,328 +50,99 @@ FEATURE_KEYS = [
     "elbow_angle",
     "hip_angle",
     "trunk_inclination",
-    "ventral_dorsal"
+    "ventral_dorsal",
 ]
 
 
 def make_slot_id(exercise: str, camera_view: str) -> str:
-    """Génère un identifiant propre et unique pour chaque emplacement de calibrage."""
-    clean_exo = re.sub(r'[^a-zA-Z0-9]+', '_', exercise.strip().lower()).strip('_')
+    """Génère un identifiant lisible pour un couple (exercice, angle)."""
+    clean_exo = re.sub(r"[^a-zA-Z0-9]+", "_", exercise.strip().lower()).strip("_")
     clean_view = "3_4" if camera_view == "3/4" else camera_view.lower()
     return f"{clean_exo}_{clean_view}"
 
 
-# ==============================================================================
-# GESTION DU STOCKAGE LOCAL (JSON FALLBACK & CACHE)
-# ==============================================================================
-
-def _load_local_baselines_json(path: str = DEFAULT_BASELINES_PATH) -> pd.DataFrame:
-    """Charge la table depuis le fichier JSON local ou depuis caliperf_db.json."""
-    # 1. Vérifie d'abord caliperf_db.json
-    if os.path.exists(DB_FILE_PATH):
-        try:
-            with open(DB_FILE_PATH, "r", encoding="utf-8") as f:
-                db_data = json.load(f)
-            b_list = db_data.get("baselines_3d", [])
-            if b_list and isinstance(b_list, list):
-                df = pd.DataFrame(b_list)
-                for col in BASELINES_COLUMNS:
-                    if col not in df.columns:
-                        if col == "owner":
-                            df[col] = "admin"
-                        elif col == "is_master":
-                            df[col] = True
-                        else:
-                            df[col] = ""
-                return df[BASELINES_COLUMNS]
-        except Exception:
-            pass
-
-    # 2. Vérifie config/baselines_3d.json
-    if not os.path.exists(path):
-        return pd.DataFrame(columns=BASELINES_COLUMNS)
-
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        protos = data.get("prototypes", [])
-        if not protos:
-            return pd.DataFrame(columns=BASELINES_COLUMNS)
-
-        rows = []
-        for p in protos:
-            rows.append({
-                "id": str(p.get("id", "")),
-                "exercise": str(p.get("exercise", "")),
-                "camera_view": str(p.get("camera_view", "Profil")),
-                "type": str(p.get("type", "isometric")),
-                "status": str(p.get("status", "calibrated")),
-                "mean_features": json.dumps(p.get("mean_features", [])) if isinstance(p.get("mean_features"), list) else str(p.get("mean_features", "")),
-                "std_features": json.dumps(p.get("std_features", [])) if isinstance(p.get("std_features"), list) else str(p.get("std_features", "")),
-                "rom_bounds": json.dumps(p.get("rom_bounds", {})) if isinstance(p.get("rom_bounds"), dict) else str(p.get("rom_bounds", "")),
-                "owner": str(p.get("owner", "admin")),
-                "is_master": bool(p.get("is_master", True))
-            })
-        df = pd.DataFrame(rows)
-        for col in BASELINES_COLUMNS:
-            if col not in df.columns:
-                if col == "owner":
-                    df[col] = "admin"
-                elif col == "is_master":
-                    df[col] = True
-                else:
-                    df[col] = ""
-        return df[BASELINES_COLUMNS]
-    except Exception as e:
-        print(f"Erreur lecture local JSON baselines : {e}")
-        return pd.DataFrame(columns=BASELINES_COLUMNS)
-
-
-def _save_local_baselines_json(df: pd.DataFrame, path: str = DEFAULT_BASELINES_PATH) -> bool:
-    """Enregistre le DataFrame dans le fichier JSON local."""
-    try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        records = []
-        for _, row in df.iterrows():
-            mf = row["mean_features"]
-            sf = row["std_features"]
-            rb = row["rom_bounds"]
-
-            try:
-                mf_val = json.loads(mf) if isinstance(mf, str) and mf.strip() else (mf if isinstance(mf, list) else [])
-            except Exception:
-                mf_val = []
-
-            try:
-                sf_val = json.loads(sf) if isinstance(sf, str) and sf.strip() else (sf if isinstance(sf, list) else [])
-            except Exception:
-                sf_val = []
-
-            try:
-                rb_val = json.loads(rb) if isinstance(rb, str) and rb.strip() else (rb if isinstance(rb, dict) else None)
-            except Exception:
-                rb_val = None
-
-            records.append({
-                "id": str(row["id"]),
-                "exercise": str(row["exercise"]),
-                "camera_view": str(row["camera_view"]),
-                "type": str(row["type"]),
-                "status": str(row["status"]),
-                "mean_features": mf_val,
-                "std_features": sf_val,
-                "rom_bounds": rb_val,
-                "owner": str(row.get("owner", "admin")),
-                "is_master": bool(row.get("is_master", True))
-            })
-
-        payload = {
-            "schema_version": "2.0",
-            "metadata": {
-                "description": "Bibliothèque de baselines 3D CaliPerf (calibrée par l'utilisateur)",
-                "updated_at": time.strftime("%Y-%m-%d %H:%M")
-            },
-            "columns": BASELINES_COLUMNS,
-            "deleted_exercises": [],
-            "prototypes": records
-        }
-
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2, ensure_ascii=False)
-        return True
-    except Exception as e:
-        print(f"Erreur sauvegarde local JSON baselines : {e}")
-        return False
-
-
-# ==============================================================================
-# GESTION OPTIONNELLE GOOGLE SHEETS
-# ==============================================================================
-
-def _get_gspread_client_and_sheet():
-    """Tente une connexion directe gspread via secrets.toml si un compte de service est configuré."""
-    if not HAS_STREAMLIT or not hasattr(st, "secrets"):
-        return None, None
-    try:
-        import gspread
-        from google.oauth2.service_account import Credentials
-
-        creds_dict = None
-        spreadsheet_target = None
-
-        if "connections" in st.secrets and "gsheets" in st.secrets["connections"]:
-            sec = st.secrets["connections"]["gsheets"]
-            creds_dict = sec.get("credentials") or sec.get("service_account")
-            spreadsheet_target = sec.get("spreadsheet")
-
-        if not creds_dict and "gcp_service_account" in st.secrets:
-            creds_dict = dict(st.secrets["gcp_service_account"])
-
-        if not spreadsheet_target:
-            spreadsheet_target = st.secrets.get("spreadsheet_url") or st.secrets.get("spreadsheet") or st.secrets.get("spreadsheet_name")
-
-        if not creds_dict or not spreadsheet_target:
-            return None, None
-
-        scopes = [
-            "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/drive"
-        ]
-        credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-        gc = gspread.authorize(credentials)
-
-        if str(spreadsheet_target).startswith("http"):
-            sh = gc.open_by_url(str(spreadsheet_target))
-        else:
-            sh = gc.open(str(spreadsheet_target))
-
-        return gc, sh
-    except Exception:
-        return None, None
-
-
-def _fetch_sheets_baselines_if_available() -> Optional[pd.DataFrame]:
-    """Tente de lire l'onglet Baselines_3D depuis Google Sheets si configuré."""
-    gc, sh = _get_gspread_client_and_sheet()
-    if sh is None:
-        return None
-    try:
-        ws = sh.worksheet(WORKSHEET_NAME)
-        records = ws.get_all_records()
-        if records and isinstance(records, list):
-            df = pd.DataFrame(records)
-            for c in BASELINES_COLUMNS:
-                if c not in df.columns:
-                    if c == "owner":
-                        df[c] = "admin"
-                    elif c == "is_master":
-                        df[c] = True
-                    else:
-                        df[c] = ""
-            return df[BASELINES_COLUMNS]
-    except Exception:
-        pass
+def _resolve_active_user(user: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if user is not None:
+        return user
+    if HAS_STREAMLIT:
+        return st.session_state.get("current_user")
     return None
 
 
+def _rows_to_dataframe(rows: List[Tuple[Baseline3D, User]]) -> pd.DataFrame:
+    if not rows:
+        return pd.DataFrame(columns=BASELINES_COLUMNS)
+    records = []
+    for b, owner_u in rows:
+        owner_uname = str(owner_u.username) if owner_u else "admin"
+        records.append({
+            "id": int(b.id),
+            "slot_key": make_slot_id(b.exercise, b.camera_view),
+            "owner_id": int(b.owner_id),
+            "owner": owner_uname,
+            "is_shared": bool(b.is_shared),
+            "is_master": (owner_uname.lower() == "admin"),
+            "exercise": str(b.exercise),
+            "camera_view": str(b.camera_view),
+            "type": str(b.type),
+            "status": str(b.status),
+            "mean_features": str(b.mean_features_json or ""),
+            "std_features": str(b.std_features_json or ""),
+            "rom_bounds": str(b.rom_bounds_json or ""),
+            "quality_score": int(b.quality_score) if b.quality_score is not None else None,
+        })
+    return pd.DataFrame(records)[BASELINES_COLUMNS]
+
+
 # ==============================================================================
-# CHARGEMENT ET SAUVEGARDE UNIFIÉS
+# LECTURE SCOPÉE MULTI-UTILISATEURS (SQL)
 # ==============================================================================
 
-def load_baselines_table(force_refresh: bool = False) -> pd.DataFrame:
+def load_baselines_table(
+    user: Optional[Dict[str, Any]] = None,
+    force_refresh: bool = False,
+    db_url: Optional[str] = None,
+) -> pd.DataFrame:
     """
-    Charge la table Baselines_3D.
-    1. Si force_refresh ou premier chargement : tente de charger/synchroniser depuis Google Sheets.
-    2. Source de vérité en mémoire : st.session_state.db["baselines_3d"].
-    3. Repli local transparent : caliperf_db.json puis config/baselines_3d.json.
+    Charge la table baselines_3d depuis SQL avec isolation stricte :
+    - Coach : ses propres baselines (owner_id == user.id) + base officielle partagée ('admin' et is_shared=True).
+              Aucune donnée d'autres coachs tiers n'est exposée.
+    - Élève : uniquement les baselines partagées (is_shared=True) de son coach (coach_id).
+              S'il n'a pas encore de coach, voit les baselines officielles partagées ('admin').
     """
-    # 1. Vérification Google Sheets (une seule fois par session pour ménager le quota API, ou si force_refresh)
-    if HAS_STREAMLIT and hasattr(st, "session_state"):
-        if force_refresh or not st.session_state.get("_gsheets_baselines_synced", False):
-            st.session_state["_gsheets_baselines_synced"] = True
-            sheets_df = _fetch_sheets_baselines_if_available()
-            if sheets_df is not None and not sheets_df.empty:
-                if "db" in st.session_state and isinstance(st.session_state.db, dict):
-                    st.session_state.db["baselines_3d"] = sheets_df.to_dict(orient="records")
-                _save_local_baselines_json(sheets_df)
-                return sheets_df
+    active_u = _resolve_active_user(user)
+    with get_db_session(db_url) as s:
+        admin_u = s.query(User).filter(func.lower(User.username) == "admin").first()
+        admin_id = int(admin_u.id) if admin_u else -1
 
-    # 2. Source de vérité session_state
-    if HAS_STREAMLIT and hasattr(st, "session_state") and "db" in st.session_state:
-        db = st.session_state.db
-        if isinstance(db, dict) and "baselines_3d" in db and isinstance(db["baselines_3d"], list):
-            if db["baselines_3d"]:
-                df = pd.DataFrame(db["baselines_3d"])
-                for c in BASELINES_COLUMNS:
-                    if c not in df.columns:
-                        if c == "owner":
-                            df[c] = "admin"
-                        elif c == "is_master":
-                            df[c] = True
-                        else:
-                            df[c] = ""
-                return df[BASELINES_COLUMNS]
+        q = s.query(Baseline3D, User).join(User, Baseline3D.owner_id == User.id)
 
-    # 3. Sinon charger depuis le disque (caliperf_db.json ou config/baselines_3d.json)
-    local_df = _load_local_baselines_json()
-    if not local_df.empty:
-        if HAS_STREAMLIT and hasattr(st, "session_state") and "db" in st.session_state:
-            st.session_state.db["baselines_3d"] = local_df.to_dict(orient="records")
-        return local_df
-
-    return pd.DataFrame(columns=BASELINES_COLUMNS)
-
-
-def clear_baselines_cache():
-    """Invalide le cache de synchronisation pour forcer la relecture Google Sheets au besoin."""
-    if HAS_STREAMLIT and hasattr(st, "session_state"):
-        st.session_state["_gsheets_baselines_synced"] = False
-
-
-def _save_baselines_table_internal(df: pd.DataFrame) -> Tuple[bool, str]:
-    """
-    Sauvegarde atomique et immédiate de la bibliothèque dans :
-    1. st.session_state.db["baselines_3d"]
-    2. caliperf_db.json
-    3. config/baselines_3d.json
-    4. Google Sheets (optionnel si gspread + service account configuré)
-    """
-    clean_df = df.copy().fillna("")
-    for c in BASELINES_COLUMNS:
-        if c not in clean_df.columns:
-            if c == "owner":
-                clean_df[c] = "admin"
-            elif c == "is_master":
-                clean_df[c] = True
+        if not active_u:
+            # Hors session UI : ne retourne que le socle officiel partagé
+            q = q.filter(Baseline3D.owner_id == admin_id, Baseline3D.is_shared.is_(True))
+        else:
+            uid = int(active_u["id"])
+            role = normalize_role(active_u.get("role", "athlete"))
+            if role == "coach":
+                if is_master_coach(active_u):
+                    q = q.filter(Baseline3D.owner_id == uid)
+                else:
+                    q = q.filter(
+                        or_(
+                            Baseline3D.owner_id == uid,
+                            and_(Baseline3D.owner_id == admin_id, Baseline3D.is_shared.is_(True)),
+                        )
+                    )
             else:
-                clean_df[c] = ""
-    clean_df = clean_df[BASELINES_COLUMNS]
-    records = clean_df.to_dict(orient="records")
+                coach_id = active_u.get("coach_id")
+                target_owner = int(coach_id) if coach_id is not None else admin_id
+                q = q.filter(
+                    Baseline3D.owner_id == target_owner,
+                    Baseline3D.is_shared.is_(True),
+                )
 
-    # 1. Mise à jour en session state
-    if HAS_STREAMLIT and hasattr(st, "session_state") and "db" in st.session_state:
-        st.session_state.db["baselines_3d"] = records
-
-    # 2. Sauvegarde atomique dans caliperf_db.json
-    try:
-        from core.database import save_db
-        if HAS_STREAMLIT and hasattr(st, "session_state") and "db" in st.session_state:
-            save_db(st.session_state.db)
-    except Exception:
-        pass
-
-    # Écriture directe de sécurité dans caliperf_db.json
-    try:
-        if os.path.exists(DB_FILE_PATH):
-            with open(DB_FILE_PATH, "r", encoding="utf-8") as f:
-                f_db = json.load(f)
-            f_db["baselines_3d"] = records
-            with open(DB_FILE_PATH, "w", encoding="utf-8") as f:
-                json.dump(f_db, f, indent=2, ensure_ascii=False)
-    except Exception:
-        pass
-
-    # 3. Synchronisation immédiate du JSON local config/baselines_3d.json
-    _save_local_baselines_json(clean_df)
-
-    # 4. Synchronisation optionnelle Google Sheets si service account disponible
-    gc, sh = _get_gspread_client_and_sheet()
-    if sh is not None:
-        try:
-            try:
-                ws = sh.worksheet(WORKSHEET_NAME)
-            except Exception:
-                ws = sh.add_worksheet(title=WORKSHEET_NAME, rows=max(50, len(clean_df) + 10), cols=len(BASELINES_COLUMNS))
-
-            ws.clear()
-            header = BASELINES_COLUMNS
-            data_rows = clean_df.values.tolist()
-            ws.update("A1", [header] + data_rows)
-        except Exception as e_gsp:
-            print(f"Avertissement synchronisation Google Sheets : {e_gsp}")
-
-    clear_baselines_cache()
-    return True, "Enregistré avec succès !"
+        rows = q.order_by(Baseline3D.exercise.asc(), Baseline3D.id.asc()).all()
+        return _rows_to_dataframe(rows)
 
 
 # ==============================================================================
@@ -382,46 +152,62 @@ def _save_baselines_table_internal(df: pd.DataFrame) -> Tuple[bool, str]:
 def create_figure_slots(
     exercise_name: str,
     exo_type: str = "isometric",
-    owner: str = "admin",
-    is_master: bool = True
+    user: Optional[Dict[str, Any]] = None,
+    owner: Optional[str] = None,
+    is_master: bool = False,
+    is_shared: bool = True,
+    db_url: Optional[str] = None,
 ) -> Tuple[bool, str]:
     """
-    Étape A : Crée une nouvelle figure avec ses 3 emplacements d'angles (Face, 3/4, Profil)
-    initialisés avec le statut 'empty'.
-    - Si l'administrateur crée la figure, is_master=True (officielle et permanente).
-    - Si un coach crée la figure, is_master=False (personnalisée, owner=username).
+    Étape A : Crée 3 emplacements (Face, 3/4, Profil) dans SQL baselines_3d pour le coach courant.
+    Les figures ne sont visibles que par le coach (et ses élèves si is_shared=True).
     """
-    clean_name = exercise_name.strip()
+    clean_name = (exercise_name or "").strip()
     if not clean_name:
         return False, "Le nom de la figure ne peut pas être vide."
 
+    active_u = _resolve_active_user(user)
+    if active_u and normalize_role(active_u.get("role", "")) != "coach":
+        return False, "Seuls les coachs peuvent créer de nouvelles figures 3D."
+
     clean_type = "dynamic" if "dyn" in str(exo_type).lower() else "isometric"
-    df = load_baselines_table().copy()
 
-    # Vérifier si la figure existe déjà
-    existing_figures = [str(x).strip().lower() for x in df["exercise"].unique() if str(x).strip()]
-    if clean_name.lower() in existing_figures:
-        return False, f"La figure '{clean_name}' existe déjà dans la bibliothèque."
+    with get_db_session(db_url) as s:
+        if active_u:
+            owner_id = int(active_u["id"])
+        elif owner:
+            u_obj = s.query(User).filter(func.lower(User.username) == owner.strip().lower()).first()
+            if not u_obj:
+                return False, f"Propriétaire '{owner}' introuvable."
+            owner_id = int(u_obj.id)
+        else:
+            u_obj = s.query(User).filter(func.lower(User.username) == "admin").first()
+            if not u_obj:
+                return False, "Aucun compte coach initialisé."
+            owner_id = int(u_obj.id)
 
-    new_rows = []
-    for view in VALID_CAMERA_VIEWS:
-        slot_id = make_slot_id(clean_name, view)
-        new_rows.append({
-            "id": slot_id,
-            "exercise": clean_name,
-            "camera_view": view,
-            "type": clean_type,
-            "status": "empty",
-            "mean_features": "",
-            "std_features": "",
-            "rom_bounds": "",
-            "owner": owner,
-            "is_master": is_master
-        })
+        exists = (
+            s.query(Baseline3D.id)
+            .filter(
+                Baseline3D.owner_id == owner_id,
+                func.lower(Baseline3D.exercise) == clean_name.lower(),
+            )
+            .first()
+        )
+        if exists:
+            return False, f"La figure '{clean_name}' existe déjà dans votre bibliothèque."
 
-    updated_df = pd.concat([df, pd.DataFrame(new_rows)], ignore_index=True)
-    ok, msg = _save_baselines_table_internal(updated_df)
-    return ok, f"Figure '{clean_name}' créée avec succès (3 angles en attente) !" if ok else msg
+        for view in VALID_CAMERA_VIEWS:
+            s.add(Baseline3D(
+                owner_id=owner_id,
+                is_shared=bool(is_shared),
+                exercise=clean_name,
+                camera_view=view,
+                type=clean_type,
+                status="empty",
+            ))
+        s.flush()
+    return True, f"Figure '{clean_name}' créée avec succès (3 angles en attente) !"
 
 
 def save_calibrated_slot(
@@ -431,136 +217,188 @@ def save_calibrated_slot(
     mean_features: List[float],
     std_features: List[float],
     rom_bounds: Optional[Dict[str, Any]] = None,
-    owner: str = "admin"
+    user: Optional[Dict[str, Any]] = None,
+    owner: Optional[str] = None,
+    is_shared: bool = True,
+    quality_report: Optional[Any] = None,
+    qc_confirmed_warning: bool = False,
+    db_url: Optional[str] = None,
 ) -> Tuple[bool, str]:
     """
-    Étape B : Associe les données 3D analysées à un emplacement précis et passe son statut à 'calibrated'.
+    Étape B : Enregistre les statistiques 3D calibrées et le quality_score en SQL
+    après validation systématique par le Quality Control Gate.
     """
-    clean_name = exercise_name.strip()
-    clean_view = camera_view.strip()
-    slot_id = make_slot_id(clean_name, clean_view)
+    q_score: Optional[int] = None
+    if quality_report is not None:
+        if isinstance(quality_report, dict):
+            qc_status = quality_report.get("status", "")
+            q_score = quality_report.get("global_score")
+        else:
+            qc_status = getattr(quality_report, "status", "")
+            q_score = getattr(quality_report, "global_score", None)
 
-    df = load_baselines_table().copy()
+        if qc_status == "REJECT":
+            return False, "Enregistrement bloqué par le Quality Control Gate : vidéo rejetée (statut REJECT)."
+        if qc_status == "WARNING" and not qc_confirmed_warning:
+            return False, "Enregistrement bloqué : veuillez cocher la confirmation malgré l'avertissement qualité."
 
+    clean_name = (exercise_name or "").strip()
+    clean_view = (camera_view or "").strip()
+    if clean_view not in VALID_CAMERA_VIEWS:
+        return False, f"Angle de vue invalide : {clean_view}."
+
+    active_u = _resolve_active_user(user)
+    if active_u and normalize_role(active_u.get("role", "")) != "coach":
+        return False, "Action refusée : seul un coach peut calibrer la bibliothèque 3D."
+
+    clean_type = "dynamic" if "dyn" in str(exo_type).lower() else "isometric"
     mf_str = json.dumps([round(float(x), 1) for x in mean_features])
     sf_str = json.dumps([max(round(float(x), 1), 2.0) for x in std_features])
     rb_str = json.dumps(rom_bounds) if rom_bounds else ""
 
-    # Recherche de l'emplacement existant
-    match_mask = (df["exercise"].astype(str).str.strip().str.lower() == clean_name.lower()) & (df["camera_view"] == clean_view)
+    with get_db_session(db_url) as s:
+        if active_u:
+            owner_id = int(active_u["id"])
+        elif owner:
+            u_obj = s.query(User).filter(func.lower(User.username) == owner.strip().lower()).first()
+            if not u_obj:
+                return False, f"Propriétaire '{owner}' introuvable."
+            owner_id = int(u_obj.id)
+        else:
+            u_obj = s.query(User).filter(func.lower(User.username) == "admin").first()
+            if not u_obj:
+                return False, "Compte coach principal introuvable."
+            owner_id = int(u_obj.id)
 
-    if match_mask.any():
-        idx = df[match_mask].index[0]
-        df.at[idx, "status"] = "calibrated"
-        df.at[idx, "type"] = exo_type
-        df.at[idx, "mean_features"] = mf_str
-        df.at[idx, "std_features"] = sf_str
-        df.at[idx, "rom_bounds"] = rb_str
-    else:
-        new_row = {
-            "id": slot_id,
-            "exercise": clean_name,
-            "camera_view": clean_view,
-            "type": exo_type,
-            "status": "calibrated",
-            "mean_features": mf_str,
-            "std_features": sf_str,
-            "rom_bounds": rb_str,
-            "owner": owner,
-            "is_master": False
-        }
-        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+        existing_slot = (
+            s.query(Baseline3D)
+            .filter(
+                Baseline3D.owner_id == owner_id,
+                func.lower(Baseline3D.exercise) == clean_name.lower(),
+                Baseline3D.camera_view == clean_view,
+            )
+            .first()
+        )
+        if existing_slot:
+            existing_slot.status = "calibrated"
+            existing_slot.type = clean_type
+            existing_slot.mean_features_json = mf_str
+            existing_slot.std_features_json = sf_str
+            existing_slot.rom_bounds_json = rb_str
+            if q_score is not None:
+                existing_slot.quality_score = int(q_score)
+        else:
+            # Crée les 3 slots pour ce coach si inexistant (ex: surcharge d'une figure officielle par un coach)
+            for v in VALID_CAMERA_VIEWS:
+                is_target = (v == clean_view)
+                s.add(Baseline3D(
+                    owner_id=owner_id,
+                    is_shared=bool(is_shared),
+                    exercise=clean_name,
+                    camera_view=v,
+                    type=clean_type,
+                    status="calibrated" if is_target else "empty",
+                    mean_features_json=mf_str if is_target else None,
+                    std_features_json=sf_str if is_target else None,
+                    rom_bounds_json=rb_str if is_target else None,
+                    quality_score=int(q_score) if (is_target and q_score is not None) else None,
+                ))
+        s.flush()
 
-    ok, msg = _save_baselines_table_internal(df)
-    return ok, f"Calibrage '{clean_name}' ({clean_view}) enregistré avec succès !" if ok else msg
+    return True, f"Calibrage '{clean_name}' ({clean_view}) enregistré dans la base SQL !"
 
 
-def reset_slot(slot_id: str, user_role: str = "admin", username: str = "admin") -> Tuple[bool, str]:
-    """
-    Réinitialise un angle de calibrage (repasse à 'empty' sans supprimer la figure).
-    Un coach ne peut pas réinitialiser un angle de la bibliothèque officielle de l'admin.
-    """
-    df = load_baselines_table().copy()
-    match = df["id"] == slot_id
-    if not match.any():
-        return False, f"Emplacement '{slot_id}' introuvable."
+def toggle_figure_sharing(
+    exercise_name: str,
+    is_shared: bool,
+    user: Optional[Dict[str, Any]] = None,
+    db_url: Optional[str] = None,
+) -> Tuple[bool, str]:
+    """Permet à un coach d'activer ou couper le partage d'une figure avec ses élèves."""
+    active_u = _resolve_active_user(user)
+    if not active_u or normalize_role(active_u.get("role", "")) != "coach":
+        return False, "Action réservée aux coachs."
 
-    idx = df[match].index[0]
-    is_master = bool(df.at[idx, "is_master"]) if "is_master" in df.columns else True
-    owner = str(df.at[idx, "owner"]) if "owner" in df.columns else "admin"
+    uid = int(active_u["id"])
+    with get_db_session(db_url) as s:
+        rows = (
+            s.query(Baseline3D)
+            .filter(
+                Baseline3D.owner_id == uid,
+                func.lower(Baseline3D.exercise) == exercise_name.strip().lower(),
+            )
+            .all()
+        )
+        if not rows:
+            return False, "Vous ne pouvez modifier le partage que de vos propres figures."
+        for r in rows:
+            r.is_shared = bool(is_shared)
+        s.flush()
+    state_lbl = "partagée avec vos élèves" if is_shared else "privée (coach uniquement)"
+    return True, f"Figure '{exercise_name}' désormais {state_lbl}."
 
-    if is_master and user_role.lower() != "admin":
-        return False, "Action refusée : Seul l'administrateur peut réinitialiser une figure officielle."
 
-    if not is_master and user_role.lower() != "admin" and owner.lower() != username.lower():
-        return False, "Action refusée : Vous ne pouvez réinitialiser que vos propres figures."
+def reset_slot(
+    slot_id: int,
+    user: Optional[Dict[str, Any]] = None,
+    db_url: Optional[str] = None,
+) -> Tuple[bool, str]:
+    """Réinitialise un emplacement à 'empty' si l'utilisateur en est propriétaire."""
+    active_u = _resolve_active_user(user)
+    if not active_u or normalize_role(active_u.get("role", "")) != "coach":
+        return False, "Action refusée."
 
-    df.at[idx, "status"] = "empty"
-    df.at[idx, "mean_features"] = ""
-    df.at[idx, "std_features"] = ""
-    df.at[idx, "rom_bounds"] = ""
-
-    ok, msg = _save_baselines_table_internal(df)
-    return ok, "Emplacement réinitialisé en attente de vidéo." if ok else msg
+    uid = int(active_u["id"])
+    with get_db_session(db_url) as s:
+        slot = s.query(Baseline3D).filter(Baseline3D.id == int(slot_id)).first()
+        if not slot:
+            return False, "Emplacement introuvable."
+        if int(slot.owner_id) != uid:
+            return False, "Action refusée : vous ne pouvez réinitialiser que vos propres figures."
+        slot.status = "empty"
+        slot.mean_features_json = None
+        slot.std_features_json = None
+        slot.rom_bounds_json = None
+        slot.quality_score = None
+        s.flush()
+    return True, "Emplacement réinitialisé en attente de vidéo."
 
 
 def delete_figure(
     exercise_name: str,
-    user_role: str = "admin",
-    username: str = "admin"
+    user: Optional[Dict[str, Any]] = None,
+    db_url: Optional[str] = None,
 ) -> Tuple[bool, str]:
-    """
-    Supprime une figure de la bibliothèque selon les règles de permission :
-    - Figure officielle (is_master=True) : supprimable UNIQUEMENT par l'administrateur principal.
-    - Figure personnalisée (is_master=False) : supprimable par son créateur ou par l'administrateur.
-    """
-    clean_name = exercise_name.strip()
+    """Supprime les 3 slots d'une figure uniquement si le coach connecté en est propriétaire."""
+    clean_name = (exercise_name or "").strip()
     if not clean_name:
         return False, "Nom de figure invalide."
 
-    df = load_baselines_table().copy()
-    if df.empty or "exercise" not in df.columns:
-        return False, "La bibliothèque est déjà vide."
+    active_u = _resolve_active_user(user)
+    if not active_u or normalize_role(active_u.get("role", "")) != "coach":
+        return False, "Action refusée : seul le coach créateur peut supprimer une figure."
 
-    matches = df[df["exercise"].astype(str).str.strip().str.lower() == clean_name.lower()]
-    if matches.empty:
-        return False, f"Figure '{clean_name}' introuvable."
-
-    is_official = bool(matches.iloc[0].get("is_master", True))
-    fig_owner = str(matches.iloc[0].get("owner", "admin")).strip().lower()
-
-    if is_official and user_role.lower() != "admin":
-        return False, f"Action refusée : '{clean_name}' est une figure officielle permanente de l'administrateur."
-
-    if not is_official and user_role.lower() != "admin" and fig_owner != username.strip().lower():
-        return False, f"Action refusée : Vous ne pouvez supprimer que vos propres figures personnalisées."
-
-    df = df[df["exercise"].astype(str).str.strip().str.lower() != clean_name.lower()].reset_index(drop=True)
-    ok, msg = _save_baselines_table_internal(df)
-    return True, f"Figure '{clean_name}' supprimée avec succès."
-
-
-def promote_to_master(exercise_name: str) -> Tuple[bool, str]:
-    """
-    Permet à l'administrateur d'intégrer une figure créée par un coach dans la bibliothèque
-    officielle permanente (is_master=True, owner='admin').
-    """
-    df = load_baselines_table().copy()
-    matches = df[df["exercise"].astype(str).str.strip().str.lower() == exercise_name.strip().lower()]
-    if matches.empty:
-        return False, f"Figure '{exercise_name}' introuvable."
-
-    for idx in matches.index:
-        df.at[idx, "is_master"] = True
-        df.at[idx, "owner"] = "admin"
-
-    ok, msg = _save_baselines_table_internal(df)
-    return ok, f"Figure '{exercise_name}' intégrée avec succès à la bibliothèque officielle !" if ok else msg
+    uid = int(active_u["id"])
+    with get_db_session(db_url) as s:
+        rows = (
+            s.query(Baseline3D)
+            .filter(
+                Baseline3D.owner_id == uid,
+                func.lower(Baseline3D.exercise) == clean_name.lower(),
+            )
+            .all()
+        )
+        if not rows:
+            return False, "Action refusée : figure officielle ou appartenant à un autre compte."
+        for r in rows:
+            s.delete(r)
+        s.flush()
+    return True, f"Figure '{clean_name}' supprimée de votre bibliothèque."
 
 
-def export_baselines_json() -> str:
-    """Retourne la sauvegarde JSON formatée de la bibliothèque pour téléchargement si nécessaire."""
-    df = load_baselines_table()
+def export_baselines_json(user: Optional[Dict[str, Any]] = None, db_url: Optional[str] = None) -> str:
+    """Exporte la bibliothèque visible par l'utilisateur au format JSON."""
+    df = load_baselines_table(user=user, db_url=db_url)
     records = []
     for _, row in df.iterrows():
         try:
@@ -577,29 +415,29 @@ def export_baselines_json() -> str:
             rb = None
 
         records.append({
-            "id": str(row["id"]),
+            "id": int(row["id"]),
             "exercise": str(row["exercise"]),
             "camera_view": str(row["camera_view"]),
             "type": str(row["type"]),
             "status": str(row["status"]),
+            "owner": str(row["owner"]),
+            "is_shared": bool(row["is_shared"]),
+            "quality_score": row["quality_score"],
             "mean_features": mf,
             "std_features": sf,
             "rom_bounds": rb,
-            "owner": str(row.get("owner", "admin")),
-            "is_master": bool(row.get("is_master", True))
         })
 
     payload = {
         "export_date": time.strftime("%Y-%m-%d %H:%M:%S"),
         "total_records": len(records),
-        "columns": BASELINES_COLUMNS,
-        "prototypes": records
+        "prototypes": records,
     }
     return json.dumps(payload, indent=2, ensure_ascii=False)
 
 
 # ==============================================================================
-# CALCULS CINÉMATIQUES & 1-NN AVEC FILTRE STATUS='calibrated'
+# CALCULS CINÉMATIQUES & CLASSIFIEUR 1-NN SCOPÉ
 # ==============================================================================
 
 def compute_active_feature_vectors(
@@ -626,12 +464,12 @@ def compute_active_feature_vectors(
     return np.array(means, dtype=np.float64), np.array(stds, dtype=np.float64)
 
 
-def get_calibrated_prototypes() -> List[Dict[str, Any]]:
-    """
-    Règle stricte : Récupère UNIQUEMENT les prototypes de la base ayant status == 'calibrated'.
-    Ignore catégoriquement les emplacements vides (status == 'empty').
-    """
-    df = load_baselines_table()
+def get_calibrated_prototypes(
+    user: Optional[Dict[str, Any]] = None,
+    db_url: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Récupère uniquement les prototypes calibrés accessibles à l'utilisateur actif."""
+    df = load_baselines_table(user=user, db_url=db_url)
     if df.empty or "status" not in df.columns:
         return []
 
@@ -644,7 +482,6 @@ def get_calibrated_prototypes() -> List[Dict[str, Any]]:
             sf = json.loads(row["std_features"]) if str(row["std_features"]).strip() else []
         except Exception:
             continue
-
         if len(mf) < 6:
             continue
 
@@ -656,11 +493,11 @@ def get_calibrated_prototypes() -> List[Dict[str, Any]]:
         exo_type = str(row["type"])
         stability = {
             "max_hip_vertical_velocity": 0.15,
-            "min_hold_duration_sec": 0.4
+            "min_hold_duration_sec": 0.4,
         } if exo_type == "isometric" else None
 
         prototypes.append({
-            "id": str(row["id"]),
+            "id": int(row["id"]),
             "exercise": str(row["exercise"]),
             "display_name": str(row["exercise"]),
             "camera_view": str(row["camera_view"]),
@@ -671,7 +508,9 @@ def get_calibrated_prototypes() -> List[Dict[str, Any]]:
             "stability": stability,
             "rom_bounds": rb,
             "owner": str(row.get("owner", "admin")),
-            "is_master": bool(row.get("is_master", True))
+            "owner_id": int(row.get("owner_id", 1)),
+            "is_shared": bool(row.get("is_shared", True)),
+            "quality_score": row.get("quality_score"),
         })
 
     return prototypes
@@ -681,19 +520,17 @@ def identify_exercise_1nn(
     kinematics: Dict[str, Any],
     segmentation: Dict[str, Any],
     baselines_path: Optional[str] = None,
-    forced_exercise: Optional[str] = None
+    forced_exercise: Optional[str] = None,
+    user: Optional[Dict[str, Any]] = None,
+    db_url: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """
-    Classifieur 1-NN comparant la vidéo UNIQUEMENT aux lignes 'calibrated' de Baselines_3D.
-    Si aucun prototype n'est encore calibré, renvoie un statut explicite sans planter.
-    """
-    prototypes = get_calibrated_prototypes()
+    """Classifieur 1-NN comparant la vidéo aux prototypes calibrés accessibles en SQL."""
+    prototypes = get_calibrated_prototypes(user=user, db_url=db_url)
     detected_type = segmentation.get("type", "isometric")
     effort_win = segmentation.get("effort_window", {})
 
     active_means, active_stds = compute_active_feature_vectors(kinematics, effort_win)
 
-    # Si aucun prototype n'a encore été calibré par l'utilisateur
     if not prototypes:
         return {
             "exercise": forced_exercise or "non_calibre",
@@ -704,46 +541,35 @@ def identify_exercise_1nn(
             "distance": 999.0,
             "matched_prototype": None,
             "status": "uncalibrated",
-            "message": "⚠️ Aucun mouvement calibré dans la bibliothèque. Créez et calibrez vos figures dans l'onglet Calibrage 3D.",
+            "message": "⚠️ Aucun mouvement calibré accessible. Calibrez vos figures dans l'onglet Calibrage 3D.",
             "active_means": [round(float(v), 1) for v in active_means],
-            "active_stds": [round(float(v), 1) for v in active_stds]
+            "active_stds": [round(float(v), 1) for v in active_stds],
         }
 
-    # Filtrer par type (isométrique / dynamique)
     candidate_protos = [p for p in prototypes if p.get("type") == detected_type]
     if not candidate_protos:
         candidate_protos = prototypes
 
     if forced_exercise:
-        forced_matches = [p for p in candidate_protos if p.get("exercise").lower() == forced_exercise.lower()]
+        forced_matches = [p for p in candidate_protos if p.get("exercise", "").lower() == forced_exercise.lower()]
         if forced_matches:
             candidate_protos = forced_matches
 
     distances: List[Tuple[float, Dict[str, Any]]] = []
-
     for proto in candidate_protos:
         proto_means = np.array(proto["mean_features"], dtype=np.float64)
         proto_stds = np.array(proto["std_features"], dtype=np.float64)
-
-        # Pénalité stricte sur l'orientation ventrale (+1) vs dorsale (-1)
-        vd_video = active_means[5]
-        vd_proto = proto_means[5]
-        orient_mismatch = (vd_video * vd_proto) < 0
-
-        # Distance euclidienne normalisée par l'écart-type
+        orient_mismatch = (active_means[5] * proto_means[5]) < 0
         diff = (active_means - proto_means) / np.maximum(proto_stds, 1.5)
-        dist = float(np.sqrt(np.sum(diff**2)))
-
+        dist = float(np.sqrt(np.sum(diff ** 2)))
         if orient_mismatch:
-            dist += 150.0  # Élimine la confusion entre figures opposées
-
+            dist += 150.0
         distances.append((dist, proto))
 
     distances.sort(key=lambda x: x[0])
     best_dist, best_proto = distances[0]
     second_dist = distances[1][0] if len(distances) > 1 else (best_dist + 5.0)
 
-    # Score de confiance relatif
     if best_dist < 1.2:
         confidence = 0.98
     elif best_dist < 3.0:
@@ -763,5 +589,5 @@ def identify_exercise_1nn(
         "matched_prototype": best_proto,
         "status": "calibrated",
         "active_means": [round(float(v), 1) for v in active_means],
-        "active_stds": [round(float(v), 1) for v in active_stds]
+        "active_stds": [round(float(v), 1) for v in active_stds],
     }
