@@ -19,6 +19,11 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+import importlib
+import core.database as _core_db
+if not hasattr(_core_db, "set_active_athlete_in_session"):
+    importlib.reload(_core_db)
+
 from core.auth import normalize_role
 from core.database import (
     get_coach_athletes,
