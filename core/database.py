@@ -296,7 +296,13 @@ def ensure_database_initialized(db_url: Optional[str] = None) -> None:
         return
 
     engine = get_engine(resolved)
-    Base.metadata.create_all(engine)
+    try:
+        Base.metadata.create_all(engine, checkfirst=True)
+    except Exception as e:
+        # Si une table ou un index unique existe déjà (ex: exécution concurrente ou reprise),
+        # on continue pour ne pas bloquer l'initialisation de la session.
+        if "already exists" not in str(e).lower() and "uniqueviolation" not in str(e).lower():
+            raise
 
     factory = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
     session = factory()
