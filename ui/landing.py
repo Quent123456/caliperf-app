@@ -89,9 +89,21 @@ def render_landing_page() -> None:
         </div>
     """)
 
-    if st.button("🚀 C'est parti !", type="primary", use_container_width=True, key="btn_start_app"):
-        st.session_state.app_entered = True
-        st.rerun()
+    curr_u = st.session_state.get("current_user")
+    if curr_u:
+        c_label = f"🚀 Reprendre la session ({curr_u.get('full_name') or curr_u.get('username')})"
+        if st.button(c_label, type="primary", use_container_width=True, key="btn_start_app"):
+            st.session_state.app_entered = True
+            st.rerun()
+        if st.button("🔄 Changer de compte / Se déconnecter", use_container_width=True, key="btn_switch_account_landing"):
+            st.session_state.current_user = None
+            st.session_state.is_authenticated = False
+            st.session_state.app_entered = True
+            st.rerun()
+    else:
+        if st.button("🚀 C'est parti !", type="primary", use_container_width=True, key="btn_start_app"):
+            st.session_state.app_entered = True
+            st.rerun()
 
     render_html("""
         <div style="text-align: center; color: #64748B; font-size: 0.74rem; margin-top: 1.8rem; letter-spacing: 0.03em;">

@@ -147,3 +147,11 @@ def render_tab_settings() -> None:
                     st.rerun()
             except Exception as e_res:
                 st.error(f"Erreur lors de la restauration : {e_res}")
+
+    render_html("<hr style='border:0; border-top:1px solid rgba(255,255,255,0.08); margin: 1rem 0;'>")
+    st.markdown("##### 🔐 Session & Compte")
+    if st.button("🔄 Se déconnecter / Changer de compte", key="btn_logout_settings", use_container_width=True):
+        st.session_state.current_user = None
+        st.session_state.is_authenticated = False
+        st.session_state.app_entered = True
+        st.rerun()

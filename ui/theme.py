@@ -66,13 +66,55 @@ html, body, [class*="css"] {
     overflow-x: hidden !important;
 }
 
-/* Masquer l'espace des composants JS invisibles (height=0) */
+/* Masquer proprement la hauteur des scripts invisibles (sans display:none qui suspend les iframes) */
 [data-testid="stElementContainer"]:has(iframe[height="0"]),
 .element-container:has(iframe[height="0"]) {
-    display: none !important;
+    height: 0 !important;
+    min-height: 0 !important;
     margin: 0 !important;
     padding: 0 !important;
+    overflow: hidden !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
+/* Maintien horizontal strict de la barre d'en-tête sur smartphone et desktop */
+[data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) {
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    gap: 8px !important;
+    margin-bottom: 0.25rem !important;
+}
+[data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"] {
+    min-width: 0 !important;
+}
+[data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(1) {
+    flex: 0 0 46px !important;
+    width: 46px !important;
+}
+[data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(2) {
+    flex: 1 1 auto !important;
+}
+[data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(3) {
+    flex: 0 1 auto !important;
+    max-width: 46% !important;
+}
+[data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(1) [data-testid="stVerticalBlock"] {
+    gap: 0 !important;
+}
+[data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(1) [data-testid="stElementContainer"]:has(#caliperf-header-exit-marker) {
     height: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+}
+[data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(1) button {
+    min-height: 38px !important;
+    height: 38px !important;
+    padding: 0 !important;
+    border-radius: 11px !important;
+    background: rgba(13, 18, 30, 0.85) !important;
 }
 
 /* Padding haut adapté notch smartphone & barre Streamlit */
@@ -120,7 +162,8 @@ video {
 /* ==========================================================================
    DOCK DE NAVIGATION SEGMENTÉ & ANIMATION SWIPE FLUIDE
    ========================================================================== */
-.stTabs [data-baseweb="tabs"] {
+.stTabs > div,
+[data-testid="stTabs"] > div {
     position: relative !important;
     overflow-x: clip !important;
 }
@@ -185,6 +228,7 @@ video {
     -webkit-backface-visibility: hidden;
 }
 
+[data-testid="stTabs"] [data-baseweb="tab-panel"].cali-swipe-peek,
 [data-baseweb="tab-panel"].cali-swipe-peek[hidden] {
     display: block !important;
     visibility: visible !important;
@@ -489,6 +533,12 @@ SWIPE_ENGINE_JS = r"""
         '[data-no-swipe]', '.no-swipe'
     ].join(', ');
 
+    function getTabsRootFromContainer(stEl) {
+        if (!stEl) return null;
+        var firstPanel = stEl.querySelector('[data-baseweb="tab-panel"]');
+        return firstPanel ? firstPanel.parentElement : null;
+    }
+
     function resolveMainTabsRoot(touchTarget) {
         /* 1. Priorité au marqueur principal s'il existe dans la page */
         var anchor = targetDoc.getElementById('caliperf-main-tabs-anchor');
@@ -496,22 +546,27 @@ SWIPE_ENGINE_JS = r"""
             var block = anchor.closest('[data-testid="stElementContainer"], .element-container') || anchor.parentElement;
             var cursor = block ? block.nextElementSibling : null;
             var steps = 0;
-            while (cursor && steps < 8) {
-                var found = cursor.matches && cursor.matches('.stTabs')
-                    ? cursor.querySelector('[data-baseweb="tabs"]')
-                    : (cursor.querySelector ? cursor.querySelector('.stTabs [data-baseweb="tabs"]') : null);
-                if (found) return found;
+            while (cursor && steps < 10) {
+                if (cursor.matches && cursor.matches('[data-testid="stTabs"], .stTabs')) {
+                    var r1 = getTabsRootFromContainer(cursor);
+                    if (r1) return r1;
+                } else if (cursor.querySelector) {
+                    var nestedSt = cursor.querySelector('[data-testid="stTabs"], .stTabs');
+                    var r2 = getTabsRootFromContainer(nestedSt);
+                    if (r2) return r2;
+                }
                 cursor = cursor.nextElementSibling;
                 steps++;
             }
         }
         /* 2. Sinon (ex: écran de connexion), utiliser l'éventuel onglet racine */
         if (touchTarget && touchTarget.closest) {
-            var localTabs = touchTarget.closest('[data-baseweb="tabs"]');
-            if (localTabs) return localTabs;
+            var localSt = touchTarget.closest('[data-testid="stTabs"], .stTabs');
+            var rLocal = getTabsRootFromContainer(localSt);
+            if (rLocal) return rLocal;
         }
-        var allTabs = targetDoc.querySelectorAll('.stTabs [data-baseweb="tabs"]');
-        return allTabs.length ? allTabs[0] : null;
+        var firstSt = targetDoc.querySelector('[data-testid="stTabs"], .stTabs');
+        return getTabsRootFromContainer(firstSt);
     }
 
     function getDirectTabs(tabsRoot) {
@@ -567,6 +622,9 @@ SWIPE_ENGINE_JS = r"""
         if (el.closest && el.closest(noSwipeSelector)) return true;
         var curr = el;
         while (curr && curr !== targetDoc.body && curr !== targetDoc.documentElement) {
+            if (curr.getAttribute && curr.getAttribute('data-baseweb') === 'tab-panel') {
+                break;
+            }
             if (curr.nodeType === 1) {
                 try {
                     var style = targetWin.getComputedStyle(curr);
@@ -881,7 +939,8 @@ SWIPE_ENGINE_JS = r"""
         var tabBtn = e.target && e.target.closest ? e.target.closest('button[data-baseweb="tab"], [role="tab"]') : null;
         if (!tabBtn) return;
 
-        var root = tabBtn.closest('[data-baseweb="tabs"]');
+        var stEl = tabBtn.closest('[data-testid="stTabs"], .stTabs');
+        var root = getTabsRootFromContainer(stEl);
         if (!root || root.getAttribute('data-cali-silent') === '1') return;
 
         var tabs = getDirectTabs(root);
