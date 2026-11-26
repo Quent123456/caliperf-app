@@ -20,7 +20,12 @@ st.set_page_config(
 )
 
 from core.auth import normalize_role
-from core.database import get_coach_athletes, get_user_by_id, init_session_state
+from core.database import (
+    get_coach_athletes,
+    get_user_by_id,
+    init_session_state,
+    set_active_athlete_in_session,
+)
 from ui.theme import inject_swipe_engine, inject_theme
 from ui.landing import render_auth_portal, render_landing_page
 
@@ -49,22 +54,34 @@ if curr_role == "coach":
     cur_active_id = int(st.session_state.get("active_athlete_id") or curr_user["id"])
     if cur_active_id not in profile_by_id:
         cur_active_id = int(curr_user["id"])
+    st.session_state["active_athlete_id"] = cur_active_id
+    st.session_state.pop("_sync_athlete_widgets", None)
+    # Synchroniser les deux clés de selectbox AVANT leur instanciation
+    st.session_state["sidebar_active_athlete_select"] = cur_active_id
+    st.session_state["stats_athlete_select"] = cur_active_id
+
     option_ids = [int(p["id"]) for p in selectable_profiles]
+    st.session_state["selectable_profiles_map"] = profile_by_id
+    st.session_state["selectable_profile_ids"] = option_ids
+
+    def _on_sidebar_athlete_change() -> None:
+        chosen = st.session_state.get("sidebar_active_athlete_select")
+        if chosen is not None:
+            set_active_athlete_in_session(int(chosen), sync_widgets=True)
 
     with st.sidebar:
         st.markdown("### 🎯 Athlète actif")
         selected_id = st.selectbox(
             "Basculer sur un suivi :",
             options=option_ids,
-            index=option_ids.index(cur_active_id),
             format_func=lambda pid: (
                 f"🏋️ Moi-même ({profile_by_id[pid]['full_name']})"
                 if pid == int(curr_user["id"]) else
                 f"🤸 {profile_by_id[pid]['full_name']} ({profile_by_id[pid]['bodyweight_kg']:.0f} kg)"
             ),
             key="sidebar_active_athlete_select",
+            on_change=_on_sidebar_athlete_change,
         )
-        st.session_state.active_athlete_id = int(selected_id)
         active_profile = profile_by_id[int(selected_id)]
         st.session_state["active_athlete_profile"] = active_profile
         st.caption(
@@ -111,4 +128,5 @@ with tab_settings:
     render_tab_settings()
 
 # 5. Injection du moteur de swipe V6 après montage complet des 5 onglets
-inject_swipe_engine(stage="main")
+redirect_idx = st.session_state.pop("_redirect_tab_idx", None)
+inject_swipe_engine(stage="main", redirect_tab_idx=redirect_idx)

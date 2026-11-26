@@ -179,128 +179,178 @@ def render_longitudinal_dashboard(athlete_user: Dict[str, Any], logs: List[Dict[
         </div>
     """)
 
-    k1, k2, k3, k4 = st.columns(4)
-    with k1:
-        render_html(f"""
+    render_html(f"""
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:8px;margin-bottom:0.85rem;">
             <div class="cali-kpi-tile">
                 <div class="cali-kpi-lbl">Aiguë EWMA (7j)</div>
                 <div class="cali-kpi-val" style="color:#00E5FF;">{metrics['acute_ewma']:.1f}<span style="font-size:0.75rem;color:#94A3B8;margin-left:3px;">UA</span></div>
             </div>
-        """)
-    with k2:
-        render_html(f"""
             <div class="cali-kpi-tile">
                 <div class="cali-kpi-lbl">Chronique (28j)</div>
                 <div class="cali-kpi-val" style="color:#38BDF8;">{metrics['chronic_ewma']:.1f}<span style="font-size:0.75rem;color:#94A3B8;margin-left:3px;">UA</span></div>
             </div>
-        """)
-    with k3:
-        render_html(f"""
             <div class="cali-kpi-tile">
                 <div class="cali-kpi-lbl">Ratio ACWR</div>
                 <div class="cali-kpi-val" style="color:{metrics['acwr_color']};">{metrics['acwr']:.2f}</div>
             </div>
-        """)
-    with k4:
-        render_html(f"""
             <div class="cali-kpi-tile">
                 <div class="cali-kpi-lbl">Foster (Mono / Contr.)</div>
-                <div class="cali-kpi-val" style="font-size:1.15rem;color:#FBBF24;">{metrics['foster_monotony']:.2f} <span style="font-size:0.78rem;color:#94A3B8;">| {metrics['foster_strain']:.0f}</span></div>
+                <div class="cali-kpi-val" style="font-size:1.1rem;color:#FBBF24;">{metrics['foster_monotony']:.2f} <span style="font-size:0.78rem;color:#94A3B8;">| {metrics['foster_strain']:.0f}</span></div>
             </div>
-        """)
+        </div>
+    """)
+
+    df_d = metrics["daily_df"].copy()
+    zones = metrics["zones_cfg"]
+    t_cfg = metrics["tendon_cfg"]
 
     try:
-        import plotly.graph_objects as go
-        from plotly.subplots import make_subplots
-        has_plotly = True
+        import altair as alt
+        has_altair = True
     except ImportError:
-        has_plotly = False
+        has_altair = False
 
-    if has_plotly:
-        df_d = metrics["daily_df"]
-        zones = metrics["zones_cfg"]
-        t_cfg = metrics["tendon_cfg"]
+    if has_altair and not df_d.empty:
+        df_d["DateObj"] = pd.to_datetime(df_d["Date"])
 
-        c_chart, c_gauge = st.columns([1.45, 1.0])
-        with c_chart:
-            fig = make_subplots(specs=[[{"secondary_y": True}]])
-            fig.add_trace(
-                go.Bar(x=df_d["Date"], y=df_d["Charge Externe (UA)"], name="Charge / jour (UA)", marker_color="rgba(56,189,248,0.28)"),
-                secondary_y=False,
+        # Graphique 1 : Charge quotidienne + Courbes EWMA (propre et lisible sur mobile)
+        st.markdown("##### 📊 Charge d'entraînement (EWMA 7j vs 28j)")
+        bars = (
+            alt.Chart(df_d)
+            .mark_bar(color="#38BDF8", opacity=0.28, cornerRadiusTopLeft=3, cornerRadiusTopRight=3)
+            .encode(
+                x=alt.X("DateObj:T", title=None, axis=alt.Axis(format="%d/%m", labelColor="#94A3B8", tickCount=6)),
+                y=alt.Y("Charge Externe (UA):Q", title="Charge (UA)", axis=alt.Axis(labelColor="#94A3B8", titleColor="#94A3B8")),
+                tooltip=[
+                    alt.Tooltip("Date:N", title="Date"),
+                    alt.Tooltip("Charge Externe (UA):Q", title="Charge du jour (UA)", format=".1f"),
+                    alt.Tooltip("EWMA Aiguë (7j):Q", title="Aiguë 7j (UA)", format=".1f"),
+                    alt.Tooltip("EWMA Chronique (28j):Q", title="Chronique 28j (UA)", format=".1f"),
+                ],
             )
-            fig.add_trace(
-                go.Scatter(x=df_d["Date"], y=df_d["EWMA Aiguë (7j)"], name="EWMA Aiguë (7j)", line=dict(color="#00E5FF", width=2.3)),
-                secondary_y=False,
+        )
+        ewma_melt = df_d.melt(
+            id_vars=["DateObj", "Date"],
+            value_vars=["EWMA Aiguë (7j)", "EWMA Chronique (28j)"],
+            var_name="Courbe",
+            value_name="UA",
+        )
+        lines = (
+            alt.Chart(ewma_melt)
+            .mark_line(strokeWidth=2.5)
+            .encode(
+                x=alt.X("DateObj:T", title=None),
+                y=alt.Y("UA:Q"),
+                color=alt.Color(
+                    "Courbe:N",
+                    scale=alt.Scale(
+                        domain=["EWMA Aiguë (7j)", "EWMA Chronique (28j)"],
+                        range=["#00E5FF", "#818CF8"],
+                    ),
+                    legend=alt.Legend(orient="bottom", title=None, labelColor="#E2E8F0"),
+                ),
+                strokeDash=alt.StrokeDash(
+                    "Courbe:N",
+                    scale=alt.Scale(
+                        domain=["EWMA Aiguë (7j)", "EWMA Chronique (28j)"],
+                        range=[[1, 0], [5, 4]],
+                    ),
+                    legend=None,
+                ),
             )
-            fig.add_trace(
-                go.Scatter(x=df_d["Date"], y=df_d["EWMA Chronique (28j)"], name="EWMA Chronique (28j)", line=dict(color="#818CF8", width=2.1, dash="dot")),
-                secondary_y=False,
-            )
-            fig.add_trace(
-                go.Scatter(x=df_d["Date"], y=df_d["ACWR"], name="ACWR", line=dict(color="#FBBF24", width=2.2)),
-                secondary_y=True,
-            )
-            fig.add_hrect(
-                y0=float(zones.get("sweet_spot_min", 0.80)),
-                y1=float(zones.get("sweet_spot_max", 1.30)),
-                fillcolor="rgba(16, 185, 129, 0.10)",
-                line_width=0,
-                secondary_y=True,
-            )
-            fig.update_layout(
-                title="EWMA Charge (7j/28j) & Ratio ACWR",
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(13,18,30,0.65)",
-                font=dict(color="#F8FAFC", family="Plus Jakarta Sans"),
-                height=310,
-                margin=dict(l=12, r=12, t=36, b=24),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-            )
-            fig.update_yaxes(title_text="Charge (UA)", secondary_y=False)
-            fig.update_yaxes(title_text="Ratio ACWR", secondary_y=True, rangemode="tozero")
-            st.plotly_chart(fig, use_container_width=True)
+        )
+        chart_load = (
+            alt.layer(bars, lines)
+            .properties(height=230, background="transparent")
+            .configure_view(strokeWidth=0, fill="#0D121E")
+            .configure_axis(gridColor="rgba(255,255,255,0.06)", domainColor="rgba(255,255,255,0.1)")
+        )
+        st.altair_chart(chart_load, use_container_width=True)
 
-        with c_gauge:
-            mod_th = float(t_cfg.get("weekly_moderate_threshold", 600.0))
-            high_th = float(t_cfg.get("weekly_high_threshold", 1200.0))
-            max_g = max(float(t_cfg.get("weekly_max_gauge", 2000.0)), metrics["weekly_tendon_au"] * 1.15)
-            val_tend = metrics["weekly_tendon_au"]
+        # Graphique 2 : Ratio ACWR séparé avec bande verte optimale (0.8 - 1.3)
+        st.markdown("##### ⚖️ Ratio de fatigue ACWR (Aiguë / Chronique)")
+        sweet_min = float(zones.get("sweet_spot_min", 0.80))
+        sweet_max = float(zones.get("sweet_spot_max", 1.30))
+        caut_max = float(zones.get("caution_max", 1.50))
+        max_acwr_val = max(1.8, float(df_d["ACWR"].max() or 0.0) * 1.15)
 
-            fig_g = go.Figure(
-                go.Indicator(
-                    mode="gauge+number",
-                    value=val_tend,
-                    title={"text": "Stress Tendineux Haute Intensité (7j)", "font": {"size": 14, "color": "#F8FAFC"}},
-                    number={"suffix": " UA", "font": {"color": "#F8FAFC", "size": 24}},
-                    gauge={
-                        "axis": {"range": [0, max_g], "tickcolor": "#94A3B8"},
-                        "bar": {"color": "#00E5FF"},
-                        "bgcolor": "rgba(13,18,30,0.8)",
-                        "steps": [
-                            {"range": [0, mod_th], "color": "rgba(16, 185, 129, 0.32)"},
-                            {"range": [mod_th, high_th], "color": "rgba(245, 158, 11, 0.35)"},
-                            {"range": [high_th, max_g], "color": "rgba(244, 63, 94, 0.40)"},
-                        ],
-                        "threshold": {
-                            "line": {"color": "#FB7185", "width": 3},
-                            "thickness": 0.78,
-                            "value": high_th,
-                        },
-                    },
-                )
+        band_df = pd.DataFrame({
+            "DateStart": [df_d["DateObj"].min()],
+            "DateEnd": [df_d["DateObj"].max()],
+            "yMin": [sweet_min],
+            "yMax": [sweet_max],
+        })
+        opt_band = (
+            alt.Chart(band_df)
+            .mark_rect(color="#10B981", opacity=0.14)
+            .encode(x="DateStart:T", x2="DateEnd:T", y="yMin:Q", y2="yMax:Q")
+        )
+        danger_rule = (
+            alt.Chart(pd.DataFrame({"y": [caut_max]}))
+            .mark_rule(color="#FB7185", strokeDash=[5, 4], strokeWidth=1.5)
+            .encode(y="y:Q")
+        )
+        acwr_line = (
+            alt.Chart(df_d)
+            .mark_line(color="#FBBF24", strokeWidth=2.5, point=alt.OverlayMarkDef(color="#FBBF24", size=36))
+            .encode(
+                x=alt.X("DateObj:T", title=None, axis=alt.Axis(format="%d/%m", labelColor="#94A3B8", tickCount=6)),
+                y=alt.Y("ACWR:Q", title="Ratio ACWR", scale=alt.Scale(domain=[0, max_acwr_val]), axis=alt.Axis(labelColor="#94A3B8", titleColor="#94A3B8")),
+                tooltip=[
+                    alt.Tooltip("Date:N", title="Date"),
+                    alt.Tooltip("ACWR:Q", title="Ratio ACWR", format=".2f"),
+                ],
             )
-            fig_g.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#F8FAFC", family="Plus Jakarta Sans"),
-                height=265,
-                margin=dict(l=18, r=18, t=42, b=10),
-            )
-            st.plotly_chart(fig_g, use_container_width=True)
-            if val_tend >= high_th:
-                st.error(f"🔴 Stress tendineux élevé ({val_tend:.0f} UA ≥ {high_th:.0f}) : prévoyez du déchargement sur les leviers.")
-            elif val_tend >= mod_th:
-                st.warning(f"🟡 Stress tendineux soutenu ({val_tend:.0f} UA) : surveillez coudes & épaules.")
-            else:
-                st.caption(f"🟢 Volume tendineux maîtrisé sur 7 jours ({val_tend:.0f} UA sur figures à fort levier).")
+        )
+        chart_acwr = (
+            alt.layer(opt_band, danger_rule, acwr_line)
+            .properties(height=190, background="transparent")
+            .configure_view(strokeWidth=0, fill="#0D121E")
+            .configure_axis(gridColor="rgba(255,255,255,0.06)", domainColor="rgba(255,255,255,0.1)")
+        )
+        st.altair_chart(chart_acwr, use_container_width=True)
+        st.caption("🟩 Zone optimale : **0.80 – 1.30** • 🟥 Ligne pointillée : seuil de surcharge (**1.50**)")
+    else:
+        st.line_chart(df_d.set_index("Date")[["EWMA Aiguë (7j)", "EWMA Chronique (28j)"]])
+
+    # Jauge horizontale HTML/CSS claire et responsive (zéro coupure sur mobile 390px)
+    mod_th = float(t_cfg.get("weekly_moderate_threshold", 600.0))
+    high_th = float(t_cfg.get("weekly_high_threshold", 1200.0))
+    max_g = max(float(t_cfg.get("weekly_max_gauge", 2000.0)), metrics["weekly_tendon_au"] * 1.15)
+    val_tend = float(metrics["weekly_tendon_au"])
+    pct_val = min(100.0, max(0.0, (val_tend / max_g) * 100.0))
+    pct_mod = min(100.0, (mod_th / max_g) * 100.0)
+    pct_high = min(100.0, (high_th / max_g) * 100.0)
+
+    if val_tend >= high_th:
+        tend_badge = '<span class="badge-rose">🔴 Élevé (Décharger)</span>'
+        tend_col = "#FB7185"
+    elif val_tend >= mod_th:
+        tend_badge = '<span class="badge-amber">🟡 Modéré (Vigilance)</span>'
+        tend_col = "#FBBF24"
+    else:
+        tend_badge = '<span class="badge-lime">🟢 Maîtrisé</span>'
+        tend_col = "#34D399"
+
+    render_html(f"""
+        <div class="cali-card" style="padding:12px 14px;margin-top:0.4rem;">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
+                <span style="font-size:0.86rem;font-weight:800;color:#F8FAFC;">🦴 Stress Tendineux Haute Intensité (7j)</span>
+                {tend_badge}
+            </div>
+            <div style="font-size:1.35rem;font-weight:800;color:{tend_col};margin-bottom:8px;">
+                {val_tend:.0f} <span style="font-size:0.82rem;color:#94A3B8;font-weight:600;">UA / {max_g:.0f} max</span>
+            </div>
+            <div style="position:relative;height:14px;border-radius:999px;background:linear-gradient(90deg, rgba(16,185,129,0.45) 0%, rgba(16,185,129,0.45) {pct_mod:.1f}%, rgba(245,158,11,0.48) {pct_mod:.1f}%, rgba(245,158,11,0.48) {pct_high:.1f}%, rgba(244,63,94,0.55) {pct_high:.1f}%, rgba(244,63,94,0.55) 100%);border:1px solid rgba(255,255,255,0.12);overflow:visible;">
+                <div style="position:absolute;left:calc({pct_val:.1f}% - 7px);top:-3px;width:14px;height:20px;border-radius:4px;background:#F8FAFC;border:2px solid {tend_col};box-shadow:0 0 10px {tend_col};"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:0.7rem;color:#94A3B8;margin-top:6px;">
+                <span>0 UA</span>
+                <span>{mod_th:.0f} UA</span>
+                <span>{high_th:.0f} UA (Seuil)</span>
+                <span>{max_g:.0f} UA</span>
+            </div>
+        </div>
+    """)
 
     return metrics

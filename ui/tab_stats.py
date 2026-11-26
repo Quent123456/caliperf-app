@@ -8,8 +8,14 @@ import time
 import pandas as pd
 import streamlit as st
 
+from core.auth import normalize_role
 from core.calibration import load_baselines_table
-from core.database import delete_training_log, get_training_logs_for_athlete
+from core.database import (
+    delete_training_log,
+    get_coach_athletes,
+    get_training_logs_for_athlete,
+    set_active_athlete_in_session,
+)
 from services.export_service import (
     build_logs_export_dataframe,
     export_dataframe_to_csv_bytes,
@@ -25,7 +31,41 @@ def render_tab_stats() -> None:
     if not curr_u:
         return
 
-    active_profile = st.session_state.get("active_athlete_profile") or curr_u
+    curr_role = normalize_role(curr_u.get("role", "athlete"))
+    if curr_role == "coach":
+        profile_by_id = st.session_state.get("selectable_profiles_map")
+        option_ids = st.session_state.get("selectable_profile_ids")
+        if not profile_by_id or not option_ids:
+            coach_athletes = get_coach_athletes(int(curr_u["id"]))
+            profiles = [curr_u] + coach_athletes
+            profile_by_id = {int(p["id"]): p for p in profiles}
+            option_ids = [int(p["id"]) for p in profiles]
+
+        cur_aid = int(st.session_state.get("active_athlete_id") or curr_u["id"])
+        if cur_aid not in profile_by_id:
+            cur_aid = int(curr_u["id"])
+
+        def _on_stats_athlete_change() -> None:
+            chosen = st.session_state.get("stats_athlete_select")
+            if chosen is not None:
+                set_active_athlete_in_session(int(chosen), sync_widgets=True)
+
+        selected_stat_id = st.selectbox(
+            "🎯 Athlète affiché :",
+            options=option_ids,
+            format_func=lambda pid: (
+                f"🏋️ Moi-même ({profile_by_id[pid]['full_name']})"
+                if pid == int(curr_u["id"]) else
+                f"🤸 {profile_by_id[pid]['full_name']} ({profile_by_id[pid]['bodyweight_kg']:.0f} kg)"
+            ),
+            key="stats_athlete_select",
+            on_change=_on_stats_athlete_change,
+        )
+        active_profile = profile_by_id[int(selected_stat_id)]
+        st.session_state["active_athlete_profile"] = active_profile
+    else:
+        active_profile = st.session_state.get("active_athlete_profile") or curr_u
+
     target_id = int(active_profile["id"])
 
     render_html("""

@@ -93,48 +93,46 @@ html, body, [class*="css"] {
     pointer-events: none !important;
 }
 
-/* Maintien horizontal strict de la barre d'en-tête sur smartphone et desktop */
+/* Maintien horizontal strict de la barre d'en-tête sur 4 colonnes plates sans chevauchement */
 [data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) {
     flex-wrap: nowrap !important;
     align-items: center !important;
-    gap: 8px !important;
+    gap: 6px !important;
     margin-bottom: 0.25rem !important;
+    width: 100% !important;
 }
 [data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"] {
     min-width: 0 !important;
+    width: auto !important;
+    padding: 0 !important;
 }
 [data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(1) {
-    flex: 0 0 46px !important;
-    width: 46px !important;
+    flex: 0 0 40px !important;
+    width: 40px !important;
 }
 [data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(2) {
     flex: 1 1 auto !important;
+    overflow: hidden !important;
 }
 [data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(3) {
     flex: 0 1 auto !important;
-    max-width: 52% !important;
+    max-width: 148px !important;
+    overflow: hidden !important;
 }
-[data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(3) [data-testid="stHorizontalBlock"] {
-    flex-wrap: nowrap !important;
-    align-items: center !important;
-    gap: 5px !important;
-}
-[data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(3) [data-testid="stColumn"]:nth-child(1) {
-    flex: 1 1 auto !important;
-    min-width: 0 !important;
-}
-[data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(3) [data-testid="stColumn"]:nth-child(2) {
+[data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(4) {
     flex: 0 0 38px !important;
     width: 38px !important;
 }
-[data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(3) button {
-    min-height: 36px !important;
-    height: 36px !important;
-    padding: 0 !important;
-    border-radius: 10px !important;
-    background: rgba(13, 18, 30, 0.88) !important;
+@media (max-width: 480px) {
+    [data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(3) {
+        max-width: 108px !important;
+    }
+    .cali-hdr-name {
+        max-width: 56px !important;
+    }
 }
-[data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(1) [data-testid="stVerticalBlock"] {
+[data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(1) [data-testid="stVerticalBlock"],
+[data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(4) [data-testid="stVerticalBlock"] {
     gap: 0 !important;
 }
 [data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(1) [data-testid="stElementContainer"]:has(#caliperf-header-exit-marker) {
@@ -144,12 +142,13 @@ html, body, [class*="css"] {
     padding: 0 !important;
     overflow: hidden !important;
 }
-[data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(1) button {
-    min-height: 38px !important;
-    height: 38px !important;
+[data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(1) button,
+[data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(4) button {
+    min-height: 36px !important;
+    height: 36px !important;
     padding: 0 !important;
-    border-radius: 11px !important;
-    background: rgba(13, 18, 30, 0.85) !important;
+    border-radius: 10px !important;
+    background: rgba(13, 18, 30, 0.88) !important;
 }
 
 /* Padding haut adapté notch smartphone & barre Streamlit */
@@ -1081,6 +1080,32 @@ SWIPE_ENGINE_JS = r"""
     };
 
     syncInitialDots();
+    if (typeof targetWin.__CALI_REDIRECT_TAB_IDX__ === 'number' && targetWin.__CALI_REDIRECT_TAB_IDX__ >= 0) {
+        var rIdx = targetWin.__CALI_REDIRECT_TAB_IDX__;
+        targetWin.__CALI_REDIRECT_TAB_IDX__ = null;
+        var doRedirect = function() {
+            var stEl = resolveMainStTabs(null);
+            if (!stEl) return false;
+            var tabs = getDirectTabs(stEl);
+            if (tabs[rIdx]) {
+                if (getActiveIndex(tabs) !== rIdx) {
+                    tabs[rIdx].click();
+                }
+                try {
+                    tabs[rIdx].scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+                } catch (e) {}
+                syncProgressDots(rIdx, null, 0);
+                targetWin.setTimeout(triggerResizePulse, 80);
+                return true;
+            }
+            return false;
+        };
+        targetWin.setTimeout(function() {
+            if (!doRedirect()) {
+                targetWin.setTimeout(doRedirect, 180);
+            }
+        }, 60);
+    }
 })();
 """
 
@@ -1090,19 +1115,47 @@ def inject_theme() -> None:
     st.markdown(THEME_CSS, unsafe_allow_html=True)
 
 
-def inject_swipe_engine(stage: str = "app") -> None:
+def inject_swipe_engine(stage: str = "app", redirect_tab_idx: int = None) -> None:
     """
-    Injecte le moteur de geste tactile fluide V5 (Live Peek).
-    Utilise en priorité st.html(..., unsafe_allow_javascript=True) directement dans le DOM principal
-    (sans iframe isolé), avec repli automatique vers components.html si version antérieure.
+    Injecte le moteur de geste tactile fluide V5 (Live Peek) + redirection optionnelle d'onglet.
     """
+    import time as _time
     safe_stage = "".join(c for c in (stage or "app") if c.isalnum() or c in "_-") or "app"
     script_payload = f"/* cali-stage:{safe_stage} */\n{SWIPE_ENGINE_JS}"
     html_payload = f'<span data-cali-js="{safe_stage}" style="display:none;"></span><script>{script_payload}</script>'
+    mounted_st_html = False
     try:
         if hasattr(st, "html") and "unsafe_allow_javascript" in inspect.signature(st.html).parameters:
             st.html(html_payload, unsafe_allow_javascript=True)
-            return
+            mounted_st_html = True
     except Exception:
         pass
-    components.html(html_payload, height=0)
+    if not mounted_st_html:
+        components.html(html_payload, height=0)
+
+    if redirect_tab_idx is not None:
+        idx_int = max(0, int(redirect_tab_idx))
+        nonce = int(_time.time() * 1000)
+        redir_html = (
+            f'<script>/* cali-redir:{idx_int}:{nonce} */'
+            f'(function(){{'
+            f'var w=(window.parent&&window.parent!==window)?window.parent:window;'
+            f'var d=w.document;'
+            f'var go=function(attempt){{'
+            f'var anchor=d.getElementById("caliperf-main-tabs-anchor");'
+            f'var stEl=null;'
+            f'if(anchor){{var b=anchor.closest("[data-testid=\\"stElementContainer\\"],.element-container")||anchor.parentElement;'
+            f'var cur=b?b.nextElementSibling:null;while(cur){{if(cur.matches&&cur.matches("[data-testid=\\"stTabs\\"],.stTabs")){{stEl=cur;break;}}'
+            f'var q=cur.querySelector?cur.querySelector("[data-testid=\\"stTabs\\"],.stTabs"):null;if(q){{stEl=q;break;}}cur=cur.nextElementSibling;}}}}'
+            f'if(!stEl)stEl=d.querySelector("[data-testid=\\"stTabs\\"],.stTabs");'
+            f'if(!stEl){{if(attempt<15)w.setTimeout(function(){{go(attempt+1);}},40);return;}}'
+            f'var tabs=Array.from(stEl.querySelectorAll("button[data-baseweb=\\"tab\\"],[role=\\"tab\\"]")).filter(function(t){{return t.closest("[data-testid=\\"stTabs\\"],.stTabs")===stEl;}});'
+            f'var btn=tabs[{idx_int}];'
+            f'if(btn){{if(btn.getAttribute("aria-selected")!=="true"){{btn.click();}}'
+            f'try{{btn.scrollIntoView({{behavior:"smooth",inline:"center",block:"nearest"}});}}catch(e){{}}'
+            f'w.setTimeout(function(){{try{{w.dispatchEvent(new Event("resize"));}}catch(e){{}}}},100);}}'
+            f'}};'
+            f'w.setTimeout(function(){{go(0);}},50);'
+            f'}})();</script>'
+        )
+        components.html(redir_html, height=0)

@@ -1,5 +1,5 @@
 """
-ui/header.py - Barre supérieure épurée (Sortie haut-gauche, Marque, Profil cliquable sans HTML brut)
+ui/header.py - Barre supérieure épurée (Sortie haut-gauche, Marque, Profil cliquable sans chevauchement mobile)
 et indicateur visuel de navigation tactile.
 """
 
@@ -12,7 +12,7 @@ from ui.theme import render_html
 
 
 def render_app_header() -> None:
-    """Affiche le bandeau supérieur compact : sortie, marque et carte profil (Coach/Élève)."""
+    """Affiche le bandeau supérieur compact sur 4 colonnes plates sans chevauchement mobile."""
     curr_u = st.session_state.get("current_user") or {
         "username": "coach",
         "full_name": "Coach",
@@ -24,7 +24,7 @@ def render_app_header() -> None:
     u_avatar = curr_u.get("avatar_b64") or curr_u.get("avatar", "")
     role_label, role_badge_cls, role_icon = get_role_badge_info(u_role, str(curr_u.get("username", "")))
 
-    col_exit, col_brand, col_u_info = st.columns([0.55, 2.15, 2.3])
+    col_exit, col_brand, col_avatar, col_prof_btn = st.columns([0.55, 2.1, 1.35, 0.52])
 
     with col_exit:
         render_html('<span id="caliperf-header-exit-marker" style="display:none;"></span>')
@@ -34,40 +34,38 @@ def render_app_header() -> None:
 
     with col_brand:
         brand_html = (
-            '<div style="display:flex;align-items:center;gap:8px;padding:2px 0;">'
-            '<div style="background:linear-gradient(135deg,#00E5FF,#0EA5E9);width:30px;height:30px;border-radius:9px;'
+            '<div style="display:flex;align-items:center;gap:7px;padding:2px 0;min-width:0;overflow:hidden;">'
+            '<div style="background:linear-gradient(135deg,#00E5FF,#0EA5E9);width:28px;height:28px;border-radius:8px;'
             'display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(0,229,255,0.28);flex-shrink:0;">'
-            '<span style="font-size:14px;">⚡</span>'
+            '<span style="font-size:13px;">⚡</span>'
             '</div>'
-            '<div style="line-height:1.12;min-width:0;">'
-            '<div style="display:flex;align-items:center;gap:4px;white-space:nowrap;">'
-            '<span style="font-size:1rem;font-weight:800;letter-spacing:-0.025em;color:#F8FAFC;">CALIPERF</span>'
-            '<span style="color:#00E5FF;font-weight:800;font-size:1rem;">PRO</span>'
+            '<div style="line-height:1.1;min-width:0;overflow:hidden;">'
+            '<div style="display:flex;align-items:center;gap:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
+            '<span style="font-size:0.95rem;font-weight:800;letter-spacing:-0.025em;color:#F8FAFC;">CALIPERF</span>'
+            '<span style="color:#00E5FF;font-weight:800;font-size:0.95rem;">PRO</span>'
             '</div>'
-            '<div style="font-size:0.6rem;color:#64748B;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;white-space:nowrap;">3D Telemetry</div>'
+            '<div style="font-size:0.56rem;color:#64748B;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;white-space:nowrap;">3D Telemetry</div>'
             '</div></div>'
         )
         st.markdown(brand_html, unsafe_allow_html=True)
 
-    with col_u_info:
-        c_card, c_prof_btn = st.columns([2.2, 0.7])
-        with c_card:
-            # Lignes strictement sans indentation >= 4 espaces pour éviter <pre><code> Markdown
-            avatar_html = render_avatar_html(u_avatar, u_name, size=34)
-            u_card_html = (
-                '<div style="display:flex;align-items:center;gap:8px;padding:3px 9px;'
-                'background:rgba(13,18,30,0.85);border-radius:11px;border:1px solid rgba(255,255,255,0.09);'
-                'justify-content:flex-start;min-width:0;">'
-                f'{avatar_html}'
-                '<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">'
-                f'<b style="font-size:0.78rem;color:#F8FAFC;display:block;line-height:1.18;overflow:hidden;text-overflow:ellipsis;">{u_name}</b>'
-                f'<span class="{role_badge_cls}" style="font-size:0.6rem;padding:1px 6px;">{role_icon} {role_label}</span>'
-                '</div></div>'
-            )
-            st.markdown(u_card_html, unsafe_allow_html=True)
-        with c_prof_btn:
-            if st.button("👤", key="btn_open_profile_header", help="Mon profil, statut & photo", use_container_width=True):
-                open_profile_modal()
+    with col_avatar:
+        avatar_html = render_avatar_html(u_avatar, u_name, size=30)
+        u_card_html = (
+            '<div style="display:flex;align-items:center;gap:6px;padding:3px 7px;'
+            'background:rgba(13,18,30,0.88);border-radius:10px;border:1px solid rgba(255,255,255,0.09);'
+            'justify-content:flex-start;min-width:0;overflow:hidden;">'
+            f'{avatar_html}'
+            '<div class="cali-hdr-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">'
+            f'<b style="font-size:0.74rem;color:#F8FAFC;display:block;line-height:1.15;overflow:hidden;text-overflow:ellipsis;">{u_name}</b>'
+            f'<span class="{role_badge_cls}" style="font-size:0.56rem;padding:1px 5px;">{role_icon} {role_label}</span>'
+            '</div></div>'
+        )
+        st.markdown(u_card_html, unsafe_allow_html=True)
+
+    with col_prof_btn:
+        if st.button("👤", key="btn_open_profile_header", help="Mon profil, statut & photo", use_container_width=True):
+            open_profile_modal()
 
 
 def render_swipe_hud_and_anchor(num_tabs: int = 5) -> None:

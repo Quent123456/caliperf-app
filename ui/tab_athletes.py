@@ -15,6 +15,7 @@ from core.database import (
     get_user_by_id,
     link_athlete_to_coach_by_code,
     login_user_in_session,
+    set_active_athlete_in_session,
     update_athlete_for_coach,
     update_user_profile_sql,
 )
@@ -179,10 +180,12 @@ def render_tab_athletes() -> None:
 
         c_sel, c_ed, c_del = st.columns([1.3, 1.5, 1.0])
         with c_sel:
-            lbl_s = "✅ Athlète actif" if is_selected else "🎯 Suivre cet athlète"
-            if st.button(lbl_s, key=f"sel_ath_{aid}", use_container_width=True, disabled=is_selected):
-                st.session_state.active_athlete_id = aid
-                st.toast(f"🎯 Athlète actif : {ath['full_name']}")
+            lbl_s = "📊 Voir ses stats (Actif)" if is_selected else "🎯 Suivre cet élève"
+            if st.button(lbl_s, key=f"sel_ath_{aid}", type="primary" if is_selected else "secondary", use_container_width=True):
+                set_active_athlete_in_session(aid)
+                st.session_state["active_athlete_profile"] = ath
+                st.session_state["_redirect_tab_idx"] = 2
+                st.toast(f"🎯 Suivi ouvert : {ath['full_name']}")
                 st.rerun()
         with c_ed:
             with st.expander("✏️ Modifier", expanded=False):

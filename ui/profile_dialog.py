@@ -29,6 +29,13 @@ def _get_role_description(role: str) -> str:
     return "Élève CaliPerf : suivi de vos séances, analyse 3D sur les baselines partagées de votre coach et exports."
 
 
+def _rerun_app() -> None:
+    try:
+        st.rerun(scope="app")
+    except TypeError:
+        st.rerun()
+
+
 def _build_profile_content() -> None:
     curr_u = st.session_state.get("current_user")
     if not curr_u:
@@ -102,18 +109,23 @@ def _build_profile_content() -> None:
     )
 
     if new_photo is not None:
-        st.image(new_photo, width=84, caption="Aperçu de la nouvelle photo")
-        if st.button("💾 Enregistrer cette photo", type="primary", use_container_width=True, key="btn_save_new_avatar"):
-            b64 = process_avatar_image(new_photo)
-            if b64:
-                ok_u, _, upd_u = update_user_profile_sql(uid, avatar_b64=b64)
+        preview_b64 = process_avatar_image(new_photo)
+        if preview_b64:
+            render_html(
+                '<div style="display:flex;align-items:center;gap:12px;margin:8px 0;padding:8px 10px;'
+                'background:rgba(0,229,255,0.06);border:1px solid rgba(0,229,255,0.22);border-radius:10px;">'
+                f'{render_avatar_html(preview_b64, u_full, size=64)}'
+                '<div style="font-size:0.82rem;color:#E2E8F0;"><b>Aperçu prêt</b><br>'
+                '<span style="color:#94A3B8;">Cliquez ci-dessous pour enregistrer sur votre profil.</span></div></div>'
+            )
+            if st.button("💾 Enregistrer cette photo", type="primary", use_container_width=True, key="btn_save_new_avatar"):
+                ok_u, _, upd_u = update_user_profile_sql(uid, avatar_b64=preview_b64)
                 if ok_u and upd_u:
                     login_user_in_session(upd_u)
                     st.toast("✅ Photo de profil enregistrée !")
-                    time.sleep(0.25)
-                    st.rerun()
-            else:
-                st.error("Impossible de traiter cette image.")
+                    _rerun_app()
+        else:
+            st.error("Impossible de décoder cette image. Essayez un fichier JPG ou PNG.")
 
     if u_avatar:
         if st.button("🗑️ Retirer la photo actuelle (revenir à l'initiale)", use_container_width=True, key="btn_remove_avatar"):
@@ -121,8 +133,7 @@ def _build_profile_content() -> None:
             if ok_r and upd_u:
                 login_user_in_session(upd_u)
                 st.toast("✅ Photo retirée")
-                time.sleep(0.2)
-                st.rerun()
+                _rerun_app()
 
     with st.expander("✏️ Modifier mes informations (Nom / PDC / Mot de passe)", expanded=False):
         with st.form("form_edit_profile_info"):

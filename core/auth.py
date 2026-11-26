@@ -23,7 +23,7 @@ import time
 from typing import Any, Dict, Optional, Tuple
 
 try:
-    from PIL import Image
+    from PIL import Image, ImageOps
     HAS_PIL = True
 except ImportError:
     HAS_PIL = False
@@ -209,23 +209,27 @@ def process_avatar_image(uploaded_file, max_size: Tuple[int, int] = (128, 128)) 
         return ""
 
     try:
-        if hasattr(uploaded_file, "seek"):
-            uploaded_file.seek(0)
-        if hasattr(uploaded_file, "read"):
-            bytes_data = uploaded_file.read()
+        bytes_data = b""
+        if hasattr(uploaded_file, "getvalue"):
+            bytes_data = uploaded_file.getvalue()
         elif isinstance(uploaded_file, bytes):
             bytes_data = uploaded_file
+        elif hasattr(uploaded_file, "read"):
+            if hasattr(uploaded_file, "seek"):
+                uploaded_file.seek(0)
+            bytes_data = uploaded_file.read()
+            if hasattr(uploaded_file, "seek"):
+                uploaded_file.seek(0)
         else:
             return ""
-        if hasattr(uploaded_file, "seek"):
-            uploaded_file.seek(0)
 
         if not bytes_data:
             return ""
 
         if HAS_PIL:
             img = Image.open(io.BytesIO(bytes_data))
-            if img.mode in ("RGBA", "P", "LA"):
+            img = ImageOps.exif_transpose(img)
+            if img.mode != "RGB":
                 img = img.convert("RGB")
             w, h = img.size
             min_dim = min(w, h)

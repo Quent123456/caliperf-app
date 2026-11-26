@@ -893,14 +893,29 @@ def login_user_in_session(user_dict: Dict[str, Any]) -> None:
     """Connecte l'utilisateur dans st.session_state et signe son jeton ?session= pour F5."""
     if not HAS_STREAMLIT or not user_dict:
         return
+    prev_user = st.session_state.get("current_user")
+    uid = int(user_dict["id"])
     st.session_state.current_user = dict(user_dict)
     st.session_state.is_authenticated = True
     st.session_state.app_entered = True
-    st.session_state.active_athlete_id = int(user_dict["id"])
+    if not prev_user or int(prev_user.get("id", -1)) != uid or st.session_state.get("active_athlete_id") is None:
+        set_active_athlete_in_session(uid, sync_widgets=False)
     try:
-        st.query_params["session"] = create_session_token(int(user_dict["id"]))
+        st.query_params["session"] = create_session_token(uid)
     except Exception:
         pass
+
+
+def set_active_athlete_in_session(athlete_id: int, sync_widgets: bool = False) -> None:
+    """Synchronise l'athlète suivi sans violer l'ordre d'instanciation Streamlit."""
+    if not HAS_STREAMLIT:
+        return
+    aid = int(athlete_id)
+    st.session_state.active_athlete_id = aid
+    st.session_state["_sync_athlete_widgets"] = True
+    if sync_widgets:
+        st.session_state["sidebar_active_athlete_select"] = aid
+        st.session_state["stats_athlete_select"] = aid
 
 
 def logout_user_from_session(stay_on_auth_portal: bool = True) -> None:
