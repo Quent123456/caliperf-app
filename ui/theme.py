@@ -7,6 +7,7 @@ Fournit :
   la page suivante glisse et apparaît progressivement sous le doigt à 60/120fps sans flash ni saccade.
 """
 
+import inspect
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -47,6 +48,17 @@ html, body, [class*="css"] {
     font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
     -webkit-tap-highlight-color: transparent;
     color: var(--cali-text);
+    touch-action: pan-y pinch-zoom;
+}
+
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"],
+[data-testid="stTabs"],
+[data-baseweb="tab-panel"],
+.cali-card,
+.cali-card-accent,
+[data-testid="stExpander"] {
+    touch-action: pan-y pinch-zoom;
 }
 
 [data-testid="stAppViewContainer"] {
@@ -62,7 +74,6 @@ html, body, [class*="css"] {
 }
 
 [data-testid="stMain"] {
-    touch-action: pan-y pinch-zoom;
     overflow-x: hidden !important;
 }
 
@@ -97,7 +108,27 @@ html, body, [class*="css"] {
 }
 [data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(3) {
     flex: 0 1 auto !important;
-    max-width: 46% !important;
+    max-width: 52% !important;
+}
+[data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(3) [data-testid="stHorizontalBlock"] {
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    gap: 5px !important;
+}
+[data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(3) [data-testid="stColumn"]:nth-child(1) {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+}
+[data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(3) [data-testid="stColumn"]:nth-child(2) {
+    flex: 0 0 38px !important;
+    width: 38px !important;
+}
+[data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(3) button {
+    min-height: 36px !important;
+    height: 36px !important;
+    padding: 0 !important;
+    border-radius: 10px !important;
+    background: rgba(13, 18, 30, 0.88) !important;
 }
 [data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(1) [data-testid="stVerticalBlock"] {
     gap: 0 !important;
@@ -480,8 +511,9 @@ SWIPE_ENGINE_JS = r"""
 (function() {
     var targetWin = window;
     var targetDoc = document;
+    /* Monter vers window.parent uniquement si exécuté dans un iframe component isolé */
     try {
-        if (window.parent && window.parent.document) {
+        if (!document.querySelector('[data-testid="stAppViewContainer"]') && window.parent && window.parent.document) {
             targetWin = window.parent;
             targetDoc = window.parent.document;
         }
@@ -505,6 +537,7 @@ SWIPE_ENGINE_JS = r"""
         isTracking: false,
         isHorizontal: false,
         isAnimating: false,
+        blockClickUntil: 0,
         activePanel: null,
         neighborPanel: null,
         targetIdx: null,
@@ -518,7 +551,7 @@ SWIPE_ENGINE_JS = r"""
     };
 
     var noSwipeSelector = [
-        'input', 'textarea', 'select', 'button', 'a', 'label',
+        'input', 'textarea', 'select',
         'video', 'audio', '.stVideo', '.stAudio',
         '[role="slider"]', '.stSlider', '[data-baseweb="slider"]', '.stNumberInput',
         'pre', 'code',
@@ -799,8 +832,8 @@ SWIPE_ENGINE_JS = r"""
 
     function onTouchMove(e) {
         if (!state.isTracking || !e.touches || e.touches.length !== 1) return;
-        if (isInsideScrollableOrBlocked(e.target)) {
-            onTouchCancel();
+        if (!state.isHorizontal && isInsideScrollableOrBlocked(e.target)) {
+            state.isTracking = false;
             return;
         }
 
@@ -808,18 +841,26 @@ SWIPE_ENGINE_JS = r"""
         var currentY = e.touches[0].clientY;
         state.dx = state.currentX - state.startX;
         var dy = currentY - state.startY;
+        var absX = Math.abs(state.dx);
+        var absY = Math.abs(dy);
 
         if (!state.isHorizontal) {
-            if (Math.abs(state.dx) > 10 && Math.abs(state.dx) > Math.abs(dy) * 1.15) {
+            /* Tolère les courbes naturelles du pouce sur smartphone avant de trancher */
+            if (absX >= 9 && absX >= absY * 0.95) {
                 state.isHorizontal = true;
-            } else if (Math.abs(dy) > 12) {
+            } else if (absY > 22 && absY > absX * 1.35) {
                 state.isTracking = false;
                 return;
             }
         }
 
-        if (state.isHorizontal && !state.rafId) {
-            state.rafId = targetWin.requestAnimationFrame(renderDragFrame);
+        if (state.isHorizontal) {
+            if (e.cancelable) {
+                e.preventDefault();
+            }
+            if (!state.rafId) {
+                state.rafId = targetWin.requestAnimationFrame(renderDragFrame);
+            }
         }
     }
 
@@ -859,6 +900,7 @@ SWIPE_ENGINE_JS = r"""
             syncProgressDots(targetIdx, null, 0);
 
             targetWin.setTimeout(function() {
+                state.blockClickUntil = 0;
                 if (root) root.setAttribute('data-cali-silent', '1');
                 clearInlinePanelStyles(activeP);
                 clearInlinePanelStyles(neighborP);
@@ -910,16 +952,17 @@ SWIPE_ENGINE_JS = r"""
             return;
         }
         state.isHorizontal = false;
+        state.blockClickUntil = Date.now() + 180;
 
         var w = state.containerW || 360;
         var diffX = state.dx;
         var elapsed = Math.max(1, Date.now() - state.startTime);
         var velocity = Math.abs(diffX) / elapsed;
-        var threshold = Math.min(w * 0.20, 88);
+        var threshold = Math.min(w * 0.16, 60);
 
         var shouldSwitch = (
             state.targetIdx !== null &&
-            (Math.abs(diffX) > threshold || (velocity > 0.28 && Math.abs(diffX) > 24))
+            (Math.abs(diffX) > threshold || (velocity > 0.22 && Math.abs(diffX) > 22))
         );
 
         finishTransition(shouldSwitch, state.targetIdx, state.dir);
@@ -930,8 +973,22 @@ SWIPE_ENGINE_JS = r"""
         state.isTracking = false;
         if (state.isHorizontal) {
             state.isHorizontal = false;
-            finishTransition(false, null, state.dir);
+            var w = state.containerW || 360;
+            var shouldSwitch = state.targetIdx !== null && Math.abs(state.dx) > Math.min(w * 0.18, 65);
+            finishTransition(shouldSwitch, state.targetIdx, state.dir);
         }
+    }
+
+    function onGlobalClickCapture(e) {
+        if (Date.now() < state.blockClickUntil) {
+            var rootEl = state.tabsRoot;
+            if (!rootEl || rootEl.getAttribute('data-cali-silent') !== '1') {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+        }
+        onTabClickCapture(e);
     }
 
     /* Animation directionnelle lors d'un clic direct sur les boutons d'onglets */
@@ -975,10 +1032,10 @@ SWIPE_ENGINE_JS = r"""
     }
 
     targetDoc.addEventListener('touchstart', onTouchStart, { passive: true });
-    targetDoc.addEventListener('touchmove', onTouchMove, { passive: true });
+    targetDoc.addEventListener('touchmove', onTouchMove, { passive: false });
     targetDoc.addEventListener('touchend', onTouchEnd, { passive: true });
     targetDoc.addEventListener('touchcancel', onTouchCancel, { passive: true });
-    targetDoc.addEventListener('click', onTabClickCapture, true);
+    targetDoc.addEventListener('click', onGlobalClickCapture, true);
 
     var observer = null;
     if (typeof targetWin.MutationObserver !== 'undefined') {
@@ -995,10 +1052,10 @@ SWIPE_ENGINE_JS = r"""
     targetWin._caliperfSwipeHandlers = true;
     targetWin._caliperfSwipeCleanup = function() {
         targetDoc.removeEventListener('touchstart', onTouchStart, { passive: true });
-        targetDoc.removeEventListener('touchmove', onTouchMove, { passive: true });
+        targetDoc.removeEventListener('touchmove', onTouchMove, { passive: false });
         targetDoc.removeEventListener('touchend', onTouchEnd, { passive: true });
         targetDoc.removeEventListener('touchcancel', onTouchCancel, { passive: true });
-        targetDoc.removeEventListener('click', onTabClickCapture, true);
+        targetDoc.removeEventListener('click', onGlobalClickCapture, true);
         if (observer) observer.disconnect();
     };
 
@@ -1013,5 +1070,15 @@ def inject_theme() -> None:
 
 
 def inject_swipe_engine() -> None:
-    """Injecte le moteur de geste tactile fluide V4 (Live Peek) via iframe same-origin sans flash."""
+    """
+    Injecte le moteur de geste tactile fluide V5 (Live Peek).
+    Utilise en priorité st.html(..., unsafe_allow_javascript=True) directement dans le DOM principal
+    (sans iframe isolé), avec repli automatique vers components.html si version antérieure.
+    """
+    try:
+        if hasattr(st, "html") and "unsafe_allow_javascript" in inspect.signature(st.html).parameters:
+            st.html(f"<script>{SWIPE_ENGINE_JS}</script>", unsafe_allow_javascript=True)
+            return
+    except Exception:
+        pass
     components.html(f"<script>{SWIPE_ENGINE_JS}</script>", height=0)

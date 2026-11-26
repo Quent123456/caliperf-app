@@ -16,6 +16,7 @@ from core.database import (
     DEFAULT_ENTRY_TST,
     DEFAULT_ENTRY_RPE
 )
+from ui.profile_dialog import open_profile_modal
 from ui.theme import render_html
 
 
@@ -27,10 +28,13 @@ def render_tab_settings() -> None:
                 ⚙️ Paramètres & Connecteurs
             </h3>
             <p style="margin:2px 0 0 0; font-size:0.8rem; color:#94A3B8;">
-                Configurez la synchronisation de vos séances, l'IA de secours et les sauvegardes complètes.
+                Configurez votre profil, la synchronisation des séances, l'IA et les sauvegardes.
             </p>
         </div>
     """)
+
+    if st.button("👤 Mon Profil, Statut & Photo de profil", key="btn_open_profile_settings", type="secondary", use_container_width=True):
+        open_profile_modal()
 
     settings = st.session_state.db.get("settings", {})
 
