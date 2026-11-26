@@ -23,10 +23,9 @@ from core.database import init_session_state
 from ui.theme import inject_theme, inject_swipe_engine
 from ui.landing import render_landing_page, render_auth_portal
 
-# 1. Initialisation de la session, du Design System et du moteur de navigation tactile
+# 1. Initialisation de la session et du Design System
 init_session_state()
 inject_theme()
-inject_swipe_engine()
 
 # 2. Accueil & Portail d'authentification (démarrage instantané sans charger les modules lourds)
 if not st.session_state.app_entered:
@@ -35,6 +34,7 @@ if not st.session_state.app_entered:
 
 if st.session_state.current_user is None:
     render_auth_portal()
+    inject_swipe_engine(stage="auth")
     st.stop()
 
 # 3. Chargement à la demande des compartiments métier après connexion
@@ -71,3 +71,6 @@ with tab_athletes:
 
 with tab_settings:
     render_tab_settings()
+
+# 5. Injection du moteur de swipe V6 après montage complet des 5 onglets
+inject_swipe_engine(stage="main")

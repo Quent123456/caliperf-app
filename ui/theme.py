@@ -49,6 +49,7 @@ html, body, [class*="css"] {
     -webkit-tap-highlight-color: transparent;
     color: var(--cali-text);
     touch-action: pan-y pinch-zoom;
+    overscroll-behavior-x: none;
 }
 
 [data-testid="stAppViewContainer"],
@@ -59,6 +60,7 @@ html, body, [class*="css"] {
 .cali-card-accent,
 [data-testid="stExpander"] {
     touch-action: pan-y pinch-zoom;
+    overscroll-behavior-x: none;
 }
 
 [data-testid="stAppViewContainer"] {
@@ -79,7 +81,9 @@ html, body, [class*="css"] {
 
 /* Masquer proprement la hauteur des scripts invisibles (sans display:none qui suspend les iframes) */
 [data-testid="stElementContainer"]:has(iframe[height="0"]),
-.element-container:has(iframe[height="0"]) {
+.element-container:has(iframe[height="0"]),
+[data-testid="stElementContainer"]:has([data-cali-js]),
+.element-container:has([data-cali-js]) {
     height: 0 !important;
     min-height: 0 !important;
     margin: 0 !important;
@@ -501,6 +505,11 @@ table, .js-plotly-plot, .no-swipe {
     touch-action: pan-x pan-y !important;
     -webkit-overflow-scrolling: touch !important;
 }
+
+/* Zone d'import vidéo : autorise le défilement vertical et libère le swipe horizontal JS */
+[data-testid="stFileUploader"], [data-testid="stFileUploaderDropzone"] {
+    touch-action: pan-y pinch-zoom !important;
+}
 </style>
 """
 
@@ -525,6 +534,7 @@ SWIPE_ENGINE_JS = r"""
     }
 
     var state = {
+        stContainer: null,
         tabsRoot: null,
         tabs: [],
         panels: [],
@@ -551,9 +561,9 @@ SWIPE_ENGINE_JS = r"""
     };
 
     var noSwipeSelector = [
-        'input', 'textarea', 'select',
+        'input[type="range"]', 'select',
         'video', 'audio', '.stVideo', '.stAudio',
-        '[role="slider"]', '.stSlider', '[data-baseweb="slider"]', '.stNumberInput',
+        '[role="slider"]', '.stSlider', '[data-baseweb="slider"]',
         'pre', 'code',
         '[data-testid="stDataFrame"]', '.stDataFrame',
         '[data-testid="stTable"]', '.stTable',
@@ -566,52 +576,52 @@ SWIPE_ENGINE_JS = r"""
         '[data-no-swipe]', '.no-swipe'
     ].join(', ');
 
-    function getTabsRootFromContainer(stEl) {
-        if (!stEl) return null;
-        var firstPanel = stEl.querySelector('[data-baseweb="tab-panel"]');
-        return firstPanel ? firstPanel.parentElement : null;
-    }
-
-    function resolveMainTabsRoot(touchTarget) {
-        /* 1. Priorité au marqueur principal s'il existe dans la page */
+    function resolveMainStTabs(touchTarget) {
+        /* 1. Priorité absolue au conteneur d'onglets principal identifié par notre ancre */
         var anchor = targetDoc.getElementById('caliperf-main-tabs-anchor');
         if (anchor) {
             var block = anchor.closest('[data-testid="stElementContainer"], .element-container') || anchor.parentElement;
             var cursor = block ? block.nextElementSibling : null;
             var steps = 0;
-            while (cursor && steps < 10) {
+            while (cursor && steps < 12) {
                 if (cursor.matches && cursor.matches('[data-testid="stTabs"], .stTabs')) {
-                    var r1 = getTabsRootFromContainer(cursor);
-                    if (r1) return r1;
-                } else if (cursor.querySelector) {
-                    var nestedSt = cursor.querySelector('[data-testid="stTabs"], .stTabs');
-                    var r2 = getTabsRootFromContainer(nestedSt);
-                    if (r2) return r2;
+                    return cursor;
+                }
+                if (cursor.querySelector) {
+                    var found = cursor.querySelector('[data-testid="stTabs"], .stTabs');
+                    if (found) return found;
                 }
                 cursor = cursor.nextElementSibling;
                 steps++;
             }
         }
-        /* 2. Sinon (ex: écran de connexion), utiliser l'éventuel onglet racine */
+        /* 2. Sinon (écran de connexion), utiliser l'onglet sous le doigt ou le premier .stTabs */
         if (touchTarget && touchTarget.closest) {
             var localSt = touchTarget.closest('[data-testid="stTabs"], .stTabs');
-            var rLocal = getTabsRootFromContainer(localSt);
-            if (rLocal) return rLocal;
+            if (localSt) return localSt;
         }
-        var firstSt = targetDoc.querySelector('[data-testid="stTabs"], .stTabs');
-        return getTabsRootFromContainer(firstSt);
+        return targetDoc.querySelector('[data-testid="stTabs"], .stTabs');
     }
 
-    function getDirectTabs(tabsRoot) {
-        if (!tabsRoot) return [];
-        var list = tabsRoot.querySelector('[data-baseweb="tab-list"]');
-        if (!list) return [];
-        return Array.from(list.querySelectorAll(':scope > button[data-baseweb="tab"], :scope > [role="tab"]'));
+    function getTabsRootFromContainer(stEl) {
+        if (!stEl) return null;
+        var firstPanel = stEl.querySelector('[data-baseweb="tab-panel"], [role="tabpanel"]');
+        if (firstPanel && firstPanel.parentElement) return firstPanel.parentElement;
+        return stEl.firstElementChild || stEl;
     }
 
-    function getDirectPanels(tabsRoot) {
-        if (!tabsRoot) return [];
-        return Array.from(tabsRoot.querySelectorAll(':scope > [data-baseweb="tab-panel"]'));
+    function getDirectTabs(stEl) {
+        if (!stEl) return [];
+        return Array.from(stEl.querySelectorAll('button[data-baseweb="tab"], [role="tab"]')).filter(function(btn) {
+            return btn.closest('[data-testid="stTabs"], .stTabs') === stEl;
+        });
+    }
+
+    function getDirectPanels(stEl) {
+        if (!stEl) return [];
+        return Array.from(stEl.querySelectorAll('[data-baseweb="tab-panel"], [role="tabpanel"]')).filter(function(p) {
+            return p.closest('[data-testid="stTabs"], .stTabs') === stEl;
+        });
     }
 
     function getActiveIndex(tabs) {
@@ -652,6 +662,8 @@ SWIPE_ENGINE_JS = r"""
 
     function isInsideScrollableOrBlocked(el) {
         if (!el) return false;
+        var editableEl = el.closest ? el.closest('input:not([type="file"]):not([type="range"]), textarea') : null;
+        if (editableEl && editableEl === targetDoc.activeElement) return true;
         if (el.closest && el.closest(noSwipeSelector)) return true;
         var curr = el;
         while (curr && curr !== targetDoc.body && curr !== targetDoc.documentElement) {
@@ -737,13 +749,13 @@ SWIPE_ENGINE_JS = r"""
 
     function renderDragFrame() {
         state.rafId = null;
-        if (!state.isTracking || !state.isHorizontal || !state.activePanel) return;
+        if (!state.isTracking || !state.isHorizontal) return;
 
         var dx = state.dx;
         var w = state.containerW || 360;
         var desiredDir = dx < 0 ? 1 : -1;
         var desiredTarget = state.lastActiveIdx + desiredDir;
-        if (desiredTarget < 0 || desiredTarget >= state.panels.length) {
+        if (desiredTarget < 0 || desiredTarget >= state.tabs.length) {
             desiredTarget = null;
         }
 
@@ -756,23 +768,26 @@ SWIPE_ENGINE_JS = r"""
             state.targetIdx = desiredTarget;
             state.dir = desiredDir;
             state.resizeDispatchedOnDrag = false;
-            if (state.targetIdx !== null) {
+            if (state.targetIdx !== null && state.activePanel) {
                 state.neighborPanel = prepareNeighborPanel(state.targetIdx, state.activePanel, state.tabsRoot);
-                if (!state.resizeDispatchedOnDrag) {
+                if (state.neighborPanel && !state.resizeDispatchedOnDrag) {
                     state.resizeDispatchedOnDrag = true;
                     triggerResizePulse();
                 }
             }
         }
 
+        if (!state.activePanel) return;
+
         if (state.targetIdx === null || !state.neighborPanel) {
-            /* Effet élastique naturel aux extrémités */
-            var elasticDx = dx * 0.22;
+            /* Effet élastique naturel aux extrémités (ou si panneau suivant pas encore monté) */
+            var factor = state.targetIdx === null ? 0.22 : 0.65;
+            var elasticDx = dx * factor;
             state.activePanel.style.transition = 'none';
             state.activePanel.style.willChange = 'transform';
             state.activePanel.style.transform = 'translate3d(' + elasticDx.toFixed(1) + 'px, 0, 0)';
-            state.activePanel.style.opacity = '1';
-            syncProgressDots(state.lastActiveIdx, null, 0);
+            state.activePanel.style.opacity = state.targetIdx === null ? '1' : Math.max(0.45, 1 - Math.abs(dx) / w * 0.45).toFixed(3);
+            syncProgressDots(state.lastActiveIdx, state.targetIdx, state.targetIdx !== null ? Math.min(1, Math.abs(dx) / w) : 0);
             return;
         }
 
@@ -800,17 +815,18 @@ SWIPE_ENGINE_JS = r"""
         if (state.isAnimating || !e.touches || e.touches.length !== 1) return;
         if (isInsideScrollableOrBlocked(e.target)) return;
 
-        var root = resolveMainTabsRoot(e.target);
-        if (!root) return;
+        var stEl = resolveMainStTabs(e.target);
+        if (!stEl) return;
 
-        var tabs = getDirectTabs(root);
-        var panels = getDirectPanels(root);
-        if (!tabs.length || !panels.length) return;
+        var root = getTabsRootFromContainer(stEl);
+        var tabs = getDirectTabs(stEl);
+        var panels = getDirectPanels(stEl);
+        if (!tabs.length) return;
 
         var activeIdx = getActiveIndex(tabs);
-        var activeP = panels[activeIdx];
-        if (!activeP) return;
+        var activeP = panels[activeIdx] || panels[0] || null;
 
+        state.stContainer = stEl;
         state.tabsRoot = root;
         state.tabs = tabs;
         state.panels = panels;
@@ -819,7 +835,7 @@ SWIPE_ENGINE_JS = r"""
         state.neighborPanel = null;
         state.targetIdx = null;
         state.dir = 0;
-        state.containerW = root.clientWidth || targetWin.innerWidth || 360;
+        state.containerW = (root && root.clientWidth) || stEl.clientWidth || targetWin.innerWidth || 360;
         state.startX = e.touches[0].clientX;
         state.startY = e.touches[0].clientY;
         state.currentX = state.startX;
@@ -846,9 +862,9 @@ SWIPE_ENGINE_JS = r"""
 
         if (!state.isHorizontal) {
             /* Tolère les courbes naturelles du pouce sur smartphone avant de trancher */
-            if (absX >= 9 && absX >= absY * 0.95) {
+            if (absX >= 8 && absX >= absY * 0.85) {
                 state.isHorizontal = true;
-            } else if (absY > 22 && absY > absX * 1.35) {
+            } else if (absY > 24 && absY > absX * 1.45) {
                 state.isTracking = false;
                 return;
             }
@@ -875,33 +891,36 @@ SWIPE_ENGINE_JS = r"""
             state.rafId = null;
         }
 
-        if (!activeP) {
+        if (!activeP && !(committed && targetIdx !== null && state.tabs[targetIdx])) {
             state.isAnimating = false;
             return;
         }
 
         state.isAnimating = true;
+        var easeCurve = 'transform 240ms cubic-bezier(0.22, 1, 0.36, 1), opacity 200ms ease';
 
-        var easeCurve = 'transform 260ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease';
-
-        if (committed && neighborP && targetIdx !== null) {
+        if (committed && targetIdx !== null) {
             if (targetWin.navigator && targetWin.navigator.vibrate) {
                 try { targetWin.navigator.vibrate(12); } catch (vErr) {}
             }
 
-            activeP.style.transition = easeCurve;
-            activeP.style.transform = 'translate3d(' + (-dir * w * 0.42).toFixed(1) + 'px, 0, 0) scale(0.96)';
-            activeP.style.opacity = '0';
+            if (activeP) {
+                activeP.style.transition = easeCurve;
+                activeP.style.transform = 'translate3d(' + (-dir * (neighborP ? w * 0.42 : w * 0.3)).toFixed(1) + 'px, 0, 0) scale(0.96)';
+                activeP.style.opacity = '0';
+            }
 
-            neighborP.style.transition = easeCurve;
-            neighborP.style.transform = 'translate3d(0, 0, 0) scale(1)';
-            neighborP.style.opacity = '1';
+            if (neighborP) {
+                neighborP.style.transition = easeCurve;
+                neighborP.style.transform = 'translate3d(0, 0, 0) scale(1)';
+                neighborP.style.opacity = '1';
+            }
 
             syncProgressDots(targetIdx, null, 0);
 
             targetWin.setTimeout(function() {
                 state.blockClickUntil = 0;
-                if (root) root.setAttribute('data-cali-silent', '1');
+                if (root && neighborP) root.setAttribute('data-cali-silent', '1');
                 clearInlinePanelStyles(activeP);
                 clearInlinePanelStyles(neighborP);
 
@@ -923,11 +942,13 @@ SWIPE_ENGINE_JS = r"""
                     triggerResizePulse();
                     state.isAnimating = false;
                 });
-            }, 265);
+            }, neighborP ? 245 : 150);
         } else {
-            activeP.style.transition = easeCurve;
-            activeP.style.transform = 'translate3d(0, 0, 0) scale(1)';
-            activeP.style.opacity = '1';
+            if (activeP) {
+                activeP.style.transition = easeCurve;
+                activeP.style.transform = 'translate3d(0, 0, 0) scale(1)';
+                activeP.style.opacity = '1';
+            }
 
             if (neighborP) {
                 neighborP.style.transition = easeCurve;
@@ -940,7 +961,7 @@ SWIPE_ENGINE_JS = r"""
                 clearInlinePanelStyles(activeP);
                 clearInlinePanelStyles(neighborP);
                 state.isAnimating = false;
-            }, 250);
+            }, 240);
         }
     }
 
@@ -998,14 +1019,14 @@ SWIPE_ENGINE_JS = r"""
 
         var stEl = tabBtn.closest('[data-testid="stTabs"], .stTabs');
         var root = getTabsRootFromContainer(stEl);
-        if (!root || root.getAttribute('data-cali-silent') === '1') return;
+        if (!stEl || !root || stEl.getAttribute('data-cali-silent') === '1' || root.getAttribute('data-cali-silent') === '1') return;
 
-        var tabs = getDirectTabs(root);
+        var tabs = getDirectTabs(stEl);
         var prevIdx = getActiveIndex(tabs);
         var nextIdx = tabs.indexOf(tabBtn);
         if (nextIdx === -1 || nextIdx === prevIdx) return;
 
-        var panels = getDirectPanels(root);
+        var panels = getDirectPanels(stEl);
         var targetPanel = panels[nextIdx];
         var animClass = nextIdx > prevIdx ? 'cali-enter-right' : 'cali-enter-left';
 
@@ -1015,7 +1036,7 @@ SWIPE_ENGINE_JS = r"""
                 void targetPanel.offsetWidth;
                 targetPanel.classList.add(animClass);
             }
-            if (root === resolveMainTabsRoot(null)) {
+            if (stEl === resolveMainStTabs(null)) {
                 syncProgressDots(nextIdx, null, 0);
             }
             targetWin.setTimeout(triggerResizePulse, 50);
@@ -1024,18 +1045,18 @@ SWIPE_ENGINE_JS = r"""
 
     /* Synchronisation initiale des pastilles de progression avec l'onglet actif */
     function syncInitialDots() {
-        var root = resolveMainTabsRoot(null);
-        if (!root) return;
-        var tabs = getDirectTabs(root);
+        var stEl = resolveMainStTabs(null);
+        if (!stEl) return;
+        var tabs = getDirectTabs(stEl);
         var activeIdx = getActiveIndex(tabs);
         syncProgressDots(activeIdx, null, 0);
     }
 
-    targetDoc.addEventListener('touchstart', onTouchStart, { passive: true });
-    targetDoc.addEventListener('touchmove', onTouchMove, { passive: false });
-    targetDoc.addEventListener('touchend', onTouchEnd, { passive: true });
-    targetDoc.addEventListener('touchcancel', onTouchCancel, { passive: true });
-    targetDoc.addEventListener('click', onGlobalClickCapture, true);
+    targetWin.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });
+    targetWin.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
+    targetWin.addEventListener('touchend', onTouchEnd, { capture: true, passive: true });
+    targetWin.addEventListener('touchcancel', onTouchCancel, { capture: true, passive: true });
+    targetWin.addEventListener('click', onGlobalClickCapture, true);
 
     var observer = null;
     if (typeof targetWin.MutationObserver !== 'undefined') {
@@ -1051,11 +1072,11 @@ SWIPE_ENGINE_JS = r"""
 
     targetWin._caliperfSwipeHandlers = true;
     targetWin._caliperfSwipeCleanup = function() {
-        targetDoc.removeEventListener('touchstart', onTouchStart, { passive: true });
-        targetDoc.removeEventListener('touchmove', onTouchMove, { passive: false });
-        targetDoc.removeEventListener('touchend', onTouchEnd, { passive: true });
-        targetDoc.removeEventListener('touchcancel', onTouchCancel, { passive: true });
-        targetDoc.removeEventListener('click', onGlobalClickCapture, true);
+        targetWin.removeEventListener('touchstart', onTouchStart, { capture: true, passive: true });
+        targetWin.removeEventListener('touchmove', onTouchMove, { capture: true, passive: false });
+        targetWin.removeEventListener('touchend', onTouchEnd, { capture: true, passive: true });
+        targetWin.removeEventListener('touchcancel', onTouchCancel, { capture: true, passive: true });
+        targetWin.removeEventListener('click', onGlobalClickCapture, true);
         if (observer) observer.disconnect();
     };
 
@@ -1069,16 +1090,19 @@ def inject_theme() -> None:
     st.markdown(THEME_CSS, unsafe_allow_html=True)
 
 
-def inject_swipe_engine() -> None:
+def inject_swipe_engine(stage: str = "app") -> None:
     """
     Injecte le moteur de geste tactile fluide V5 (Live Peek).
     Utilise en priorité st.html(..., unsafe_allow_javascript=True) directement dans le DOM principal
     (sans iframe isolé), avec repli automatique vers components.html si version antérieure.
     """
+    safe_stage = "".join(c for c in (stage or "app") if c.isalnum() or c in "_-") or "app"
+    script_payload = f"/* cali-stage:{safe_stage} */\n{SWIPE_ENGINE_JS}"
+    html_payload = f'<span data-cali-js="{safe_stage}" style="display:none;"></span><script>{script_payload}</script>'
     try:
         if hasattr(st, "html") and "unsafe_allow_javascript" in inspect.signature(st.html).parameters:
-            st.html(f"<script>{SWIPE_ENGINE_JS}</script>", unsafe_allow_javascript=True)
+            st.html(html_payload, unsafe_allow_javascript=True)
             return
     except Exception:
         pass
-    components.html(f"<script>{SWIPE_ENGINE_JS}</script>", height=0)
+    components.html(html_payload, height=0)
