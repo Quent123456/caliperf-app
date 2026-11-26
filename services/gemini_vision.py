@@ -231,3 +231,31 @@ def classify_exercise_gemini(
 ) -> Tuple[Optional[Dict[str, Any]], List[Dict[str, Any]], str]:
     """Rétro-compatibilité pour le routage d'exercice."""
     return analyze_motion_gemini(video_path, api_key, num_frames=4)
+
+
+def get_gemini_api_key() -> str:
+    """Récupère la clé API Gemini de manière résiliente (Secrets Streamlit, env, base JSON, session)."""
+    try:
+        import streamlit as st
+        if hasattr(st, "secrets"):
+            if "GEMINI_API_KEY" in st.secrets:
+                return str(st.secrets["GEMINI_API_KEY"]).strip()
+            if "gemini_api_key" in st.secrets:
+                return str(st.secrets["gemini_api_key"]).strip()
+            if "general" in st.secrets and "gemini_api_key" in st.secrets["general"]:
+                return str(st.secrets["general"]["gemini_api_key"]).strip()
+    except Exception:
+        pass
+
+    env_k = os.getenv("GEMINI_API_KEY", "").strip()
+    if env_k:
+        return env_k
+
+    try:
+        import streamlit as st
+        db_k = st.session_state.get("db", {}).get("settings", {}).get("gemini_api_key", "").strip()
+        if db_k:
+            return db_k
+        return st.session_state.get("active_gemini_key", "").strip()
+    except Exception:
+        return ""

@@ -335,7 +335,7 @@ def _save_baselines_table_internal(df: pd.DataFrame) -> Tuple[bool, str]:
 
     # 2. Sauvegarde atomique dans caliperf_db.json
     try:
-        from caliperf import save_db
+        from core.database import save_db
         if HAS_STREAMLIT and hasattr(st, "session_state") and "db" in st.session_state:
             save_db(st.session_state.db)
     except Exception:
