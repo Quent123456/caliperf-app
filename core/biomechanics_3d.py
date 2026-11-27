@@ -16,6 +16,11 @@ Caractéristiques clés :
 
 import gc
 import os
+
+# Forcer le mode CPU pur avant tout import MediaPipe (fix libEGL.so.1 headless)
+os.environ["MEDIAPIPE_DISABLE_GPU"] = "1"
+os.environ["GLOG_minloglevel"] = "2"
+
 import hashlib
 from typing import Dict, Any, List, Optional, Tuple
 import numpy as np
@@ -201,7 +206,26 @@ def _run_3d_extraction_from_video(
             arr[:, 2] = 0.0
             return arr
 
-        rot_code = detect_optimal_rotation(cap, landmarker, max_width=max_width)
+        # Vérifier la rotation EXIF mobile (CAP_PROP_ORIENTATION_META) si auto-orientation désactivée
+        rot_code = None
+        orient_auto_prop = getattr(cv2, "CAP_PROP_ORIENTATION_AUTO", None)
+        orient_meta_prop = getattr(cv2, "CAP_PROP_ORIENTATION_META", None)
+        if orient_meta_prop is not None:
+            try:
+                auto_val = cap.get(orient_auto_prop) if orient_auto_prop is not None else 1.0
+                meta_deg = int(round(float(cap.get(orient_meta_prop) or 0.0))) % 360
+                if auto_val == 0 and meta_deg in (90, 180, 270):
+                    rot_map = {
+                        90: cv2.ROTATE_90_CLOCKWISE,
+                        180: cv2.ROTATE_180,
+                        270: cv2.ROTATE_90_COUNTERCLOCKWISE,
+                    }
+                    rot_code = rot_map[meta_deg]
+            except Exception:
+                rot_code = None
+
+        if rot_code is None:
+            rot_code = detect_optimal_rotation(cap, landmarker, max_width=max_width)
         cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
         frame_idx = 0

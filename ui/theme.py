@@ -52,6 +52,17 @@ html, body, [class*="css"] {
     overscroll-behavior-x: none;
 }
 
+html, body,
+[data-testid="stAppViewContainer"],
+.main,
+[data-testid="stMain"],
+[data-testid="stMainBlockContainer"] {
+    overflow-x: hidden !important;
+    max-width: 100vw !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
 [data-testid="stAppViewContainer"],
 [data-testid="stMain"],
 [data-testid="stTabs"],
@@ -72,11 +83,6 @@ html, body, [class*="css"] {
         linear-gradient(90deg, rgba(255, 255, 255, 0.014) 1px, transparent 1px);
     background-size: 100% 100%, 100% 100%, 36px 36px, 36px 36px;
     color: var(--cali-text);
-    overflow-x: hidden !important;
-}
-
-[data-testid="stMain"] {
-    overflow-x: hidden !important;
 }
 
 /* Masquer proprement la hauteur des scripts invisibles (sans display:none qui suspend les iframes) */
@@ -93,11 +99,11 @@ html, body, [class*="css"] {
     pointer-events: none !important;
 }
 
-/* Maintien horizontal strict de la barre d'en-tête sur 4 colonnes plates sans chevauchement */
+/* Header responsive sur une seule ligne sans troncature */
 [data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) {
     flex-wrap: nowrap !important;
     align-items: center !important;
-    gap: 6px !important;
+    gap: 5px !important;
     margin-bottom: 0.25rem !important;
     width: 100% !important;
 }
@@ -107,29 +113,21 @@ html, body, [class*="css"] {
     padding: 0 !important;
 }
 [data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(1) {
-    flex: 0 0 40px !important;
-    width: 40px !important;
-}
-[data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(2) {
-    flex: 1 1 auto !important;
-    overflow: hidden !important;
-}
-[data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(3) {
-    flex: 0 1 auto !important;
-    max-width: 148px !important;
-    overflow: hidden !important;
-}
-[data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(4) {
     flex: 0 0 38px !important;
     width: 38px !important;
 }
-@media (max-width: 480px) {
-    [data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(3) {
-        max-width: 108px !important;
-    }
-    .cali-hdr-name {
-        max-width: 56px !important;
-    }
+[data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(2) {
+    flex: 0 0 auto !important;
+}
+[data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(3) {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    display: flex !important;
+    justify-content: flex-end !important;
+}
+[data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(4) {
+    flex: 0 0 36px !important;
+    width: 36px !important;
 }
 [data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(1) [data-testid="stVerticalBlock"],
 [data-testid="stHorizontalBlock"]:has(#caliperf-header-exit-marker) > [data-testid="stColumn"]:nth-child(4) [data-testid="stVerticalBlock"] {
@@ -924,195 +922,67 @@ SWIPE_ENGINE_JS = r"""
     }
 
     function onTouchStart(e) {
-        if (state.isAnimating || !e.touches || e.touches.length !== 1) return;
-        if (isInsideScrollableOrBlocked(e.target)) return;
-
+        if (!e.touches || e.touches.length !== 1) return;
+        if (isInsideScrollableOrBlocked(e.target)) {
+            state.isTracking = false;
+            return;
+        }
         var ctx = resolveNavMode(e.target);
-        if (!ctx || !ctx.tabs.length) return;
-
-        state.stContainer = ctx.stEl;
-        state.tabsRoot = ctx.root;
+        if (!ctx || !ctx.tabs.length) {
+            state.isTracking = false;
+            return;
+        }
         state.tabs = ctx.tabs;
-        state.panels = ctx.panels;
         state.lastActiveIdx = ctx.activeIdx;
-        state.activePanel = ctx.activeP;
-        state.neighborPanel = null;
-        state.targetIdx = null;
-        state.dir = 0;
-        state.containerW = (ctx.root && ctx.root.clientWidth) || ctx.stEl.clientWidth || targetWin.innerWidth || 360;
         state.startX = e.touches[0].clientX;
         state.startY = e.touches[0].clientY;
         state.currentX = state.startX;
+        state.currentY = state.startY;
         state.dx = 0;
-        state.startTime = Date.now();
         state.isTracking = true;
-        state.isHorizontal = false;
-        state.needScrollResetOnCommit = false;
     }
 
     function onTouchMove(e) {
         if (!state.isTracking || !e.touches || e.touches.length !== 1) return;
-        if (!state.isHorizontal && isInsideScrollableOrBlocked(e.target)) {
-            state.isTracking = false;
-            return;
-        }
-
         state.currentX = e.touches[0].clientX;
-        var currentY = e.touches[0].clientY;
+        state.currentY = e.touches[0].clientY;
         state.dx = state.currentX - state.startX;
-        var dy = currentY - state.startY;
-        var absX = Math.abs(state.dx);
-        var absY = Math.abs(dy);
-
-        if (!state.isHorizontal) {
-            /* Tolère les courbes naturelles du pouce sur smartphone avant de trancher */
-            if (absX >= 8 && absX >= absY * 0.85) {
-                state.isHorizontal = true;
-            } else if (absY > 24 && absY > absX * 1.45) {
-                state.isTracking = false;
-                return;
-            }
-        }
-
-        if (state.isHorizontal) {
-            if (e.cancelable) {
-                e.preventDefault();
-            }
-            if (!state.rafId) {
-                state.rafId = targetWin.requestAnimationFrame(renderDragFrame);
-            }
-        }
     }
 
-    function finishTransition(committed, targetIdx, dir) {
-        var root = state.tabsRoot;
-        var activeP = state.activePanel;
-        var neighborP = state.neighborPanel;
-        var w = state.containerW || 360;
+    function onTouchEnd(e) {
+        if (!state.isTracking) return;
+        state.isTracking = false;
 
-        if (state.rafId) {
-            targetWin.cancelAnimationFrame(state.rafId);
-            state.rafId = null;
-        }
+        var touch = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0] : null;
+        var endX = touch ? touch.clientX : state.currentX;
+        var endY = touch ? touch.clientY : state.currentY;
+        var dx = endX - state.startX;
+        var dy = endY - state.startY;
 
-        if (!activeP && !(committed && targetIdx !== null && state.tabs[targetIdx])) {
-            state.isAnimating = false;
-            return;
-        }
-
-        state.isAnimating = true;
-        var easeCurve = 'transform 240ms cubic-bezier(0.22, 1, 0.36, 1), opacity 200ms ease';
-
-        if (committed && targetIdx !== null) {
-            if (targetWin.navigator && targetWin.navigator.vibrate) {
-                try { targetWin.navigator.vibrate(12); } catch (vErr) {}
-            }
-
-            if (activeP) {
-                activeP.style.transition = easeCurve;
-                activeP.style.transform = 'translate3d(' + (-dir * (neighborP ? w * 0.42 : w * 0.3)).toFixed(1) + 'px, 0, 0) scale(0.96)';
-                activeP.style.opacity = '0';
-            }
-
-            if (neighborP) {
-                neighborP.style.transition = easeCurve;
-                neighborP.style.transform = 'translate3d(0, 0, 0) scale(1)';
-                neighborP.style.opacity = '1';
-            }
-
-            syncProgressDots(targetIdx, null, 0);
-
-            targetWin.setTimeout(function() {
-                state.blockClickUntil = 0;
-                if (root && neighborP) root.setAttribute('data-cali-silent', '1');
-                clearInlinePanelStyles(activeP);
-                clearInlinePanelStyles(neighborP);
-
-                if (state.needScrollResetOnCommit) {
-                    var scroller = targetDoc.querySelector('[data-testid="stMain"]');
-                    if (scroller) scroller.scrollTop = state.resetScrollTop;
-                }
-
+        if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 2.0) {
+            var dir = dx < 0 ? 1 : -1;
+            var targetIdx = state.lastActiveIdx + dir;
+            if (targetIdx >= 0 && targetIdx < state.tabs.length) {
                 var targetBtn = state.tabs[targetIdx];
                 if (targetBtn) {
+                    if (targetWin.navigator && targetWin.navigator.vibrate) {
+                        try { targetWin.navigator.vibrate(10); } catch (vErr) {}
+                    }
+                    syncProgressDots(targetIdx, null, 0);
                     targetBtn.click();
                     try {
                         targetBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
                     } catch (sErr) {}
                 }
-
-                targetWin.requestAnimationFrame(function() {
-                    if (root) root.removeAttribute('data-cali-silent');
-                    triggerResizePulse();
-                    state.isAnimating = false;
-                });
-            }, neighborP ? 245 : 150);
-        } else {
-            if (activeP) {
-                activeP.style.transition = easeCurve;
-                activeP.style.transform = 'translate3d(0, 0, 0) scale(1)';
-                activeP.style.opacity = '1';
             }
-
-            if (neighborP) {
-                neighborP.style.transition = easeCurve;
-                neighborP.style.transform = 'translate3d(' + (dir * w).toFixed(1) + 'px, 0, 0) scale(0.965)';
-                neighborP.style.opacity = '0.3';
-            }
-            syncProgressDots(state.lastActiveIdx, null, 0);
-
-            targetWin.setTimeout(function() {
-                clearInlinePanelStyles(activeP);
-                clearInlinePanelStyles(neighborP);
-                state.isAnimating = false;
-            }, 240);
         }
-    }
-
-    function onTouchEnd() {
-        if (!state.isTracking) return;
-        state.isTracking = false;
-
-        if (!state.isHorizontal) {
-            return;
-        }
-        state.isHorizontal = false;
-        state.blockClickUntil = Date.now() + 180;
-
-        var w = state.containerW || 360;
-        var diffX = state.dx;
-        var elapsed = Math.max(1, Date.now() - state.startTime);
-        var velocity = Math.abs(diffX) / elapsed;
-        var threshold = Math.min(w * 0.16, 60);
-
-        var shouldSwitch = (
-            state.targetIdx !== null &&
-            (Math.abs(diffX) > threshold || (velocity > 0.22 && Math.abs(diffX) > 22))
-        );
-
-        finishTransition(shouldSwitch, state.targetIdx, state.dir);
     }
 
     function onTouchCancel() {
-        if (!state.isTracking) return;
         state.isTracking = false;
-        if (state.isHorizontal) {
-            state.isHorizontal = false;
-            var w = state.containerW || 360;
-            var shouldSwitch = state.targetIdx !== null && Math.abs(state.dx) > Math.min(w * 0.18, 65);
-            finishTransition(shouldSwitch, state.targetIdx, state.dir);
-        }
     }
 
     function onGlobalClickCapture(e) {
-        if (Date.now() < state.blockClickUntil) {
-            var rootEl = state.tabsRoot;
-            if (!rootEl || rootEl.getAttribute('data-cali-silent') !== '1') {
-                e.preventDefault();
-                e.stopPropagation();
-                return;
-            }
-        }
         onTabClickCapture(e);
     }
 
@@ -1123,23 +993,13 @@ SWIPE_ENGINE_JS = r"""
 
         var stEl = tabBtn.closest('[data-testid="stTabs"], .stTabs');
         var root = getTabsRootFromContainer(stEl);
-        if (!stEl || !root || stEl.getAttribute('data-cali-silent') === '1' || root.getAttribute('data-cali-silent') === '1') return;
+        if (!stEl || !root) return;
 
         var tabs = getDirectTabs(stEl);
-        var prevIdx = getActiveIndex(tabs);
         var nextIdx = tabs.indexOf(tabBtn);
-        if (nextIdx === -1 || nextIdx === prevIdx) return;
-
-        var panels = getDirectPanels(stEl);
-        var targetPanel = panels[nextIdx];
-        var animClass = nextIdx > prevIdx ? 'cali-enter-right' : 'cali-enter-left';
+        if (nextIdx === -1) return;
 
         targetWin.requestAnimationFrame(function() {
-            if (targetPanel) {
-                targetPanel.classList.remove('cali-enter-right', 'cali-enter-left');
-                void targetPanel.offsetWidth;
-                targetPanel.classList.add(animClass);
-            }
             if (stEl === resolveMainStTabs(null)) {
                 syncProgressDots(nextIdx, null, 0);
             }
@@ -1155,7 +1015,7 @@ SWIPE_ENGINE_JS = r"""
     }
 
     targetWin.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });
-    targetWin.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
+    targetWin.addEventListener('touchmove', onTouchMove, { capture: true, passive: true });
     targetWin.addEventListener('touchend', onTouchEnd, { capture: true, passive: true });
     targetWin.addEventListener('touchcancel', onTouchCancel, { capture: true, passive: true });
     targetWin.addEventListener('click', onGlobalClickCapture, true);
@@ -1163,7 +1023,7 @@ SWIPE_ENGINE_JS = r"""
     var observer = null;
     if (typeof targetWin.MutationObserver !== 'undefined') {
         observer = new targetWin.MutationObserver(function() {
-            if (!state.isTracking && !state.isAnimating) {
+            if (!state.isTracking) {
                 syncInitialDots();
             }
         });
@@ -1175,7 +1035,7 @@ SWIPE_ENGINE_JS = r"""
     targetWin._caliperfSwipeHandlers = true;
     targetWin._caliperfSwipeCleanup = function() {
         targetWin.removeEventListener('touchstart', onTouchStart, { capture: true, passive: true });
-        targetWin.removeEventListener('touchmove', onTouchMove, { capture: true, passive: false });
+        targetWin.removeEventListener('touchmove', onTouchMove, { capture: true, passive: true });
         targetWin.removeEventListener('touchend', onTouchEnd, { capture: true, passive: true });
         targetWin.removeEventListener('touchcancel', onTouchCancel, { capture: true, passive: true });
         targetWin.removeEventListener('click', onGlobalClickCapture, true);

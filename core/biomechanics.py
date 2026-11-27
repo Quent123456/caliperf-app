@@ -10,6 +10,11 @@ Optimisations strictes :
 """
 
 import os
+
+# Forcer le mode CPU pur avant tout chargement de MediaPipe sur serveur Linux headless
+os.environ.setdefault("MEDIAPIPE_DISABLE_GPU", "1")
+os.environ.setdefault("GLOG_minloglevel", "2")
+
 import json
 import hashlib
 import urllib.request
@@ -38,6 +43,8 @@ def _get_scipy_signal():
 
 
 def _get_mediapipe():
+    os.environ["MEDIAPIPE_DISABLE_GPU"] = "1"
+    os.environ["GLOG_minloglevel"] = "2"
     try:
         import mediapipe as mp
         from mediapipe.tasks import python as mp_tasks
@@ -58,7 +65,11 @@ except ImportError:
 
 def _build_pose_landmarker(model_path: str):
     _, mp_tasks, mp_vision, _ = _get_mediapipe()
-    base_options = mp_tasks.BaseOptions(model_asset_path=model_path)
+    cpu_delegate = getattr(getattr(mp_tasks.BaseOptions, "Delegate", None), "CPU", None)
+    if cpu_delegate is not None:
+        base_options = mp_tasks.BaseOptions(model_asset_path=model_path, delegate=cpu_delegate)
+    else:
+        base_options = mp_tasks.BaseOptions(model_asset_path=model_path)
     options = mp_vision.PoseLandmarkerOptions(
         base_options=base_options,
         running_mode=mp_vision.RunningMode.IMAGE,

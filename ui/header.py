@@ -1,6 +1,7 @@
 """
-ui/header.py - Barre supérieure épurée (Sortie haut-gauche, Marque, Profil cliquable sans chevauchement mobile)
-et indicateur visuel de navigation tactile.
+ui/header.py - Barre supérieure responsive sur une seule ligne :
+- Gauche : bouton compact 🚪 + titre CALIPERF sans retour à la ligne
+- Droite : pilule profil (avatar 28px + nom tronqué max 130px + rôle) + bouton 👤 compact
 """
 
 import html
@@ -12,19 +13,21 @@ from ui.theme import render_html
 
 
 def render_app_header() -> None:
-    """Affiche le bandeau supérieur compact sur 4 colonnes plates sans chevauchement mobile."""
+    """Affiche le bandeau supérieur compact sur une seule ligne sans troncature mobile."""
     curr_u = st.session_state.get("current_user") or {
         "username": "coach",
         "full_name": "Coach",
         "role": "coach",
         "avatar": "",
     }
-    u_name = html.escape(str(curr_u.get("full_name") or curr_u.get("username", "Utilisateur")))
+    raw_full = str(curr_u.get("full_name") or curr_u.get("username", "Coach")).strip()
+    short_label = raw_full if len(raw_full) <= 14 else str(curr_u.get("username") or raw_full.split()[0])
+    u_name = html.escape(short_label)
     u_role = curr_u.get("role", "athlete")
     u_avatar = curr_u.get("avatar_b64") or curr_u.get("avatar", "")
     role_label, role_badge_cls, role_icon = get_role_badge_info(u_role, str(curr_u.get("username", "")))
 
-    col_exit, col_brand, col_avatar, col_prof_btn = st.columns([0.55, 2.1, 1.35, 0.52])
+    col_exit, col_brand, col_avatar, col_prof_btn = st.columns([0.46, 1.45, 1.9, 0.46])
 
     with col_exit:
         render_html('<span id="caliperf-header-exit-marker" style="display:none;"></span>')
@@ -34,31 +37,26 @@ def render_app_header() -> None:
 
     with col_brand:
         brand_html = (
-            '<div style="display:flex;align-items:center;gap:7px;padding:2px 0;min-width:0;overflow:hidden;">'
-            '<div style="background:linear-gradient(135deg,#00E5FF,#0EA5E9);width:28px;height:28px;border-radius:8px;'
-            'display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(0,229,255,0.28);flex-shrink:0;">'
-            '<span style="font-size:13px;">⚡</span>'
+            '<div style="display:flex;align-items:center;gap:6px;padding:2px 0;min-width:0;">'
+            '<div style="background:linear-gradient(135deg,#00E5FF,#0EA5E9);width:26px;height:26px;border-radius:7px;'
+            'display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(0,229,255,0.28);flex-shrink:0;">'
+            '<span style="font-size:12px;">⚡</span>'
             '</div>'
-            '<div style="line-height:1.1;min-width:0;overflow:hidden;">'
-            '<div style="display:flex;align-items:center;gap:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
-            '<span style="font-size:0.95rem;font-weight:800;letter-spacing:-0.025em;color:#F8FAFC;">CALIPERF</span>'
-            '<span style="color:#00E5FF;font-weight:800;font-size:0.95rem;">PRO</span>'
+            '<span style="font-size:0.95rem;font-weight:800;letter-spacing:-0.02em;color:#F8FAFC;white-space:nowrap;">CALIPERF</span>'
             '</div>'
-            '<div style="font-size:0.56rem;color:#64748B;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;white-space:nowrap;">3D Telemetry</div>'
-            '</div></div>'
         )
         st.markdown(brand_html, unsafe_allow_html=True)
 
     with col_avatar:
-        avatar_html = render_avatar_html(u_avatar, u_name, size=30)
+        avatar_html = render_avatar_html(u_avatar, u_name, size=28)
         u_card_html = (
-            '<div style="display:flex;align-items:center;gap:6px;padding:3px 7px;'
-            'background:rgba(13,18,30,0.88);border-radius:10px;border:1px solid rgba(255,255,255,0.09);'
-            'justify-content:flex-start;min-width:0;overflow:hidden;">'
+            '<div style="display:flex;align-items:center;gap:6px;padding:3px 8px;'
+            'background:rgba(13,18,30,0.88);border-radius:999px;border:1px solid rgba(255,255,255,0.09);'
+            'justify-content:flex-start;min-width:0;max-width:100%;margin-left:auto;">'
             f'{avatar_html}'
-            '<div class="cali-hdr-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">'
-            f'<b style="font-size:0.74rem;color:#F8FAFC;display:block;line-height:1.15;overflow:hidden;text-overflow:ellipsis;">{u_name}</b>'
-            f'<span class="{role_badge_cls}" style="font-size:0.56rem;padding:1px 5px;">{role_icon} {role_label}</span>'
+            '<div class="cali-hdr-name" style="min-width:0;max-width:130px;overflow:hidden;">'
+            f'<b style="font-size:0.74rem;color:#F8FAFC;display:block;line-height:1.12;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{u_name}</b>'
+            f'<span class="{role_badge_cls}" style="font-size:0.54rem;padding:0px 5px;line-height:1.25;">{role_icon} {role_label}</span>'
             '</div></div>'
         )
         st.markdown(u_card_html, unsafe_allow_html=True)

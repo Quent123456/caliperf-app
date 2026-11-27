@@ -62,7 +62,7 @@ def render_landing_page() -> None:
                 <div style="font-size: 1.55rem; margin-bottom: 6px;">⏱️</div>
                 <div style="font-size: 0.92rem; font-weight: 800; color: #F8FAFC;">Charge & Fatigue</div>
                 <p style="font-size: 0.76rem; color: #94A3B8; margin: 4px 0 0 0; line-height: 1.4;">
-                    Charge externe UA, sRPE, dérive angulaire intra-série et perte de vélocité
+                    TUT effectif, pondération lest, sRPE, dérive angulaire intra-série et perte de vélocité
                 </p>
             </div>
         """)
@@ -70,9 +70,9 @@ def render_landing_page() -> None:
         render_html("""
             <div class="cali-card" style="text-align: center; padding: 1.1rem 0.9rem; margin-bottom: 0.65rem;">
                 <div style="font-size: 1.55rem; margin-bottom: 6px;">📊</div>
-                <div style="font-size: 0.92rem; font-weight: 800; color: #F8FAFC;">ACWR & Stress Tendon</div>
+                <div style="font-size: 0.92rem; font-weight: 800; color: #F8FAFC;">Suivi de Charge & ACWR</div>
                 <p style="font-size: 0.76rem; color: #94A3B8; margin: 4px 0 0 0; line-height: 1.4;">
-                    EWMA 7j/28j, Monotonie de Foster, jauge tendineuse et exports CSV / XLSX
+                    EWMA 7j/28j, Monotonie de Foster, volume hebdomadaire et exports CSV / XLSX
                 </p>
             </div>
         """)
