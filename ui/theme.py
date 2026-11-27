@@ -180,6 +180,7 @@ html, body,
 
 /* Dock de navigation 5 pilules fixes (100% visible sur 390px, zéro scroll horizontal) */
 [data-testid="stHorizontalBlock"]:has(#caliperf-nav-marker) {
+    position: relative !important;
     flex-wrap: nowrap !important;
     gap: 4px !important;
     background: rgba(11, 16, 28, 0.92) !important;
@@ -192,10 +193,33 @@ html, body,
     overflow: hidden !important;
 }
 [data-testid="stHorizontalBlock"]:has(#caliperf-nav-marker) > [data-testid="stColumn"] {
+    position: relative !important;
+    z-index: 2 !important;
     flex: 1 1 0 !important;
     min-width: 0 !important;
     width: auto !important;
     padding: 0 !important;
+}
+#caliperf-dock-glider {
+    position: absolute !important;
+    top: 5px !important;
+    left: 0 !important;
+    height: 44px !important;
+    border-radius: 10px !important;
+    background: linear-gradient(135deg, #00E5FF 0%, #0EA5E9 100%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.25) !important;
+    box-shadow: 0 3px 12px rgba(0, 229, 255, 0.34) !important;
+    z-index: 1 !important;
+    pointer-events: none !important;
+    will-change: transform, width;
+}
+[data-testid="stHorizontalBlock"]:has(#caliperf-nav-marker)[data-cali-glider="1"] button[kind="primary"],
+[data-testid="stHorizontalBlock"]:has(#caliperf-nav-marker)[data-cali-glider="1"] button[kind="secondary"],
+[data-testid="stHorizontalBlock"]:has(#caliperf-nav-marker)[data-cali-glider="1"] button.cali-dock-optimistic-on,
+[data-testid="stHorizontalBlock"]:has(#caliperf-nav-marker)[data-cali-glider="1"] button.cali-dock-optimistic-off {
+    background: transparent !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
 }
 [data-testid="stHorizontalBlock"]:has(#caliperf-nav-marker) > [data-testid="stColumn"]:nth-child(1) [data-testid="stVerticalBlock"] {
     gap: 0 !important;
@@ -852,6 +876,88 @@ SWIPE_ENGINE_JS = r"""
         }
     }
 
+    function ensureDockGlider(navRow) {
+        if (!navRow) return null;
+        navRow.setAttribute('data-cali-glider', '1');
+        var glider = navRow.querySelector('#caliperf-dock-glider');
+        if (!glider) {
+            glider = targetDoc.createElement('div');
+            glider.id = 'caliperf-dock-glider';
+            glider.setAttribute('aria-hidden', 'true');
+            var prev = targetWin._caliperfGliderState;
+            if (prev && typeof prev.x === 'number' && typeof prev.w === 'number') {
+                glider.style.transition = 'none';
+                glider.style.transform = 'translate3d(' + prev.x.toFixed(1) + 'px, 0, 0)';
+                glider.style.width = prev.w.toFixed(1) + 'px';
+            }
+            navRow.insertBefore(glider, navRow.firstChild);
+            if (prev) {
+                void glider.offsetWidth;
+            }
+        }
+        return glider;
+    }
+
+    function lerpRgb(c1, c2, t) {
+        var r = Math.round(c1[0] + (c2[0] - c1[0]) * t);
+        var g = Math.round(c1[1] + (c2[1] - c1[1]) * t);
+        var b = Math.round(c1[2] + (c2[2] - c1[2]) * t);
+        return 'rgb(' + r + ',' + g + ',' + b + ')';
+    }
+
+    function syncDockGlider(activeIdx, previewIdx, progress, animate) {
+        var navRow = getNavRow();
+        if (!navRow) return;
+        var btns = getDockButtons();
+        if (!btns.length || !btns[activeIdx]) return;
+        var glider = ensureDockGlider(navRow);
+        if (!glider) return;
+
+        var navRect = navRow.getBoundingClientRect();
+        var rA = btns[activeIdx].getBoundingClientRect();
+        if (rA.width <= 0) return;
+
+        var x = rA.left - navRect.left;
+        var w = rA.width;
+        var topPx = Math.round(rA.top - navRect.top);
+        var hPx = Math.round(rA.height);
+
+        var hasPreview = (previewIdx !== null && typeof previewIdx === 'number' && progress > 0 && btns[previewIdx]);
+        if (hasPreview) {
+            var rB = btns[previewIdx].getBoundingClientRect();
+            if (rB.width > 0) {
+                x = (rA.left - navRect.left) + (rB.left - rA.left) * progress;
+                w = rA.width + (rB.width - rA.width) * progress;
+            }
+        }
+
+        glider.style.top = topPx + 'px';
+        glider.style.height = hPx + 'px';
+        glider.style.transition = animate
+            ? 'transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), width 0.28s cubic-bezier(0.22, 1, 0.36, 1)'
+            : 'none';
+        glider.style.transform = 'translate3d(' + x.toFixed(1) + 'px, 0, 0)';
+        glider.style.width = w.toFixed(1) + 'px';
+        targetWin._caliperfGliderState = { idx: activeIdx, x: x, w: w };
+
+        var dark = [2, 6, 23];
+        var muted = [148, 163, 184];
+        for (var i = 0; i < btns.length; i++) {
+            var pEl = btns[i].querySelector('p') || btns[i];
+            if (hasPreview) {
+                if (i === activeIdx) {
+                    pEl.style.setProperty('color', lerpRgb(dark, muted, progress), 'important');
+                } else if (i === previewIdx) {
+                    pEl.style.setProperty('color', lerpRgb(muted, dark, progress), 'important');
+                } else {
+                    pEl.style.setProperty('color', 'rgb(148,163,184)', 'important');
+                }
+            } else {
+                pEl.style.removeProperty('color');
+            }
+        }
+    }
+
     function setOptimisticDock(targetIdx) {
         var btns = getDockButtons();
         for (var i = 0; i < btns.length; i++) {
@@ -1089,6 +1195,7 @@ SWIPE_ENGINE_JS = r"""
 
         var clampedDx = Math.max(-vw, Math.min(vw, dx));
         var progress = Math.min(1, Math.abs(clampedDx) / vw);
+        var uiProgress = Math.min(1, Math.abs(clampedDx) / Math.min(220, vw * 0.56));
         var outOpacity = (1 - progress * 0.14).toFixed(3);
 
         for (var j = 0; j < blocks.length; j++) {
@@ -1106,7 +1213,8 @@ SWIPE_ENGINE_JS = r"""
             inc.style.opacity = (0.76 + progress * 0.24).toFixed(3);
         }
 
-        syncProgressDots(state.lastActiveIdx, targetIdx, progress);
+        syncProgressDots(state.lastActiveIdx, targetIdx, uiProgress);
+        syncDockGlider(state.lastActiveIdx, targetIdx, uiProgress, false);
     }
 
     function playWaapiEnter(blocks, dirPx, durMs) {
@@ -1135,6 +1243,7 @@ SWIPE_ENGINE_JS = r"""
         var tabSeq = vm.getAttribute('data-tab-seq') || '0';
 
         if (targetWin._caliperfLastTabSeq === tabSeq) {
+            syncDockGlider(tabIdx, null, 0, false);
             if (!targetWin._caliperfTabSnaps[tabIdx] && state.snapScheduledTab !== tabIdx) {
                 state.snapScheduledTab = tabIdx;
                 if (state.snapTimer) targetWin.clearTimeout(state.snapTimer);
@@ -1150,6 +1259,7 @@ SWIPE_ENGINE_JS = r"""
 
         if (isFirstBoot) {
             syncProgressDots(tabIdx, null, 0);
+            syncDockGlider(tabIdx, null, 0, false);
             state.snapScheduledTab = tabIdx;
             if (state.snapTimer) targetWin.clearTimeout(state.snapTimer);
             state.snapTimer = targetWin.setTimeout(function() {
@@ -1161,6 +1271,7 @@ SWIPE_ENGINE_JS = r"""
 
         clearOptimisticDock();
         syncProgressDots(tabIdx, null, 0);
+        syncDockGlider(tabIdx, null, 0, true);
 
         var blocks = getDockContentBlocks();
         clearBlockStyles(blocks);
@@ -1319,6 +1430,7 @@ SWIPE_ENGINE_JS = r"""
 
                 if (state.mode === 'dock') {
                     setOptimisticDock(targetIdx);
+                    syncDockGlider(targetIdx, null, 0, true);
                     var blocks = state.blocks;
                     var inc = ensureSwipeStage(targetIdx);
                     var dur = Math.max(155, Math.min(225, Math.round(220 * (1 - Math.min(0.6, Math.abs(dx) / vw)))));
@@ -1416,6 +1528,9 @@ SWIPE_ENGINE_JS = r"""
         }
         state.isHorizontal = false;
         syncProgressDots(state.lastActiveIdx, null, 0);
+        if (state.mode === 'dock') {
+            syncDockGlider(state.lastActiveIdx, null, 0, true);
+        }
     }
 
     function onTouchCancel() {
@@ -1428,6 +1543,9 @@ SWIPE_ENGINE_JS = r"""
         clearBlockStyles(state.blocks);
         removeSwipeStage();
         syncProgressDots(state.lastActiveIdx, null, 0);
+        if (state.mode === 'dock') {
+            syncDockGlider(state.lastActiveIdx, null, 0, true);
+        }
     }
 
     function onGlobalClickCapture(e) {
@@ -1443,6 +1561,7 @@ SWIPE_ENGINE_JS = r"""
                     var dir = nextIdx > curIdx ? 1 : -1;
                     setOptimisticDock(nextIdx);
                     syncProgressDots(nextIdx, null, 0);
+                    syncDockGlider(nextIdx, null, 0, true);
                     targetWin._caliperfPendingEnter = { targetIdx: nextIdx, dir: dir, source: 'click', startedAt: Date.now() };
                     var blocks = getDockContentBlocks();
                     for (var i = 0; i < blocks.length; i++) {
@@ -1480,6 +1599,17 @@ SWIPE_ENGINE_JS = r"""
         var ctx = resolveNavMode(null);
         if (!ctx) return;
         syncProgressDots(ctx.activeIdx, null, 0);
+        if (ctx.mode === 'dock') {
+            syncDockGlider(ctx.activeIdx, null, 0, false);
+        }
+    }
+
+    function onResizeSync() {
+        if (state.isTracking) return;
+        var ctx = resolveNavMode(null);
+        if (ctx && ctx.mode === 'dock') {
+            syncDockGlider(ctx.activeIdx, null, 0, false);
+        }
     }
 
     targetWin.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });
@@ -1487,6 +1617,7 @@ SWIPE_ENGINE_JS = r"""
     targetWin.addEventListener('touchend', onTouchEnd, { capture: true, passive: true });
     targetWin.addEventListener('touchcancel', onTouchCancel, { capture: true, passive: true });
     targetWin.addEventListener('click', onGlobalClickCapture, true);
+    targetWin.addEventListener('resize', onResizeSync);
 
     var observer = null;
     if (typeof targetWin.MutationObserver !== 'undefined') {
@@ -1513,6 +1644,7 @@ SWIPE_ENGINE_JS = r"""
         targetWin.removeEventListener('touchend', onTouchEnd, { capture: true, passive: true });
         targetWin.removeEventListener('touchcancel', onTouchCancel, { capture: true, passive: true });
         targetWin.removeEventListener('click', onGlobalClickCapture, true);
+        targetWin.removeEventListener('resize', onResizeSync);
         if (observer) observer.disconnect();
     };
 
