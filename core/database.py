@@ -435,6 +435,10 @@ def ensure_database_initialized(db_url: Optional[str] = None) -> None:
             session.commit()
         else:
             # Marquer les comptes démo existants et compléter Élève Démo s'il n'a aucune séance
+            import importlib
+            import core.demo_seed as _demo_seed
+            if not hasattr(_demo_seed, "DEMO_USERNAMES"):
+                importlib.reload(_demo_seed)
             from core.demo_seed import DEMO_USERNAMES, seed_demo_athletes_and_logs
             demo_rows = session.query(User).filter(
                 func.lower(User.username).in_(list(DEMO_USERNAMES)) | (func.lower(User.full_name) == "élève démo")
