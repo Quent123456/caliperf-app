@@ -243,12 +243,28 @@ html, body,
     padding: 0 !important;
     overflow: hidden !important;
 }
-/* Animation douce de fondu à l'arrivée d'un onglet (zéro translateX pour ne pas décaler l'écran) */
-[data-testid="stElementContainer"]:has(#caliperf-active-view) ~ [data-testid="stElementContainer"] {
-    animation: caliSoftFade 0.2s ease both;
+/* Animation directionnelle fluide 60fps à l'arrivée d'un onglet (toujours bornée par overflow-x: clip) */
+[data-testid="stElementContainer"]:has(#caliperf-active-view[data-anim-dir="right"]) ~ [data-testid="stElementContainer"] {
+    animation: caliGlideRight 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+    will-change: transform, opacity;
+}
+[data-testid="stElementContainer"]:has(#caliperf-active-view[data-anim-dir="left"]) ~ [data-testid="stElementContainer"] {
+    animation: caliGlideLeft 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+    will-change: transform, opacity;
+}
+[data-testid="stElementContainer"]:has(#caliperf-active-view[data-anim-dir="none"]) ~ [data-testid="stElementContainer"] {
+    animation: caliSoftFade 0.16s ease both;
+}
+@keyframes caliGlideRight {
+    0% { opacity: 0.18; transform: translate3d(26px, 0, 0); }
+    100% { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+@keyframes caliGlideLeft {
+    0% { opacity: 0.18; transform: translate3d(-26px, 0, 0); }
+    100% { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 @keyframes caliSoftFade {
-    from { opacity: 0.55; }
+    from { opacity: 0.72; }
     to { opacity: 1; }
 }
 
@@ -964,6 +980,15 @@ SWIPE_ENGINE_JS = r"""
         state.currentX = e.touches[0].clientX;
         state.currentY = e.touches[0].clientY;
         state.dx = state.currentX - state.startX;
+        var dy = state.currentY - state.startY;
+        if (Math.abs(state.dx) > 16 && Math.abs(state.dx) > Math.abs(dy) * 1.4) {
+            var dir = state.dx < 0 ? 1 : -1;
+            var previewIdx = state.lastActiveIdx + dir;
+            if (previewIdx >= 0 && previewIdx < state.tabs.length) {
+                var prog = Math.min(1, Math.abs(state.dx) / 140);
+                syncProgressDots(state.lastActiveIdx, previewIdx, prog);
+            }
+        }
     }
 
     function onTouchEnd(e) {
@@ -988,9 +1013,11 @@ SWIPE_ENGINE_JS = r"""
                     }
                     syncProgressDots(targetIdx, null, 0);
                     targetBtn.click();
+                    return;
                 }
             }
         }
+        syncProgressDots(state.lastActiveIdx, null, 0);
     }
 
     function onTouchCancel() {

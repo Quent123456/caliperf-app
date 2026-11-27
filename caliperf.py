@@ -152,7 +152,20 @@ for idx, (tab_key, dock_lbl) in enumerate(zip(MAIN_TABS, NAV_DOCK_LABELS)):
                 st.rerun()
 
 active_tab_idx = MAIN_TABS.index(cur_tab)
-render_html(f'<div id="caliperf-active-view" class="cali-active-view" data-tab-idx="{active_tab_idx}" style="height:0;overflow:hidden;"></div>')
+prev_tab_idx = st.session_state.get("_prev_tab_idx", active_tab_idx)
+if active_tab_idx > prev_tab_idx:
+    anim_dir = "right"
+elif active_tab_idx < prev_tab_idx:
+    anim_dir = "left"
+else:
+    anim_dir = "none"
+st.session_state["_prev_tab_idx"] = active_tab_idx
+
+render_html(
+    f'<div id="caliperf-active-view" class="cali-active-view" '
+    f'data-tab-idx="{active_tab_idx}" data-anim-dir="{anim_dir}" '
+    f'style="height:0;overflow:hidden;"></div>'
+)
 
 # Rendu exclusif de l'onglet actif (Lazy Tab Rendering)
 if cur_tab == "🎥 Studio":
