@@ -287,19 +287,28 @@ html, body,
     left: 0 !important;
     right: 0 !important;
     bottom: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 1rem !important;
     background: #05070C !important;
     background-image:
         radial-gradient(ellipse 80% 50% at 15% -5%, rgba(0, 229, 255, 0.085) 0%, transparent 60%),
         linear-gradient(rgba(255, 255, 255, 0.014) 1px, transparent 1px),
         linear-gradient(90deg, rgba(255, 255, 255, 0.014) 1px, transparent 1px) !important;
     background-size: 100% 100%, 36px 36px, 36px 36px !important;
-    padding: 0.45rem 0.85rem 80px 0.85rem !important;
+    padding: 0 0.85rem 80px 0.85rem !important;
     overflow: hidden !important;
     box-sizing: border-box !important;
     border-left: 1px solid rgba(255, 255, 255, 0.10) !important;
     border-right: 1px solid rgba(255, 255, 255, 0.10) !important;
     box-shadow: -14px 0 36px rgba(0, 0, 0, 0.72), 14px 0 36px rgba(0, 0, 0, 0.72) !important;
     will-change: transform, opacity;
+}
+@media (min-width: 769px) {
+    #caliperf-swipe-incoming {
+        padding-left: 2rem !important;
+        padding-right: 2rem !important;
+    }
 }
 .cali-ghost-card {
     background: rgba(13, 18, 30, 0.92);
@@ -1129,16 +1138,22 @@ SWIPE_ENGINE_JS = r"""
     function ensureSwipeStage(targetIdx) {
         var stage = targetDoc.getElementById('caliperf-swipe-stage');
         var navRow = getNavRow();
-        var topPx = 118;
-        if (navRow) {
-            var r = navRow.getBoundingClientRect();
-            topPx = Math.max(48, Math.round(r.bottom + 6));
-        } else {
-            var vm = getActiveViewMarker();
-            if (vm) {
-                var vr = vm.getBoundingClientRect();
-                if (vr.top > 40) topPx = Math.round(vr.top);
+        var topPx = 148;
+        var blocks = (state.blocks && state.blocks.length) ? state.blocks : getDockContentBlocks();
+        var firstLive = null;
+        for (var bi = 0; bi < blocks.length; bi++) {
+            if ((blocks[bi].offsetHeight || 0) >= 6) { firstLive = blocks[bi]; break; }
+        }
+        var navBottom = navRow ? Math.round(navRow.getBoundingClientRect().bottom) : 112;
+        if (firstLive) {
+            var liveTop = Math.round(firstLive.getBoundingClientRect().top);
+            if (liveTop > navBottom + 8) {
+                topPx = liveTop;
+            } else {
+                topPx = Math.max(48, navBottom + 32);
             }
+        } else {
+            topPx = Math.max(48, navBottom + 32);
         }
         if (!stage) {
             stage = targetDoc.createElement('div');
