@@ -748,7 +748,8 @@ SWIPE_ENGINE_JS = r"""
         rafId: null,
         stageTimer: null,
         snapTimer: null,
-        snapScheduledTab: null
+        snapScheduledTab: null,
+        dragRendered: false
     };
 
     var noSwipeSelector = [
@@ -1215,6 +1216,7 @@ SWIPE_ENGINE_JS = r"""
 
         syncProgressDots(state.lastActiveIdx, targetIdx, uiProgress);
         syncDockGlider(state.lastActiveIdx, targetIdx, uiProgress, false);
+        state.dragRendered = true;
     }
 
     function playWaapiEnter(blocks, dirPx, durMs) {
@@ -1243,7 +1245,9 @@ SWIPE_ENGINE_JS = r"""
         var tabSeq = vm.getAttribute('data-tab-seq') || '0';
 
         if (targetWin._caliperfLastTabSeq === tabSeq) {
-            syncDockGlider(tabIdx, null, 0, false);
+            if (!state.isTracking && !targetWin._caliperfPendingEnter) {
+                syncDockGlider(tabIdx, null, 0, false);
+            }
             if (!targetWin._caliperfTabSnaps[tabIdx] && state.snapScheduledTab !== tabIdx) {
                 state.snapScheduledTab = tabIdx;
                 if (state.snapTimer) targetWin.clearTimeout(state.snapTimer);
@@ -1296,8 +1300,8 @@ SWIPE_ENGINE_JS = r"""
             clearAllSiblingsStyles();
             removeSwipeStage();
             var dirSign = animDir === 'left' ? -1 : 1;
-            var slideDist = dirSign * Math.min(180, Math.round(vw * 0.46));
-            playWaapiEnter(blocks, slideDist, 280);
+            var slideDist = dirSign * Math.round(vw * 0.85);
+            playWaapiEnter(blocks, slideDist, 300);
         } else {
             clearAllSiblingsStyles();
             removeSwipeStage();
@@ -1338,6 +1342,7 @@ SWIPE_ENGINE_JS = r"""
         state.isVerticalScroll = false;
         state.targetIdx = null;
         state.dir = 0;
+        state.dragRendered = false;
         state.blocks = (ctx.mode === 'dock') ? getDockContentBlocks() : [];
         if (ctx.mode === 'dock' && !targetWin._caliperfTabSnaps[ctx.activeIdx]) {
             captureTabSnapshot(ctx.activeIdx);
@@ -1433,25 +1438,40 @@ SWIPE_ENGINE_JS = r"""
                     syncDockGlider(targetIdx, null, 0, true);
                     var blocks = state.blocks;
                     var inc = ensureSwipeStage(targetIdx);
-                    var dur = Math.max(155, Math.min(225, Math.round(220 * (1 - Math.min(0.6, Math.abs(dx) / vw)))));
+                    var startOutX = state.dragRendered ? dx : 0;
+                    var startIncX = (dir * vw) + startOutX;
+                    var startOutOp = state.dragRendered ? Math.max(0.84, 1 - Math.min(1, Math.abs(startOutX) / vw) * 0.14) : 1;
+                    var startIncOp = state.dragRendered ? Math.min(1, 0.76 + Math.min(1, Math.abs(startOutX) / vw) * 0.24) : 0.76;
+                    var dur = Math.max(220, Math.min(310, Math.round(300 * (1 - Math.min(0.45, Math.abs(startOutX) / vw)))));
                     targetWin._caliperfPendingEnter = { targetIdx: targetIdx, dir: dir, source: 'swipe', startedAt: Date.now(), animDoneAt: Date.now() + dur };
                     var easing = 'cubic-bezier(0.22, 1, 0.36, 1)';
-                    var curOutOpacity = Math.max(0.84, 1 - Math.min(1, Math.abs(dx) / vw) * 0.14);
                     clearBlockStyles(blocks);
                     for (var i = 0; i < blocks.length; i++) {
                         if (blocks[i].animate) {
                             try {
                                 blocks[i].animate([
-                                    { transform: 'translate3d(' + dx.toFixed(1) + 'px, 0, 0)', opacity: curOutOpacity },
+                                    { transform: 'translate3d(' + startOutX.toFixed(1) + 'px, 0, 0)', opacity: startOutOp },
                                     { transform: 'translate3d(' + (-dir * vw) + 'px, 0, 0)', opacity: 0.72 }
                                 ], { duration: dur, easing: easing, fill: 'forwards' });
                             } catch (eOutAnim) {}
                         }
                     }
                     if (inc) {
-                        inc.style.transition = 'transform ' + dur + 'ms ' + easing + ', opacity ' + dur + 'ms ease';
-                        inc.style.transform = 'translate3d(0px, 0, 0)';
-                        inc.style.opacity = '1';
+                        clearBlockStyles([inc]);
+                        if (inc.animate) {
+                            try {
+                                inc.animate([
+                                    { transform: 'translate3d(' + startIncX.toFixed(1) + 'px, 0, 0)', opacity: startIncOp },
+                                    { transform: 'translate3d(0px, 0, 0)', opacity: 1 }
+                                ], { duration: dur, easing: easing, fill: 'forwards' });
+                            } catch (eIncAnim) {
+                                inc.style.transform = 'translate3d(0px, 0, 0)';
+                                inc.style.opacity = '1';
+                            }
+                        } else {
+                            inc.style.transform = 'translate3d(0px, 0, 0)';
+                            inc.style.opacity = '1';
+                        }
                     }
                     state.stageTimer = targetWin.setTimeout(function() {
                         var curVm = getActiveViewMarker();
