@@ -20,11 +20,9 @@ from core.database import (
     detect_student_and_exercise,
     get_coach_athletes,
     get_gemini_api_key,
+    set_active_athlete_in_session,
 )
-from core.load_quantification import (
-    compute_set_load_bundle,
-    get_exercise_difficulty_coef,
-)
+from core.load_quantification import compute_set_load_bundle
 from core.quality_control import evaluate_calibration_quality
 from core.video_io import temporary_video_file
 from ui.calibration_qc import render_qc_save_gate, render_quality_diagnostic_card
@@ -219,11 +217,37 @@ def render_tab_studio() -> None:
     active_profile = st.session_state.get("active_athlete_profile") or curr_u
 
     if u_role == "coach":
-        coach_athletes = get_coach_athletes(u_id)
-        selectable = [curr_u] + coach_athletes
+        profile_map = st.session_state.get("selectable_profiles_map")
+        opt_ids_top = st.session_state.get("selectable_profile_ids")
+        if not profile_map or not opt_ids_top:
+            coach_athletes = get_coach_athletes(u_id)
+            selectable = [curr_u] + coach_athletes
+            profile_map = {int(p["id"]): p for p in selectable}
+            opt_ids_top = [int(p["id"]) for p in selectable]
+        else:
+            selectable = [profile_map[pid] for pid in opt_ids_top]
+
+        def _on_studio_ath_change() -> None:
+            chosen = st.session_state.get("studio_athlete_select")
+            if chosen is not None:
+                set_active_athlete_in_session(int(chosen), sync_widgets=True)
+
+        sel_top_id = st.selectbox(
+            "🎯 Athlète suivi (enregistrement SQL) :",
+            options=opt_ids_top,
+            format_func=lambda pid: (
+                f"🏋️ Moi-même ({profile_map[pid]['full_name']})"
+                if pid == u_id else
+                f"🤸 {profile_map[pid]['full_name']} ({profile_map[pid]['bodyweight_kg']:.0f} kg)"
+            ),
+            key="studio_athlete_select",
+            on_change=_on_studio_ath_change,
+        )
+        active_profile = profile_map[int(sel_top_id)]
+        st.session_state["active_athlete_profile"] = active_profile
     else:
         selectable = [curr_u]
-    profile_map = {int(p["id"]): p for p in selectable}
+        profile_map = {u_id: curr_u}
 
     with st.expander("📁 Importer des vidéos (Flux sécurisé jusqu'à 10 fichiers)", expanded=not bool(st.session_state.get("active_uploaded_files"))):
         uploaded_files = st.file_uploader(
@@ -585,7 +609,7 @@ def render_tab_studio() -> None:
                                 mean_features=means_v.tolist(),
                                 std_features=stds_v.tolist(),
                                 user=curr_u,
-                                is_shared=True,
+                                is_shared=False,
                                 quality_report=qc_studio,
                                 qc_confirmed_warning=qc_ack_b,
                             )
@@ -675,12 +699,7 @@ def render_tab_studio() -> None:
                     val_lest = st.number_input("Lest (kg) :", min_value=0.0, max_value=200.0, value=float(sw.get("added_load_kg", 0.0)), step=1.25)
 
                 bw_ref = float(target_ath_obj.get("bodyweight_kg", 70.0) or 70.0)
-                default_coef = get_exercise_difficulty_coef(val_exo, exo_type=val_type)
-                c_cf, c_rpe = st.columns([1.0, 1.6])
-                with c_cf:
-                    val_coef = st.number_input(f"Coef (PDC {bw_ref:.0f}kg) :", min_value=0.2, max_value=5.0, value=float(default_coef), step=0.1)
-                with c_rpe:
-                    rpe_score = st.slider("🔥 RPE de série (1–10) :", min_value=1.0, max_value=10.0, value=float(sw.get("rpe", 7.5)), step=0.5)
+                rpe_score = st.slider(f"🔥 RPE de série (1–10) • PDC {bw_ref:.0f} kg :", min_value=1.0, max_value=10.0, value=float(sw.get("rpe", 7.5)), step=0.5)
 
                 preview_bundle = compute_set_load_bundle(
                     exercise=val_exo,
@@ -690,7 +709,6 @@ def render_tab_studio() -> None:
                     added_load_kg=val_lest,
                     bodyweight_kg=bw_ref,
                     rpe=rpe_score,
-                    difficulty_coef=val_coef,
                 )
 
                 render_html(f"""
@@ -724,7 +742,6 @@ def render_tab_studio() -> None:
                             added_load_kg=val_lest,
                             bodyweight_kg=bw_ref,
                             rpe=rpe_score,
-                            difficulty_coef=val_coef,
                         )
                         coach_ref = u_id if u_role == "coach" else target_ath_obj.get("coach_id")
 

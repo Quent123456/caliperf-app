@@ -1,10 +1,10 @@
 """
-ui/tab_stats.py - Compartiment 3 : Tableau de bord ACWR EWMA, Stress Tendineux,
-Journal SQL des séances & Exports multi-formats (CSV UTF-8-SIG / Excel XLSX).
+ui/tab_stats.py - Compartiment 3 : Suivi & ACWR, Fragment Journal SQL mobile-first,
+confirmation de suppression & Exports autonomes (CSV UTF-8-SIG / Excel XLSX).
 """
 
 from datetime import datetime
-import time
+from typing import Any, Dict, List
 import pandas as pd
 import streamlit as st
 
@@ -25,11 +25,104 @@ from ui.dashboard_load import render_longitudinal_dashboard
 from ui.theme import render_html
 
 
+def _format_mobile_journal_dataframe(df_filtered: pd.DataFrame) -> pd.DataFrame:
+    """Formate les colonnes clés pour une lecture directe sans scroll horizontal sur mobile."""
+    rows = []
+    sorted_df = df_filtered.sort_values(by="date", ascending=False)
+    for _, r in sorted_df.iterrows():
+        raw_dt = str(r.get("date", ""))
+        short_dt = f"{raw_dt[8:10]}/{raw_dt[5:7]} {raw_dt[11:16]}" if len(raw_dt) >= 16 else raw_dt[:10]
+        is_dyn = "dyn" in str(r.get("exercise_type", "")).lower()
+        mode_lbl = "Dyn" if is_dyn else "Iso"
+        tut_v = float(r.get("tut_effective_sec", 0.0) or 0.0)
+        reps_v = int(r.get("reps", 0) or 0)
+        if is_dyn and reps_v > 0:
+            tut_reps_lbl = f"{reps_v}r / {tut_v:.1f}s"
+        elif reps_v > 0:
+            tut_reps_lbl = f"{tut_v:.1f}s ({reps_v}r)"
+        else:
+            tut_reps_lbl = f"{tut_v:.1f}s"
+        rows.append({
+            "Date": short_dt,
+            "Exercice": str(r.get("exercise", "")),
+            "Mode": mode_lbl,
+            "TUT / Reps": tut_reps_lbl,
+            "RPE": f"{float(r.get('rpe', 0.0) or 0.0):.1f}",
+        })
+    return pd.DataFrame(rows)
+
+
+def _fragment_decorator(fn):
+    if hasattr(st, "fragment"):
+        return st.fragment(fn)
+    return fn
+
+
+@_fragment_decorator
+def _render_filtered_journal_fragment(logs: List[Dict[str, Any]], curr_u: Dict[str, Any]) -> None:
+    """Fragment isolé : filtrer par exercice ou supprimer ne recharge pas les graphiques ACWR."""
+    df_logs = pd.DataFrame(logs)
+    all_exos = ["Tous les exercices"] + sorted(list(df_logs["exercise"].dropna().astype(str).unique()))
+    selected_exo = st.selectbox("🏋️ Filtrer le journal :", all_exos, key="stats_filter_exo")
+    df_filtered = df_logs if selected_exo == "Tous les exercices" else df_logs[df_logs["exercise"] == selected_exo]
+
+    if not df_filtered.empty:
+        total_sessions = len(df_filtered)
+        total_tut = float(df_filtered["tut_effective_sec"].sum())
+        avg_tut = float(df_filtered["tut_effective_sec"].mean())
+        avg_rpe = float(df_filtered["rpe"].mean())
+
+        render_html(f"""
+            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:0.7rem;">
+                <div class="cali-kpi-tile">
+                    <div class="cali-kpi-lbl">Séances Filtrées</div>
+                    <div class="cali-kpi-val">{total_sessions}</div>
+                </div>
+                <div class="cali-kpi-tile">
+                    <div class="cali-kpi-lbl">TUT Cumulé</div>
+                    <div class="cali-kpi-val" style="color:#34D399;">{total_tut:.0f}<span style="font-size:0.85rem;color:#94A3B8;margin-left:3px;">s</span></div>
+                </div>
+                <div class="cali-kpi-tile">
+                    <div class="cali-kpi-lbl">TUT Moyen</div>
+                    <div class="cali-kpi-val" style="color:#00E5FF;">{avg_tut:.1f}<span style="font-size:0.85rem;color:#94A3B8;margin-left:3px;">s</span></div>
+                </div>
+                <div class="cali-kpi-tile">
+                    <div class="cali-kpi-lbl">RPE Moyen</div>
+                    <div class="cali-kpi-val" style="color:#FBBF24;">{avg_rpe:.1f}<span style="font-size:0.85rem;color:#94A3B8;margin-left:3px;">/10</span></div>
+                </div>
+            </div>
+        """)
+
+        st.markdown("##### 📜 Journal des séances SQL")
+        df_mobile = _format_mobile_journal_dataframe(df_filtered)
+        st.dataframe(df_mobile, use_container_width=True, hide_index=True)
+
+        confirm_del = st.checkbox("Confirmer la suppression", key="stats_confirm_delete_last")
+        if st.button(
+            "🗑️ Supprimer la dernière séance affichée",
+            key="btn_undo_last_eval",
+            use_container_width=True,
+            disabled=not confirm_del,
+        ):
+            last_id = int(df_filtered.iloc[-1]["id"])
+            ok_d, msg_d = delete_training_log(last_id, curr_u)
+            if ok_d:
+                st.toast(f"🗑️ {msg_d}")
+                try:
+                    st.rerun(scope="app")
+                except TypeError:
+                    st.rerun()
+            else:
+                st.error(msg_d)
+
+
 def render_tab_stats() -> None:
     """Rend le tableau de bord longitudinal ACWR EWMA, les graphiques et exports."""
     curr_u = st.session_state.get("current_user")
     if not curr_u:
         return
+
+    render_html("<h3 style='margin:0 0 0.45rem 0; font-size:1.15rem; font-weight:800; color:#F8FAFC;'>📊 Suivi & ACWR</h3>")
 
     curr_role = normalize_role(curr_u.get("role", "athlete"))
     if curr_role == "coach":
@@ -40,10 +133,6 @@ def render_tab_stats() -> None:
             profiles = [curr_u] + coach_athletes
             profile_by_id = {int(p["id"]): p for p in profiles}
             option_ids = [int(p["id"]) for p in profiles]
-
-        cur_aid = int(st.session_state.get("active_athlete_id") or curr_u["id"])
-        if cur_aid not in profile_by_id:
-            cur_aid = int(curr_u["id"])
 
         def _on_stats_athlete_change() -> None:
             chosen = st.session_state.get("stats_athlete_select")
@@ -67,86 +156,26 @@ def render_tab_stats() -> None:
         active_profile = st.session_state.get("active_athlete_profile") or curr_u
 
     target_id = int(active_profile["id"])
-
-    render_html("""
-        <div style="margin-bottom: 0.65rem;">
-            <h3 style="margin:0; font-size:1.18rem; font-weight:800; color:#F8FAFC;">
-                📊 Statistiques, ACWR EWMA & Exports
-            </h3>
-            <p style="margin:2px 0 0 0; font-size:0.8rem; color:#94A3B8;">
-                Charge aiguë/chronique (EWMA), Monotonie de Foster, stress tendineux et export multi-formats.
-            </p>
-        </div>
-    """)
-
     logs = get_training_logs_for_athlete(curr_u, target_athlete_id=target_id)
     dash_metrics = render_longitudinal_dashboard(active_profile, logs)
 
-    render_html("<hr style='border:0; border-top:1px solid rgba(255,255,255,0.08); margin: 0.9rem 0;'>")
+    render_html("<hr style='border:0; border-top:1px solid rgba(255,255,255,0.08); margin: 0.85rem 0;'>")
 
     if not logs:
         render_html("""
-            <div class="cali-card" style="text-align:center; padding: 1.7rem 1rem;">
-                <div style="font-size:1.9rem; margin-bottom:0.4rem;">📉</div>
+            <div class="cali-card" style="text-align:center; padding: 1.5rem 1rem;">
+                <div style="font-size:1.8rem; margin-bottom:0.35rem;">📉</div>
                 <b style="color:#F8FAFC;">Aucune séance enregistrée pour cet athlète</b>
-                <p style="color:#94A3B8; font-size:0.85rem; margin:6px 0 0 0;">
+                <p style="color:#94A3B8; font-size:0.84rem; margin:6px 0 0 0;">
                     Validez vos analyses dans l'onglet <b>Studio</b> pour alimenter le journal SQL et l'ACWR.
                 </p>
             </div>
         """)
     else:
-        df_logs = pd.DataFrame(logs)
-        all_exos = ["Tous les exercices"] + sorted(list(df_logs["exercise"].dropna().astype(str).unique()))
-        selected_exo = st.selectbox("🏋️ Filtrer le journal par exercice :", all_exos, key="stats_filter_exo")
-        df_filtered = df_logs if selected_exo == "Tous les exercices" else df_logs[df_logs["exercise"] == selected_exo]
+        _render_filtered_journal_fragment(logs, curr_u)
 
-        if not df_filtered.empty:
-            total_sessions = len(df_filtered)
-            total_load = float(df_filtered["external_load_au"].sum())
-            avg_tut = float(df_filtered["tut_effective_sec"].mean())
-            avg_rpe = float(df_filtered["rpe"].mean())
-
-            k1, k2 = st.columns(2)
-            with k1:
-                render_html(f"""
-                    <div class="cali-kpi-tile" style="margin-bottom:0.6rem;">
-                        <div class="cali-kpi-lbl">Séances Filtrées</div>
-                        <div class="cali-kpi-val">{total_sessions}</div>
-                    </div>
-                    <div class="cali-kpi-tile">
-                        <div class="cali-kpi-lbl">TUT Moyen</div>
-                        <div class="cali-kpi-val" style="color:#00E5FF;">{avg_tut:.1f}<span style="font-size:0.9rem;color:#94A3B8;margin-left:3px;">s</span></div>
-                    </div>
-                """)
-            with k2:
-                render_html(f"""
-                    <div class="cali-kpi-tile" style="margin-bottom:0.6rem;">
-                        <div class="cali-kpi-lbl">Charge Externe Cumulée</div>
-                        <div class="cali-kpi-val" style="color:#34D399;">{total_load:.0f}<span style="font-size:0.9rem;color:#94A3B8;margin-left:3px;">UA</span></div>
-                    </div>
-                    <div class="cali-kpi-tile">
-                        <div class="cali-kpi-lbl">RPE Moyen</div>
-                        <div class="cali-kpi-val" style="color:#FBBF24;">{avg_rpe:.1f}<span style="font-size:0.9rem;color:#94A3B8;margin-left:3px;">/ 10</span></div>
-                    </div>
-                """)
-
-            st.markdown("##### 📜 Journal des séances SQL")
-            df_disp = build_logs_export_dataframe(df_filtered.to_dict(orient="records"))
-            st.dataframe(df_disp, use_container_width=True, hide_index=True)
-
-            if st.button("↩️ Supprimer la dernière séance affichée", key="btn_undo_last_eval", use_container_width=True):
-                last_id = int(df_filtered.iloc[-1]["id"])
-                ok_d, msg_d = delete_training_log(last_id, curr_u)
-                if ok_d:
-                    st.toast(f"🗑️ {msg_d}")
-                    time.sleep(0.25)
-                    st.rerun()
-                else:
-                    st.error(msg_d)
-
-    # Exports multi-formats CSV (utf-8-sig) et Excel multi-onglets (.xlsx via openpyxl)
-    render_html("<hr style='border:0; border-top:1px solid rgba(255,255,255,0.08); margin: 0.9rem 0;'>")
-    st.markdown("##### 📤 Exports autonomes (CSV Google Sheets & Excel `.xlsx`)")
+    render_html("<hr style='border:0; border-top:1px solid rgba(255,255,255,0.08); margin: 0.85rem 0;'>")
+    st.markdown("##### 📤 Exports autonomes (CSV & Excel `.xlsx`)")
 
     df_logs_exp = build_logs_export_dataframe(logs)
     df_base_exp = load_baselines_table(user=curr_u)
@@ -156,7 +185,7 @@ def render_tab_stats() -> None:
     with c_ex1:
         csv_bytes = export_dataframe_to_csv_bytes(df_logs_exp)
         st.download_button(
-            "📥 Exporter Journal (.csv UTF-8)",
+            "📥 Exporter Journal (.csv)",
             data=csv_bytes,
             file_name=f"caliperf_journal_{datetime.now().strftime('%Y%m%d')}.csv",
             mime="text/csv",
@@ -166,7 +195,7 @@ def render_tab_stats() -> None:
     with c_ex2:
         xlsx_bytes = export_workbook_xlsx_bytes(logs, daily_acwr_df, df_base_exp)
         st.download_button(
-            "📊 Exporter Classeur Complet (.xlsx)",
+            "📊 Exporter Classeur (.xlsx)",
             data=xlsx_bytes,
             file_name=f"caliperf_rapport_{datetime.now().strftime('%Y%m%d')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

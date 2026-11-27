@@ -151,10 +151,10 @@ html, body, [class*="css"] {
     background: rgba(13, 18, 30, 0.88) !important;
 }
 
-/* Padding haut adapté notch smartphone & barre Streamlit */
+/* Padding haut adapté notch smartphone & marge basse pour Manage app (75px) */
 .block-container {
     padding-top: calc(3.85rem + env(safe-area-inset-top, 0px)) !important;
-    padding-bottom: calc(2.5rem + env(safe-area-inset-bottom, 0px)) !important;
+    padding-bottom: calc(75px + env(safe-area-inset-bottom, 0px)) !important;
     padding-left: 0.85rem !important;
     padding-right: 0.85rem !important;
     max-width: 1240px !important;
@@ -171,9 +171,75 @@ html, body, [class*="css"] {
 @media (min-width: 769px) {
     .block-container {
         padding-top: 2.2rem !important;
+        padding-bottom: 75px !important;
         padding-left: 2rem !important;
         padding-right: 2rem !important;
     }
+}
+
+/* Dock de navigation segmentée Lazy Tab Rendering (st.radio horizontal) */
+[data-testid="stElementContainer"]:has(#caliperf-nav-marker) {
+    height: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+}
+[data-testid="stElementContainer"]:has(#caliperf-nav-marker) + [data-testid="stElementContainer"] [data-testid="stRadio"] > div[role="radiogroup"] {
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    gap: 6px !important;
+    background: rgba(11, 16, 28, 0.9) !important;
+    padding: 5px !important;
+    border-radius: 16px !important;
+    border: 1px solid rgba(255, 255, 255, 0.09) !important;
+    overflow-x: auto !important;
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
+    -webkit-overflow-scrolling: touch !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 8px 24px rgba(0, 0, 0, 0.35) !important;
+}
+[data-testid="stElementContainer"]:has(#caliperf-nav-marker) + [data-testid="stElementContainer"] [data-testid="stRadio"] > div[role="radiogroup"]::-webkit-scrollbar {
+    display: none !important;
+}
+[data-testid="stElementContainer"]:has(#caliperf-nav-marker) + [data-testid="stElementContainer"] [data-testid="stRadio"] label {
+    flex: 1 0 auto !important;
+    min-height: 42px !important;
+    padding: 0 13px !important;
+    margin: 0 !important;
+    border-radius: 11px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    cursor: pointer !important;
+    border: 1px solid transparent !important;
+    transition: color 0.22s ease, background 0.22s ease, transform 0.2s cubic-bezier(0.22, 1, 0.36, 1) !important;
+}
+[data-testid="stElementContainer"]:has(#caliperf-nav-marker) + [data-testid="stElementContainer"] [data-testid="stRadio"] label > div:first-child {
+    display: none !important;
+}
+[data-testid="stElementContainer"]:has(#caliperf-nav-marker) + [data-testid="stElementContainer"] [data-testid="stRadio"] label p {
+    font-weight: 700 !important;
+    font-size: 0.86rem !important;
+    color: var(--cali-muted) !important;
+    white-space: nowrap !important;
+    margin: 0 !important;
+}
+[data-testid="stElementContainer"]:has(#caliperf-nav-marker) + [data-testid="stElementContainer"] [data-testid="stRadio"] label:has(input:checked) {
+    background: linear-gradient(135deg, #00E5FF 0%, #0EA5E9 100%) !important;
+    border-color: rgba(255, 255, 255, 0.25) !important;
+    box-shadow: 0 4px 16px rgba(0, 229, 255, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.35) !important;
+}
+[data-testid="stElementContainer"]:has(#caliperf-nav-marker) + [data-testid="stElementContainer"] [data-testid="stRadio"] label:has(input:checked) p {
+    color: #020617 !important;
+    font-weight: 800 !important;
+}
+[data-testid="stElementContainer"]:has(#caliperf-active-view) {
+    height: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
 }
 
 /* Vidéo responsive (ergonomie mobile : voir vidéo + chrono ensemble) */
@@ -810,31 +876,70 @@ SWIPE_ENGINE_JS = r"""
         syncProgressDots(state.lastActiveIdx, state.targetIdx, progress);
     }
 
+    function resolveNavMode(touchTarget) {
+        /* 1. Mode Lazy Tab Dock (#caliperf-nav-marker) prioritaire */
+        var navMark = targetDoc.getElementById('caliperf-nav-marker');
+        if (navMark) {
+            var navEl = navMark.closest('[data-testid="stElementContainer"], .element-container');
+            var nextEl = navEl ? navEl.nextElementSibling : null;
+            var radioGroup = nextEl ? nextEl.querySelector('[data-testid="stRadio"] div[role="radiogroup"]') : null;
+            if (radioGroup) {
+                var pills = Array.from(radioGroup.querySelectorAll('label'));
+                var activeIdx = 0;
+                for (var i = 0; i < pills.length; i++) {
+                    var inp = pills[i].querySelector('input[type="radio"]');
+                    if (inp && inp.checked) { activeIdx = i; break; }
+                }
+                var mainBlock = radioGroup.closest('[data-testid="stVerticalBlock"]');
+                return {
+                    mode: 'lazy',
+                    stEl: radioGroup,
+                    root: mainBlock,
+                    tabs: pills,
+                    panels: [],
+                    activeIdx: activeIdx,
+                    activeP: targetDoc.querySelector('[data-testid="stMainBlockContainer"]') || mainBlock
+                };
+            }
+        }
+        /* 2. Mode classique stTabs (écran d'authentification) */
+        var stEl = null;
+        if (touchTarget && touchTarget.closest) {
+            stEl = touchTarget.closest('[data-testid="stTabs"], .stTabs');
+        }
+        if (!stEl) stEl = targetDoc.querySelector('[data-testid="stTabs"], .stTabs');
+        if (!stEl) return null;
+        var tabs = getDirectTabs(stEl);
+        var panels = getDirectPanels(stEl);
+        var aIdx = getActiveIndex(tabs);
+        return {
+            mode: 'tabs',
+            stEl: stEl,
+            root: getTabsRootFromContainer(stEl),
+            tabs: tabs,
+            panels: panels,
+            activeIdx: aIdx,
+            activeP: panels[aIdx] || panels[0] || null
+        };
+    }
+
     function onTouchStart(e) {
         if (state.isAnimating || !e.touches || e.touches.length !== 1) return;
         if (isInsideScrollableOrBlocked(e.target)) return;
 
-        var stEl = resolveMainStTabs(e.target);
-        if (!stEl) return;
+        var ctx = resolveNavMode(e.target);
+        if (!ctx || !ctx.tabs.length) return;
 
-        var root = getTabsRootFromContainer(stEl);
-        var tabs = getDirectTabs(stEl);
-        var panels = getDirectPanels(stEl);
-        if (!tabs.length) return;
-
-        var activeIdx = getActiveIndex(tabs);
-        var activeP = panels[activeIdx] || panels[0] || null;
-
-        state.stContainer = stEl;
-        state.tabsRoot = root;
-        state.tabs = tabs;
-        state.panels = panels;
-        state.lastActiveIdx = activeIdx;
-        state.activePanel = activeP;
+        state.stContainer = ctx.stEl;
+        state.tabsRoot = ctx.root;
+        state.tabs = ctx.tabs;
+        state.panels = ctx.panels;
+        state.lastActiveIdx = ctx.activeIdx;
+        state.activePanel = ctx.activeP;
         state.neighborPanel = null;
         state.targetIdx = null;
         state.dir = 0;
-        state.containerW = (root && root.clientWidth) || stEl.clientWidth || targetWin.innerWidth || 360;
+        state.containerW = (ctx.root && ctx.root.clientWidth) || ctx.stEl.clientWidth || targetWin.innerWidth || 360;
         state.startX = e.touches[0].clientX;
         state.startY = e.touches[0].clientY;
         state.currentX = state.startX;
@@ -1044,11 +1149,9 @@ SWIPE_ENGINE_JS = r"""
 
     /* Synchronisation initiale des pastilles de progression avec l'onglet actif */
     function syncInitialDots() {
-        var stEl = resolveMainStTabs(null);
-        if (!stEl) return;
-        var tabs = getDirectTabs(stEl);
-        var activeIdx = getActiveIndex(tabs);
-        syncProgressDots(activeIdx, null, 0);
+        var ctx = resolveNavMode(null);
+        if (!ctx) return;
+        syncProgressDots(ctx.activeIdx, null, 0);
     }
 
     targetWin.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });

@@ -1,9 +1,12 @@
 """
 CaliPerf Pro - Cockpit Biomécanique 3D, Contrôle Qualité & Suivi Longitudinal SQL.
-Point d'entrée modulaire : persistance SQLAlchemy (PostgreSQL / SQLite), session signée F5,
-sélecteur d'athlète latéral, moteur de swipe fluide V6 et 5 compartiments métier.
+Point d'entrée haute performance :
+- Connexion hybride SQLAlchemy cachée (@st.cache_resource) PostgreSQL / SQLite
+- Rendu exclusif de l'onglet actif (Lazy Tab Rendering)
+- Moteur de swipe mobile V6 & redirection directe Athlètes -> Stats & ACWR
 """
 
+import importlib
 import os
 import sys
 import streamlit as st
@@ -19,9 +22,8 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-import importlib
 import core.database as _core_db
-if not hasattr(_core_db, "set_active_athlete_in_session"):
+if not hasattr(_core_db, "set_active_athlete_in_session") or not hasattr(_core_db, "purge_demo_athletes_for_coach"):
     importlib.reload(_core_db)
 
 from core.auth import normalize_role
@@ -31,8 +33,16 @@ from core.database import (
     init_session_state,
     set_active_athlete_in_session,
 )
-from ui.theme import inject_swipe_engine, inject_theme
+from ui.theme import inject_swipe_engine, inject_theme, render_html
 from ui.landing import render_auth_portal, render_landing_page
+
+MAIN_TABS = [
+    "🎥 Studio",
+    "📐 Calibrage 3D",
+    "📊 Stats & ACWR",
+    "👥 Athlètes",
+    "⚙️ Réglages",
+]
 
 # 1. Initialisation SQL, restauration de session (?session= sur F5) et Design System
 init_session_state()
@@ -48,7 +58,7 @@ if st.session_state.current_user is None:
     inject_swipe_engine(stage="auth")
     st.stop()
 
-# 3. Sélecteur d'athlète latéral pour le Coach (isolation stricte sur son coach_id)
+# 3. Sélecteur d'athlète latéral & synchronisation AVANT instanciation des widgets
 curr_user = st.session_state.current_user
 curr_role = normalize_role(curr_user.get("role", "athlete"))
 
@@ -56,14 +66,20 @@ if curr_role == "coach":
     coach_athletes = get_coach_athletes(int(curr_user["id"]))
     selectable_profiles = [curr_user] + coach_athletes
     profile_by_id = {int(p["id"]): p for p in selectable_profiles}
-    cur_active_id = int(st.session_state.get("active_athlete_id") or curr_user["id"])
+    cur_active_id = int(
+        st.session_state.get("selected_athlete_id")
+        or st.session_state.get("active_athlete_id")
+        or curr_user["id"]
+    )
     if cur_active_id not in profile_by_id:
         cur_active_id = int(curr_user["id"])
+
     st.session_state["active_athlete_id"] = cur_active_id
+    st.session_state["selected_athlete_id"] = cur_active_id
     st.session_state.pop("_sync_athlete_widgets", None)
-    # Synchroniser les deux clés de selectbox AVANT leur instanciation
     st.session_state["sidebar_active_athlete_select"] = cur_active_id
     st.session_state["stats_athlete_select"] = cur_active_id
+    st.session_state["studio_athlete_select"] = cur_active_id
 
     option_ids = [int(p["id"]) for p in selectable_profiles]
     st.session_state["selectable_profiles_map"] = profile_by_id
@@ -95,43 +111,58 @@ if curr_role == "coach":
         )
 else:
     st.session_state.active_athlete_id = int(curr_user["id"])
+    st.session_state.selected_athlete_id = int(curr_user["id"])
     fresh_u = get_user_by_id(int(curr_user["id"])) or curr_user
     st.session_state["active_athlete_profile"] = fresh_u
 
-# 4. Chargement des 5 compartiments après connexion
+# 4. Navigation segmentée + Rendu Exclusif de l'Onglet Actif (Lazy Tab Rendering)
 from ui.header import render_app_header, render_swipe_hud_and_anchor
-from ui.tab_studio import render_tab_studio
-from ui.tab_calibration import render_tab_calibration
-from ui.tab_stats import render_tab_stats
-from ui.tab_athletes import render_tab_athletes
-from ui.tab_settings import render_tab_settings
 
 render_app_header()
-render_swipe_hud_and_anchor(num_tabs=5)
+render_swipe_hud_and_anchor(num_tabs=len(MAIN_TABS))
 
-tab_studio, tab_calib, tab_stats, tab_athletes, tab_settings = st.tabs([
-    "🎥 Studio",
-    "📐 Calibrage 3D",
-    "📊 Stats & ACWR",
-    "👥 Athlètes",
-    "⚙️ Réglages"
-])
+cur_tab = st.session_state.get("active_tab") or MAIN_TABS[0]
+if cur_tab not in MAIN_TABS:
+    cur_tab = MAIN_TABS[0]
+st.session_state["active_tab"] = cur_tab
+st.session_state["nav_active_tab"] = cur_tab
 
-with tab_studio:
+
+def _on_nav_tab_change() -> None:
+    chosen_t = st.session_state.get("nav_active_tab")
+    if chosen_t in MAIN_TABS:
+        st.session_state["active_tab"] = chosen_t
+
+
+render_html('<div id="caliperf-nav-marker" class="cali-nav-anchor" style="display:none;"></div>')
+selected_tab = st.radio(
+    "Navigation principale",
+    options=MAIN_TABS,
+    horizontal=True,
+    label_visibility="collapsed",
+    key="nav_active_tab",
+    on_change=_on_nav_tab_change,
+)
+st.session_state["active_tab"] = selected_tab
+active_tab_idx = MAIN_TABS.index(selected_tab)
+
+render_html(f'<div id="caliperf-active-view" class="cali-active-view" data-tab-idx="{active_tab_idx}" style="height:0;overflow:hidden;"></div>')
+
+if selected_tab == "🎥 Studio":
+    from ui.tab_studio import render_tab_studio
     render_tab_studio()
-
-with tab_calib:
+elif selected_tab == "📐 Calibrage 3D":
+    from ui.tab_calibration import render_tab_calibration
     render_tab_calibration()
-
-with tab_stats:
+elif selected_tab == "📊 Stats & ACWR":
+    from ui.tab_stats import render_tab_stats
     render_tab_stats()
-
-with tab_athletes:
+elif selected_tab == "👥 Athlètes":
+    from ui.tab_athletes import render_tab_athletes
     render_tab_athletes()
-
-with tab_settings:
+elif selected_tab == "⚙️ Réglages":
+    from ui.tab_settings import render_tab_settings
     render_tab_settings()
 
-# 5. Injection du moteur de swipe V6 après montage complet des 5 onglets
-redirect_idx = st.session_state.pop("_redirect_tab_idx", None)
-inject_swipe_engine(stage="main", redirect_tab_idx=redirect_idx)
+# 5. Moteur de swipe V6 synchronisé sur l'onglet actif
+inject_swipe_engine(stage="main")

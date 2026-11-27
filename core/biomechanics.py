@@ -16,31 +16,37 @@ import urllib.request
 from typing import Dict, Any, List, Optional, Tuple, Callable
 import numpy as np
 
-# Imports optionnels sécurisés
+# Imports lourds chargés à la demande (Lazy Imports) pour navigation instantanée
 CV2_IMPORT_ERROR = None
-try:
-    import cv2
-    HAS_CV2 = True
-except Exception as e:
-    HAS_CV2 = False
-    CV2_IMPORT_ERROR = str(e)
-
-try:
-    from scipy import signal as scipy_signal
-    HAS_SCIPY = True
-except ImportError:
-    HAS_SCIPY = False
-
 MEDIAPIPE_IMPORT_ERROR = None
-try:
-    import mediapipe as mp
-    from mediapipe.tasks import python as mp_tasks
-    from mediapipe.tasks.python import vision as mp_vision
-    from mediapipe.tasks.python.vision import PoseLandmark
-    HAS_MEDIAPIPE = True
-except Exception as e:
-    HAS_MEDIAPIPE = False
-    MEDIAPIPE_IMPORT_ERROR = str(e)
+
+
+def _get_cv2():
+    try:
+        import cv2
+        return cv2
+    except Exception as e:
+        raise ImportError(f"OpenCV (cv2) n'est pas chargé : {e}")
+
+
+def _get_scipy_signal():
+    try:
+        from scipy import signal as scipy_signal
+        return scipy_signal
+    except ImportError:
+        return None
+
+
+def _get_mediapipe():
+    try:
+        import mediapipe as mp
+        from mediapipe.tasks import python as mp_tasks
+        from mediapipe.tasks.python import vision as mp_vision
+        from mediapipe.tasks.python.vision import PoseLandmark
+        return mp, mp_tasks, mp_vision, PoseLandmark
+    except Exception as e:
+        raise ImportError(f"MediaPipe n'est pas chargé : {e}")
+
 
 # Streamlit import pour le cache
 try:
@@ -48,6 +54,30 @@ try:
     HAS_STREAMLIT = True
 except ImportError:
     HAS_STREAMLIT = False
+
+
+def _build_pose_landmarker(model_path: str):
+    _, mp_tasks, mp_vision, _ = _get_mediapipe()
+    base_options = mp_tasks.BaseOptions(model_asset_path=model_path)
+    options = mp_vision.PoseLandmarkerOptions(
+        base_options=base_options,
+        running_mode=mp_vision.RunningMode.IMAGE,
+    )
+    return mp_vision.PoseLandmarker.create_from_options(options)
+
+
+if HAS_STREAMLIT:
+    @st.cache_resource(show_spinner=False)
+    def get_cached_pose_landmarker(model_path: str):
+        """Instance MediaPipe PoseLandmarker partagée en RAM (chargée 1 seule fois)."""
+        return _build_pose_landmarker(model_path)
+else:
+    _FALLBACK_LANDMARKER: Dict[str, Any] = {}
+
+    def get_cached_pose_landmarker(model_path: str):
+        if model_path not in _FALLBACK_LANDMARKER:
+            _FALLBACK_LANDMARKER[model_path] = _build_pose_landmarker(model_path)
+        return _FALLBACK_LANDMARKER[model_path]
 
 MODEL_URL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task"
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "models", "pose_landmarker_lite.task")
@@ -144,7 +174,8 @@ def apply_butterworth_filter(
         return signal.copy()
 
     min_pad = 3 * max(order, 4)
-    if HAS_SCIPY and fps > 0 and len(signal) > min_pad:
+    scipy_signal = _get_scipy_signal()
+    if scipy_signal is not None and fps > 0 and len(signal) > min_pad:
         nyquist = 0.5 * fps
         norm_cutoff = min(0.95, max(0.01, cutoff_hz / nyquist))
         try:
@@ -177,10 +208,12 @@ def detect_optimal_rotation(cap, landmarker, max_width: int = 480) -> Optional[i
     Si le corps est détecté vertical alors qu'une rotation 90° le rend horizontal,
     retourne le code de rotation cv2 approprié (ou None).
     """
-    if not HAS_CV2 or landmarker is None:
+    if landmarker is None:
         return None
 
     try:
+        cv2 = _get_cv2()
+        mp, _, _, PoseLandmark = _get_mediapipe()
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         if total_frames <= 0:
             return None
@@ -250,12 +283,11 @@ def _run_kinematic_extraction(
     target_analysis_fps: float = 24.0
 ) -> Dict[str, Any]:
     """Moteur interne d'extraction vidéo optimisé avec détection d'orientation."""
-    if not HAS_CV2:
-        raise ImportError(f"OpenCV (cv2) n'est pas chargé : {CV2_IMPORT_ERROR}")
-    if not HAS_MEDIAPIPE:
-        raise ImportError(f"MediaPipe n'est pas chargé : {MEDIAPIPE_IMPORT_ERROR}")
+    cv2 = _get_cv2()
+    mp, _, _, PoseLandmark = _get_mediapipe()
 
     model_file = ensure_model_asset()
+    landmarker = get_cached_pose_landmarker(model_file)
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         raise ValueError(f"Impossible d'ouvrir la vidéo : {video_path}")
@@ -272,12 +304,6 @@ def _run_kinematic_extraction(
         effective_fps = real_fps / float(stride)
         dt = 1.0 / effective_fps
 
-        base_options = mp_tasks.BaseOptions(model_asset_path=model_file)
-        options = mp_vision.PoseLandmarkerOptions(
-            base_options=base_options,
-            running_mode=mp_vision.RunningMode.IMAGE
-        )
-
         timestamps: List[float] = []
         raw_elbow: List[float] = []
         raw_align: List[float] = []
@@ -286,75 +312,74 @@ def _run_kinematic_extraction(
         raw_hip_y: List[float] = []
 
         frame_idx = 0
-        with mp_vision.PoseLandmarker.create_from_options(options) as landmarker:
-            rot_code = detect_optimal_rotation(cap, landmarker, max_width=max_width)
+        rot_code = detect_optimal_rotation(cap, landmarker, max_width=max_width)
 
-            while True:
-                ret, frame_bgr = cap.read()
-                if not ret or frame_bgr is None:
-                    break
+        while True:
+            ret, frame_bgr = cap.read()
+            if not ret or frame_bgr is None:
+                break
 
-                if frame_idx % stride != 0:
-                    frame_idx += 1
-                    continue
-
-                curr_t = frame_idx / real_fps
-                timestamps.append(curr_t)
-
-                if rot_code is not None:
-                    frame_bgr = cv2.rotate(frame_bgr, rot_code)
-
-                # DOWNSCALE STRICT à max_width=480 pour vitesse maximale (< 2s)
-                h, w = frame_bgr.shape[:2]
-                if w > max_width:
-                    scale = max_width / float(w)
-                    new_w = max_width
-                    new_h = max(1, int(h * scale))
-                    frame_bgr = cv2.resize(frame_bgr, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
-
-                frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-                mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
-                detect_res = landmarker.detect(mp_img)
-
-                if detect_res.pose_landmarks and len(detect_res.pose_landmarks) > 0:
-                    lm = detect_res.pose_landmarks[0]
-
-                    def p(idx):
-                        return (lm[idx].x, lm[idx].y)
-
-                    def vis(idx):
-                        return getattr(lm[idx], 'visibility', 0.9)
-
-                    # Sélection du côté le plus visible
-                    vis_l = vis(PoseLandmark.LEFT_SHOULDER) + vis(PoseLandmark.LEFT_ELBOW) + vis(PoseLandmark.LEFT_HIP)
-                    vis_r = vis(PoseLandmark.RIGHT_SHOULDER) + vis(PoseLandmark.RIGHT_ELBOW) + vis(PoseLandmark.RIGHT_HIP)
-                    use_l = vis_l >= vis_r
-
-                    sh = p(PoseLandmark.LEFT_SHOULDER if use_l else PoseLandmark.RIGHT_SHOULDER)
-                    el = p(PoseLandmark.LEFT_ELBOW if use_l else PoseLandmark.RIGHT_ELBOW)
-                    wr = p(PoseLandmark.LEFT_WRIST if use_l else PoseLandmark.RIGHT_WRIST)
-                    hp = p(PoseLandmark.LEFT_HIP if use_l else PoseLandmark.RIGHT_HIP)
-                    ak = p(PoseLandmark.LEFT_ANKLE if use_l else PoseLandmark.RIGHT_ANKLE)
-
-                    ang_elbow = compute_angle_2d(sh, el, wr)
-                    ang_align = compute_angle_2d(sh, hp, ak)
-                    ang_tilt = compute_body_horizontal_tilt(sh, ak)
-                    ang_sh = compute_angle_2d(el, sh, hp)
-                    hip_y_val = (lm[PoseLandmark.LEFT_HIP].y + lm[PoseLandmark.RIGHT_HIP].y) / 2.0
-
-                    raw_elbow.append(ang_elbow)
-                    raw_align.append(ang_align)
-                    raw_tilt.append(ang_tilt)
-                    raw_sh_trunk.append(ang_sh)
-                    raw_hip_y.append(hip_y_val)
-                else:
-                    raw_elbow.append(raw_elbow[-1] if raw_elbow else 180.0)
-                    raw_align.append(raw_align[-1] if raw_align else 175.0)
-                    raw_tilt.append(raw_tilt[-1] if raw_tilt else 0.0)
-                    raw_sh_trunk.append(raw_sh_trunk[-1] if raw_sh_trunk else 45.0)
-                    raw_hip_y.append(raw_hip_y[-1] if raw_hip_y else 0.5)
-
+            if frame_idx % stride != 0:
                 frame_idx += 1
+                continue
+
+            curr_t = frame_idx / real_fps
+            timestamps.append(curr_t)
+
+            if rot_code is not None:
+                frame_bgr = cv2.rotate(frame_bgr, rot_code)
+
+            # DOWNSCALE STRICT à max_width=480 pour vitesse maximale (< 2s)
+            h, w = frame_bgr.shape[:2]
+            if w > max_width:
+                scale = max_width / float(w)
+                new_w = max_width
+                new_h = max(1, int(h * scale))
+                frame_bgr = cv2.resize(frame_bgr, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+
+            frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+            mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
+            detect_res = landmarker.detect(mp_img)
+
+            if detect_res.pose_landmarks and len(detect_res.pose_landmarks) > 0:
+                lm = detect_res.pose_landmarks[0]
+
+                def p(idx):
+                    return (lm[idx].x, lm[idx].y)
+
+                def vis(idx):
+                    return getattr(lm[idx], 'visibility', 0.9)
+
+                # Sélection du côté le plus visible
+                vis_l = vis(PoseLandmark.LEFT_SHOULDER) + vis(PoseLandmark.LEFT_ELBOW) + vis(PoseLandmark.LEFT_HIP)
+                vis_r = vis(PoseLandmark.RIGHT_SHOULDER) + vis(PoseLandmark.RIGHT_ELBOW) + vis(PoseLandmark.RIGHT_HIP)
+                use_l = vis_l >= vis_r
+
+                sh = p(PoseLandmark.LEFT_SHOULDER if use_l else PoseLandmark.RIGHT_SHOULDER)
+                el = p(PoseLandmark.LEFT_ELBOW if use_l else PoseLandmark.RIGHT_ELBOW)
+                wr = p(PoseLandmark.LEFT_WRIST if use_l else PoseLandmark.RIGHT_WRIST)
+                hp = p(PoseLandmark.LEFT_HIP if use_l else PoseLandmark.RIGHT_HIP)
+                ak = p(PoseLandmark.LEFT_ANKLE if use_l else PoseLandmark.RIGHT_ANKLE)
+
+                ang_elbow = compute_angle_2d(sh, el, wr)
+                ang_align = compute_angle_2d(sh, hp, ak)
+                ang_tilt = compute_body_horizontal_tilt(sh, ak)
+                ang_sh = compute_angle_2d(el, sh, hp)
+                hip_y_val = (lm[PoseLandmark.LEFT_HIP].y + lm[PoseLandmark.RIGHT_HIP].y) / 2.0
+
+                raw_elbow.append(ang_elbow)
+                raw_align.append(ang_align)
+                raw_tilt.append(ang_tilt)
+                raw_sh_trunk.append(ang_sh)
+                raw_hip_y.append(hip_y_val)
+            else:
+                raw_elbow.append(raw_elbow[-1] if raw_elbow else 180.0)
+                raw_align.append(raw_align[-1] if raw_align else 175.0)
+                raw_tilt.append(raw_tilt[-1] if raw_tilt else 0.0)
+                raw_sh_trunk.append(raw_sh_trunk[-1] if raw_sh_trunk else 45.0)
+                raw_hip_y.append(raw_hip_y[-1] if raw_hip_y else 0.5)
+
+            frame_idx += 1
 
         if not timestamps:
             timestamps = [0.0]

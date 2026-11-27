@@ -19,8 +19,7 @@ _LOG_EXPORT_COLS = [
     ("tut_effective_sec", "TUT Effectif (s)"),
     ("added_load_kg", "Lest Additionnel (kg)"),
     ("bodyweight_kg", "PDC (kg)"),
-    ("difficulty_coef", "Coefficient Figure"),
-    ("external_load_au", "Charge Externe (UA)"),
+    ("external_load_au", "Charge Externe"),
     ("rpe", "RPE (1-10)"),
     ("srpe_load", "Charge Interne sRPE"),
     ("fatigue_drift_deg", "Dérive Fatigue (°)"),
@@ -115,8 +114,8 @@ def export_workbook_xlsx_bytes(
     ws_acwr = wb.create_sheet(title="Synthese_ACWR")
     if acwr_summary_df is None or acwr_summary_df.empty:
         acwr_summary_df = pd.DataFrame(columns=[
-            "Date", "Charge Externe (UA)", "sRPE", "EWMA Aiguë (7j)",
-            "EWMA Chronique (28j)", "ACWR", "Charge Tendineuse (UA)"
+            "Date", "Charge Externe", "sRPE", "EWMA Aiguë (7j)",
+            "EWMA Chronique (28j)", "ACWR"
         ])
     _write_df_to_sheet(ws_acwr, acwr_summary_df)
 

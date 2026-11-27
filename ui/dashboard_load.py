@@ -3,7 +3,7 @@ ui/dashboard_load.py - Tableau de bord longitudinal (Chantier 4).
 Calcule et visualise :
 - Charge aiguë (EWMA 7j), Charge chronique (EWMA 28j) et Ratio ACWR
 - Monotonie et Contrainte de Foster
-- Jauge de Stress Mécanique / Tendineux Haute Intensité (Maltese, Planches, Front Lever, Hefesto...)
+- Volume Hebdomadaire (7 derniers jours) : TUT effectif, Répétitions, sRPE
 """
 
 from datetime import date, datetime, timedelta
@@ -12,10 +12,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from core.load_quantification import (
-    is_high_tendon_stress_exercise,
-    load_quantification_config,
-)
+from core.load_quantification import load_quantification_config
 from ui.theme import render_html
 
 
@@ -39,12 +36,11 @@ def compute_longitudinal_metrics(
 ) -> Dict[str, Any]:
     """
     Calcule les séries quotidiennes EWMA (7j/28j), ACWR, Monotonie/Contrainte de Foster
-    et le Stress Tendineux Haute Intensité sans aucun seuil codé en dur.
+    et le Volume Hebdomadaire (7 derniers jours).
     """
     cfg = config or load_quantification_config()
     ewma_cfg = cfg.get("ewma", {})
     zones_cfg = cfg.get("acwr_zones", {})
-    tendon_cfg = cfg.get("tendon_stress", {})
 
     n_acute = max(1, int(ewma_cfg.get("acute_days", 7)))
     n_chronic = max(n_acute + 1, int(ewma_cfg.get("chronic_days", 28)))
@@ -63,15 +59,18 @@ def compute_longitudinal_metrics(
     date_grid = [start_date + timedelta(days=i) for i in range(n_days)]
     ext_by_day: Dict[date, float] = {d: 0.0 for d in date_grid}
     srpe_by_day: Dict[date, float] = {d: 0.0 for d in date_grid}
-    tendon_by_day: Dict[date, float] = {d: 0.0 for d in date_grid}
+    tut_by_day: Dict[date, float] = {d: 0.0 for d in date_grid}
+    reps_by_day: Dict[date, int] = {d: 0 for d in date_grid}
 
     for log, d in zip(logs, parsed_dates):
         ext_val = float(log.get("external_load_au", 0.0) or 0.0)
         srpe_val = float(log.get("srpe_load", 0.0) or 0.0)
+        tut_val = float(log.get("tut_effective_sec", 0.0) or 0.0)
+        reps_val = int(log.get("reps", 0) or 0)
         ext_by_day[d] = ext_by_day.get(d, 0.0) + ext_val
         srpe_by_day[d] = srpe_by_day.get(d, 0.0) + srpe_val
-        if is_high_tendon_stress_exercise(str(log.get("exercise", "")), config=cfg):
-            tendon_by_day[d] = tendon_by_day.get(d, 0.0) + ext_val
+        tut_by_day[d] = tut_by_day.get(d, 0.0) + tut_val
+        reps_by_day[d] = reps_by_day.get(d, 0) + reps_val
 
     ewma_acute: List[float] = []
     ewma_chronic: List[float] = []
@@ -94,7 +93,6 @@ def compute_longitudinal_metrics(
         ratio = cur_a / max(cur_c, chronic_floor) if cur_a > 0 else 0.0
         acwr_series.append(round(ratio, 2))
 
-    # Fenêtre glissante des 7 derniers jours jusqu'à end_date : Foster Monotony & Contrainte
     last_7_days = [end_date - timedelta(days=k) for k in range(6, -1, -1)]
     week_loads = np.array([ext_by_day.get(d, 0.0) for d in last_7_days], dtype=np.float64)
     week_sum = float(np.sum(week_loads))
@@ -108,7 +106,9 @@ def compute_longitudinal_metrics(
         foster_monotony = round(min(10.0, week_mean / max(week_std, 1.0)), 2)
         foster_strain = round(week_sum * foster_monotony, 1)
 
-    weekly_tendon_au = round(sum(tendon_by_day.get(d, 0.0) for d in last_7_days), 1)
+    weekly_tut_sec = round(sum(tut_by_day.get(d, 0.0) for d in last_7_days), 1)
+    weekly_reps = int(sum(reps_by_day.get(d, 0) for d in last_7_days))
+    weekly_srpe = round(sum(srpe_by_day.get(d, 0.0) for d in last_7_days), 1)
 
     cur_acute = ewma_acute[-1] if ewma_acute else 0.0
     cur_chronic = ewma_chronic[-1] if ewma_chronic else 0.0
@@ -136,12 +136,11 @@ def compute_longitudinal_metrics(
 
     daily_df = pd.DataFrame({
         "Date": [d.strftime("%Y-%m-%d") for d in date_grid],
-        "Charge Externe (UA)": [round(ext_by_day[d], 2) for d in date_grid],
+        "Charge Externe": [round(ext_by_day[d], 2) for d in date_grid],
         "sRPE": [round(srpe_by_day[d], 2) for d in date_grid],
         "EWMA Aiguë (7j)": ewma_acute,
         "EWMA Chronique (28j)": ewma_chronic,
         "ACWR": acwr_series,
-        "Charge Tendineuse (UA)": [round(tendon_by_day[d], 2) for d in date_grid],
     })
 
     return {
@@ -151,10 +150,11 @@ def compute_longitudinal_metrics(
         "acwr_label": acwr_zone_lbl,
         "acwr_color": acwr_color,
         "weekly_load_au": round(week_sum, 1),
+        "weekly_tut_sec": weekly_tut_sec,
+        "weekly_reps": weekly_reps,
+        "weekly_srpe": weekly_srpe,
         "foster_monotony": foster_monotony,
         "foster_strain": foster_strain,
-        "weekly_tendon_au": weekly_tendon_au,
-        "tendon_cfg": tendon_cfg,
         "zones_cfg": zones_cfg,
         "daily_df": daily_df,
     }
@@ -162,39 +162,38 @@ def compute_longitudinal_metrics(
 
 def render_longitudinal_dashboard(athlete_user: Dict[str, Any], logs: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
-    Affiche le tableau de bord EWMA ACWR, Monotonie/Contrainte de Foster
-    et la Jauge Stress Mécanique / Tendineux Haute Intensité.
-    Retourne le dict metrics (contenant daily_df pour l'export Excel Synthese_ACWR).
+    Affiche les KPIs EWMA/ACWR au-dessus de la ligne de flottaison mobile,
+    les graphiques Altair optimisés (axe Y >= 0, légende en haut) et l'encart Volume Hebdomadaire.
     """
     cfg = load_quantification_config()
     metrics = compute_longitudinal_metrics(logs, config=cfg)
 
     ath_name = str(athlete_user.get("full_name") or athlete_user.get("username", "Athlète"))
     render_html(f"""
-        <div class="cali-card" style="padding:10px 14px;margin-bottom:0.7rem;border-color:rgba(0,229,255,0.24);">
+        <div class="cali-card" style="padding:8px 12px;margin-bottom:0.55rem;border-color:rgba(0,229,255,0.24);">
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
-                <span style="font-size:0.86rem;font-weight:800;color:#F8FAFC;">📈 Pilotage Longitudinal EWMA & Stress Tendineux — {ath_name}</span>
+                <span style="font-size:0.84rem;font-weight:800;color:#F8FAFC;">📈 {ath_name}</span>
                 <span style="font-size:0.74rem;font-weight:700;color:{metrics['acwr_color']};">{metrics['acwr_label']}</span>
             </div>
         </div>
     """)
 
     render_html(f"""
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:8px;margin-bottom:0.85rem;">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px;margin-bottom:0.75rem;">
             <div class="cali-kpi-tile">
                 <div class="cali-kpi-lbl">Aiguë EWMA (7j)</div>
-                <div class="cali-kpi-val" style="color:#00E5FF;">{metrics['acute_ewma']:.1f}<span style="font-size:0.75rem;color:#94A3B8;margin-left:3px;">UA</span></div>
+                <div class="cali-kpi-val" style="color:#00E5FF;">{metrics['acute_ewma']:.1f}</div>
             </div>
             <div class="cali-kpi-tile">
                 <div class="cali-kpi-lbl">Chronique (28j)</div>
-                <div class="cali-kpi-val" style="color:#38BDF8;">{metrics['chronic_ewma']:.1f}<span style="font-size:0.75rem;color:#94A3B8;margin-left:3px;">UA</span></div>
+                <div class="cali-kpi-val" style="color:#38BDF8;">{metrics['chronic_ewma']:.1f}</div>
             </div>
             <div class="cali-kpi-tile">
                 <div class="cali-kpi-lbl">Ratio ACWR</div>
                 <div class="cali-kpi-val" style="color:{metrics['acwr_color']};">{metrics['acwr']:.2f}</div>
             </div>
             <div class="cali-kpi-tile">
-                <div class="cali-kpi-lbl">Foster (Mono / Contr.)</div>
+                <div class="cali-kpi-lbl">Monotonie / Contr.</div>
                 <div class="cali-kpi-val" style="font-size:1.1rem;color:#FBBF24;">{metrics['foster_monotony']:.2f} <span style="font-size:0.78rem;color:#94A3B8;">| {metrics['foster_strain']:.0f}</span></div>
             </div>
         </div>
@@ -202,7 +201,6 @@ def render_longitudinal_dashboard(athlete_user: Dict[str, Any], logs: List[Dict[
 
     df_d = metrics["daily_df"].copy()
     zones = metrics["zones_cfg"]
-    t_cfg = metrics["tendon_cfg"]
 
     try:
         import altair as alt
@@ -213,19 +211,24 @@ def render_longitudinal_dashboard(athlete_user: Dict[str, Any], logs: List[Dict[
     if has_altair and not df_d.empty:
         df_d["DateObj"] = pd.to_datetime(df_d["Date"])
 
-        # Graphique 1 : Charge quotidienne + Courbes EWMA (propre et lisible sur mobile)
+        # Graphique 1 : EWMA 7j vs 28j (axe Y bloqué à >= 0, légende en haut non tronquée)
         st.markdown("##### 📊 Charge d'entraînement (EWMA 7j vs 28j)")
         bars = (
             alt.Chart(df_d)
             .mark_bar(color="#38BDF8", opacity=0.28, cornerRadiusTopLeft=3, cornerRadiusTopRight=3)
             .encode(
-                x=alt.X("DateObj:T", title=None, axis=alt.Axis(format="%d/%m", labelColor="#94A3B8", tickCount=6)),
-                y=alt.Y("Charge Externe (UA):Q", title="Charge (UA)", axis=alt.Axis(labelColor="#94A3B8", titleColor="#94A3B8")),
+                x=alt.X("DateObj:T", title=None, axis=alt.Axis(format="%d/%m", labelColor="#94A3B8", tickCount=5)),
+                y=alt.Y(
+                    "Charge Externe:Q",
+                    title="Charge",
+                    scale=alt.Scale(domainMin=0),
+                    axis=alt.Axis(labelColor="#94A3B8", titleColor="#94A3B8"),
+                ),
                 tooltip=[
                     alt.Tooltip("Date:N", title="Date"),
-                    alt.Tooltip("Charge Externe (UA):Q", title="Charge du jour (UA)", format=".1f"),
-                    alt.Tooltip("EWMA Aiguë (7j):Q", title="Aiguë 7j (UA)", format=".1f"),
-                    alt.Tooltip("EWMA Chronique (28j):Q", title="Chronique 28j (UA)", format=".1f"),
+                    alt.Tooltip("Charge Externe:Q", title="Charge du jour", format=".1f"),
+                    alt.Tooltip("EWMA Aiguë (7j):Q", title="Aiguë 7j", format=".1f"),
+                    alt.Tooltip("EWMA Chronique (28j):Q", title="Chronique 28j", format=".1f"),
                 ],
             )
         )
@@ -233,21 +236,21 @@ def render_longitudinal_dashboard(athlete_user: Dict[str, Any], logs: List[Dict[
             id_vars=["DateObj", "Date"],
             value_vars=["EWMA Aiguë (7j)", "EWMA Chronique (28j)"],
             var_name="Courbe",
-            value_name="UA",
+            value_name="Valeur",
         )
         lines = (
             alt.Chart(ewma_melt)
             .mark_line(strokeWidth=2.5)
             .encode(
                 x=alt.X("DateObj:T", title=None),
-                y=alt.Y("UA:Q"),
+                y=alt.Y("Valeur:Q", scale=alt.Scale(domainMin=0)),
                 color=alt.Color(
                     "Courbe:N",
                     scale=alt.Scale(
                         domain=["EWMA Aiguë (7j)", "EWMA Chronique (28j)"],
                         range=["#00E5FF", "#818CF8"],
                     ),
-                    legend=alt.Legend(orient="bottom", title=None, labelColor="#E2E8F0"),
+                    legend=alt.Legend(orient="top", title=None, labelColor="#E2E8F0", columns=2),
                 ),
                 strokeDash=alt.StrokeDash(
                     "Courbe:N",
@@ -267,8 +270,8 @@ def render_longitudinal_dashboard(athlete_user: Dict[str, Any], logs: List[Dict[
         )
         st.altair_chart(chart_load, use_container_width=True)
 
-        # Graphique 2 : Ratio ACWR séparé avec bande verte optimale (0.8 - 1.3)
-        st.markdown("##### ⚖️ Ratio de fatigue ACWR (Aiguë / Chronique)")
+        # Graphique 2 : Ratio ACWR
+        st.markdown("##### ⚖️ Ratio de fatigue ACWR")
         sweet_min = float(zones.get("sweet_spot_min", 0.80))
         sweet_max = float(zones.get("sweet_spot_max", 1.30))
         caut_max = float(zones.get("caution_max", 1.50))
@@ -292,10 +295,15 @@ def render_longitudinal_dashboard(athlete_user: Dict[str, Any], logs: List[Dict[
         )
         acwr_line = (
             alt.Chart(df_d)
-            .mark_line(color="#FBBF24", strokeWidth=2.5, point=alt.OverlayMarkDef(color="#FBBF24", size=36))
+            .mark_line(color="#FBBF24", strokeWidth=2.5, point=alt.OverlayMarkDef(color="#FBBF24", size=34))
             .encode(
-                x=alt.X("DateObj:T", title=None, axis=alt.Axis(format="%d/%m", labelColor="#94A3B8", tickCount=6)),
-                y=alt.Y("ACWR:Q", title="Ratio ACWR", scale=alt.Scale(domain=[0, max_acwr_val]), axis=alt.Axis(labelColor="#94A3B8", titleColor="#94A3B8")),
+                x=alt.X("DateObj:T", title=None, axis=alt.Axis(format="%d/%m", labelColor="#94A3B8", tickCount=5)),
+                y=alt.Y(
+                    "ACWR:Q",
+                    title="ACWR",
+                    scale=alt.Scale(domainMin=0, domain=[0, max_acwr_val]),
+                    axis=alt.Axis(labelColor="#94A3B8", titleColor="#94A3B8"),
+                ),
                 tooltip=[
                     alt.Tooltip("Date:N", title="Date"),
                     alt.Tooltip("ACWR:Q", title="Ratio ACWR", format=".2f"),
@@ -304,51 +312,34 @@ def render_longitudinal_dashboard(athlete_user: Dict[str, Any], logs: List[Dict[
         )
         chart_acwr = (
             alt.layer(opt_band, danger_rule, acwr_line)
-            .properties(height=190, background="transparent")
+            .properties(height=185, background="transparent")
             .configure_view(strokeWidth=0, fill="#0D121E")
             .configure_axis(gridColor="rgba(255,255,255,0.06)", domainColor="rgba(255,255,255,0.1)")
         )
         st.altair_chart(chart_acwr, use_container_width=True)
-        st.caption("🟩 Zone optimale : **0.80 – 1.30** • 🟥 Ligne pointillée : seuil de surcharge (**1.50**)")
+        st.caption("🟩 Zone optimale : **0.80 – 1.30** • 🟥 Ligne pointillée : seuil d'alerte (**1.50**)")
     else:
         st.line_chart(df_d.set_index("Date")[["EWMA Aiguë (7j)", "EWMA Chronique (28j)"]])
 
-    # Jauge horizontale HTML/CSS claire et responsive (zéro coupure sur mobile 390px)
-    mod_th = float(t_cfg.get("weekly_moderate_threshold", 600.0))
-    high_th = float(t_cfg.get("weekly_high_threshold", 1200.0))
-    max_g = max(float(t_cfg.get("weekly_max_gauge", 2000.0)), metrics["weekly_tendon_au"] * 1.15)
-    val_tend = float(metrics["weekly_tendon_au"])
-    pct_val = min(100.0, max(0.0, (val_tend / max_g) * 100.0))
-    pct_mod = min(100.0, (mod_th / max_g) * 100.0)
-    pct_high = min(100.0, (high_th / max_g) * 100.0)
-
-    if val_tend >= high_th:
-        tend_badge = '<span class="badge-rose">🔴 Élevé (Décharger)</span>'
-        tend_col = "#FB7185"
-    elif val_tend >= mod_th:
-        tend_badge = '<span class="badge-amber">🟡 Modéré (Vigilance)</span>'
-        tend_col = "#FBBF24"
-    else:
-        tend_badge = '<span class="badge-lime">🟢 Maîtrisé</span>'
-        tend_col = "#34D399"
-
+    # Encart synthétique Volume Hebdomadaire (7 derniers jours)
     render_html(f"""
-        <div class="cali-card" style="padding:12px 14px;margin-top:0.4rem;">
-            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
-                <span style="font-size:0.86rem;font-weight:800;color:#F8FAFC;">🦴 Stress Tendineux Haute Intensité (7j)</span>
-                {tend_badge}
+        <div class="cali-card" style="padding:12px 14px;margin-top:0.35rem;border-color:rgba(0,229,255,0.22);">
+            <div style="font-size:0.84rem;font-weight:800;color:#F8FAFC;margin-bottom:8px;">
+                📅 Volume Hebdomadaire (7 derniers jours)
             </div>
-            <div style="font-size:1.35rem;font-weight:800;color:{tend_col};margin-bottom:8px;">
-                {val_tend:.0f} <span style="font-size:0.82rem;color:#94A3B8;font-weight:600;">UA / {max_g:.0f} max</span>
-            </div>
-            <div style="position:relative;height:14px;border-radius:999px;background:linear-gradient(90deg, rgba(16,185,129,0.45) 0%, rgba(16,185,129,0.45) {pct_mod:.1f}%, rgba(245,158,11,0.48) {pct_mod:.1f}%, rgba(245,158,11,0.48) {pct_high:.1f}%, rgba(244,63,94,0.55) {pct_high:.1f}%, rgba(244,63,94,0.55) 100%);border:1px solid rgba(255,255,255,0.12);overflow:visible;">
-                <div style="position:absolute;left:calc({pct_val:.1f}% - 7px);top:-3px;width:14px;height:20px;border-radius:4px;background:#F8FAFC;border:2px solid {tend_col};box-shadow:0 0 10px {tend_col};"></div>
-            </div>
-            <div style="display:flex;justify-content:space-between;font-size:0.7rem;color:#94A3B8;margin-top:6px;">
-                <span>0 UA</span>
-                <span>{mod_th:.0f} UA</span>
-                <span>{high_th:.0f} UA (Seuil)</span>
-                <span>{max_g:.0f} UA</span>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center;">
+                <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:8px 4px;">
+                    <div style="font-size:0.65rem;color:#94A3B8;font-weight:700;text-transform:uppercase;">TUT Cumulé</div>
+                    <div style="font-size:1.15rem;font-weight:800;color:#00E5FF;font-family:'JetBrains Mono',monospace;">{metrics['weekly_tut_sec']:.1f}s</div>
+                </div>
+                <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:8px 4px;">
+                    <div style="font-size:0.65rem;color:#94A3B8;font-weight:700;text-transform:uppercase;">Répétitions</div>
+                    <div style="font-size:1.15rem;font-weight:800;color:#34D399;font-family:'JetBrains Mono',monospace;">{metrics['weekly_reps']}</div>
+                </div>
+                <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:8px 4px;">
+                    <div style="font-size:0.65rem;color:#94A3B8;font-weight:700;text-transform:uppercase;">Charge sRPE</div>
+                    <div style="font-size:1.15rem;font-weight:800;color:#FBBF24;font-family:'JetBrains Mono',monospace;">{metrics['weekly_srpe']:.0f}</div>
+                </div>
             </div>
         </div>
     """)

@@ -7,15 +7,14 @@ from datetime import datetime
 import time
 import streamlit as st
 
-from core.auth import process_avatar_image, render_avatar_html
+from core.auth import normalize_role
 from core.calibration import export_baselines_json, load_baselines_table
 from core.database import (
     get_gemini_api_key,
     get_training_logs_for_athlete,
-    login_user_in_session,
     logout_user_from_session,
+    purge_demo_athletes_for_coach,
     resolve_database_url,
-    update_user_profile_sql,
 )
 from services.export_service import (
     build_logs_export_dataframe,
@@ -47,36 +46,27 @@ def render_tab_settings() -> None:
     if st.button("👤 Mon Profil, Statut, PDC & Photo", key="btn_open_profile_settings", type="secondary", use_container_width=True):
         open_profile_modal()
 
-    with st.expander("📸 Changer ma photo de profil directement ici", expanded=False):
-        cur_av = str(curr_u.get("avatar_b64") or curr_u.get("avatar", ""))
-        cur_nm = str(curr_u.get("full_name") or curr_u.get("username", "U"))
-        render_html(
-            '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">'
-            f'{render_avatar_html(cur_av, cur_nm, size=48)}'
-            '<span style="font-size:0.82rem;color:#CBD5E1;">Photo actuelle affichée dans le bandeau</span></div>'
-        )
-        set_photo = st.file_uploader(
-            "Choisir une image (JPG, PNG, WEBP) :",
-            type=["jpg", "jpeg", "png", "webp"],
-            key="settings_avatar_upload",
-        )
-        if set_photo is not None:
-            prev_b64 = process_avatar_image(set_photo)
-            if prev_b64:
-                render_html(
-                    '<div style="display:flex;align-items:center;gap:10px;margin:6px 0;">'
-                    f'{render_avatar_html(prev_b64, cur_nm, size=56)}'
-                    '<span style="font-size:0.8rem;color:#34D399;font-weight:700;">Aperçu prêt</span></div>'
-                )
-                if st.button("💾 Appliquer cette photo", type="primary", use_container_width=True, key="btn_settings_save_avatar"):
-                    ok_s, _, upd_s = update_user_profile_sql(int(curr_u["id"]), avatar_b64=prev_b64)
-                    if ok_s and upd_s:
-                        login_user_in_session(upd_s)
-                        st.toast("✅ Photo mise à jour !")
-                        time.sleep(0.2)
-                        st.rerun()
-            else:
-                st.error("Image illisible.")
+    if normalize_role(curr_u.get("role", "")) == "coach":
+        render_html("<div style='height:6px;'></div>")
+        with st.expander("🧹 Maintenance : Élèves de démonstration", expanded=False):
+            st.caption("Supprime uniquement les comptes tests (Élève Démo & profils de démonstration) et leurs séances, sans toucher à vos vrais élèves ni à vos figures 3D.")
+            confirm_purge = st.checkbox("Confirmer la purge des élèves de démo", key="chk_confirm_purge_demo")
+            if st.button(
+                "🧹 Purger tous les élèves de démo",
+                key="btn_purge_demo_athletes",
+                type="secondary",
+                use_container_width=True,
+                disabled=not confirm_purge,
+            ):
+                ok_p, msg_p, _ = purge_demo_athletes_for_coach(int(curr_u["id"]))
+                if ok_p:
+                    st.session_state["active_athlete_id"] = int(curr_u["id"])
+                    st.session_state["selected_athlete_id"] = int(curr_u["id"])
+                    st.toast(f"🧹 {msg_p}")
+                    time.sleep(0.25)
+                    st.rerun()
+                else:
+                    st.error(msg_p)
 
     db_uri = resolve_database_url()
     is_pg = db_uri.startswith("postgresql")

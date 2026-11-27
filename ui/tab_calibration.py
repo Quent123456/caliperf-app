@@ -133,16 +133,12 @@ def render_tab_calibration() -> None:
     _render_last_calibration_preview()
 
     # ------------------------------------------------------------------
-    # ÉTAPE A : CRÉER UNE FIGURE DANS LA BIBLIOTHÈQUE SQL
+    # ÉTAPE A : CRÉER UNE FIGURE DANS LA BIBLIOTHÈQUE SQL (ISOLÉE PAR COACH)
     # ------------------------------------------------------------------
     if not is_coach:
-        st.info("ℹ️ Mode Élève : vous consultez uniquement les baselines partagées par votre coach.")
+        st.info("ℹ️ Mode Élève : vous consultez uniquement les baselines de votre coach attitré.")
     else:
-        step_title = (
-            "1️⃣ Étape A : Créer un mouvement officiel partagé (3 angles)"
-            if is_adm else
-            "1️⃣ Étape A : Ajouter une figure à ma bibliothèque Coach (3 angles)"
-        )
+        step_title = "1️⃣ Étape A : Ajouter une figure à ma bibliothèque Coach (3 angles)"
         with st.expander(step_title, expanded=(distinct_count == 0)):
             with st.form("form_create_exo_slots", clear_on_submit=True):
                 col_new_name, col_new_type = st.columns([1.5, 1])
@@ -154,7 +150,6 @@ def render_tab_calibration() -> None:
                 with col_new_type:
                     new_exo_type = st.radio("Type de mouvement :", ["Isométrique", "Dynamique"], horizontal=True)
 
-                share_on_create = st.checkbox("Partager avec mes élèves", value=True)
                 btn_label = "➕ Créer la figure (3 angles)"
                 if st.form_submit_button(btn_label, type="primary", use_container_width=True):
                     if not new_exo_input.strip():
@@ -165,7 +160,7 @@ def render_tab_calibration() -> None:
                             new_exo_input,
                             exo_type=c_type,
                             user=curr_u,
-                            is_shared=share_on_create,
+                            is_shared=False,
                         )
                         if ok_c:
                             st.success(f"✅ {msg_c}")
@@ -188,7 +183,7 @@ def render_tab_calibration() -> None:
         with col_f2:
             filter_mode = st.selectbox(
                 "Filtrer :",
-                ["Toutes", "En attente ⏳", "Calibrées ✅", "Mes figures 🏋️", "Partagées élèves 🔗"],
+                ["Toutes", "En attente ⏳", "Calibrées ✅"],
                 key="calib_filter_mode"
             )
 
@@ -198,16 +193,10 @@ def render_tab_calibration() -> None:
                 continue
             sub_df = df_base[df_base["exercise"] == fig_name]
             nb_calib = len(sub_df[sub_df["status"] == "calibrated"])
-            owner_id = int(sub_df["owner_id"].iloc[0])
-            fig_shared = bool(sub_df["is_shared"].iloc[0])
 
             if filter_mode == "En attente ⏳" and nb_calib == 3:
                 continue
             if filter_mode == "Calibrées ✅" and nb_calib == 0:
-                continue
-            if filter_mode == "Mes figures 🏋️" and owner_id != u_id:
-                continue
-            if filter_mode == "Partagées élèves 🔗" and not fig_shared:
                 continue
 
             filtered_figs.append(fig_name)
@@ -220,17 +209,13 @@ def render_tab_calibration() -> None:
                 fig_type = sub_df["type"].iloc[0] if not sub_df.empty else "isometric"
                 type_label = "Isométrique" if fig_type == "isometric" else "Dynamique"
                 owner_id = int(sub_df["owner_id"].iloc[0])
-                fig_owner = str(sub_df["owner"].iloc[0])
-                fig_shared = bool(sub_df["is_shared"].iloc[0])
                 is_owner = (owner_id == u_id)
 
                 nb_calib = len(sub_df[sub_df["status"] == "calibrated"])
                 calib_icon = "🟢" if nb_calib == 3 else ("🟡" if nb_calib > 0 else "⚪")
                 calib_ratio = f"{nb_calib}/3 validé{'s' if nb_calib > 1 else ''}"
                 clean_key = re.sub(r"[^a-zA-Z0-9]+", "_", f"{owner_id}_{fig_name.lower()}").strip("_")
-                share_tag = "🔗 Partagé" if fig_shared else "🔒 Privé"
-                owner_badge = "🏋️ Moi" if is_owner else f"👑 @{fig_owner}"
-                exp_header = f"{calib_icon} {fig_name} • {type_label} [{owner_badge} • {share_tag}] ({calib_ratio})"
+                exp_header = f"{calib_icon} {fig_name} • {type_label} ({calib_ratio})"
 
                 with st.expander(exp_header, expanded=False):
                     pills_parts = []
@@ -268,31 +253,20 @@ def render_tab_calibration() -> None:
                                     else:
                                         st.error(msg_r)
                             elif is_cal:
-                                st.caption("🔒 Partagé")
+                                st.caption("🔒 Coach")
                             else:
                                 st.caption("—")
 
                     if is_owner and is_coach:
-                        render_html("<div style='height:8px;'></div>")
-                        col_sh, col_del_f = st.columns([1.6, 1.4])
-                        with col_sh:
-                            new_sh = not fig_shared
-                            sh_btn_lbl = "🔓 Partager aux élèves" if new_sh else "🔒 Passer en privé"
-                            if st.button(sh_btn_lbl, key=f"share_{clean_key}", use_container_width=True):
-                                ok_s, msg_s = toggle_figure_sharing(fig_name, new_sh, user=curr_u)
-                                if ok_s:
-                                    st.toast(f"✅ {msg_s}")
-                                    time.sleep(0.2)
-                                    st.rerun()
-                        with col_del_f:
-                            if st.button("🗑️ Supprimer", key=f"del_fig_{clean_key}", use_container_width=True):
-                                ok_d, msg_d = delete_figure(fig_name, user=curr_u)
-                                if ok_d:
-                                    st.toast(f"✅ {msg_d}")
-                                    time.sleep(0.2)
-                                    st.rerun()
-                                else:
-                                    st.error(msg_d)
+                        render_html("<div style='height:6px;'></div>")
+                        if st.button("🗑️ Supprimer la figure", key=f"del_fig_{clean_key}", use_container_width=True):
+                            ok_d, msg_d = delete_figure(fig_name, user=curr_u)
+                            if ok_d:
+                                st.toast(f"✅ {msg_d}")
+                                time.sleep(0.2)
+                                st.rerun()
+                            else:
+                                st.error(msg_d)
 
     # ------------------------------------------------------------------
     # ÉTAPE B : CALIBRER UNE VIDÉO AVEC QUALITY CONTROL GATE (COACH)
@@ -414,7 +388,7 @@ def render_tab_calibration() -> None:
                         )
 
                         if clicked_save:
-                            fig_shared_cur = bool(sub_chosen["is_shared"].iloc[0]) if not sub_chosen.empty else True
+                            fig_shared_cur = bool(sub_chosen["is_shared"].iloc[0]) if not sub_chosen.empty else False
                             ok_save, msg_save = save_calibrated_slot(
                                 exercise_name=chosen_exo,
                                 camera_view=chosen_angle,

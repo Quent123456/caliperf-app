@@ -24,7 +24,13 @@ except ImportError:
     HAS_STREAMLIT = False
 
 from core.auth import is_master_coach, normalize_role
-from core.database import Baseline3D, User, get_db_session
+from core.database import (
+    Baseline3D,
+    User,
+    _clear_fn_cache,
+    get_db_session,
+    resolve_database_url,
+)
 
 BASELINES_COLUMNS = [
     "id",
@@ -98,51 +104,49 @@ def _rows_to_dataframe(rows: List[Tuple[Baseline3D, User]]) -> pd.DataFrame:
 # LECTURE SCOPÉE MULTI-UTILISATEURS (SQL)
 # ==============================================================================
 
+def _cache_cal_ttl(fn):
+    if HAS_STREAMLIT:
+        return st.cache_data(ttl=120, show_spinner=False)(fn)
+    return fn
+
+
+@_cache_cal_ttl
+def _load_baselines_cached(uid: Optional[int], role: str, coach_id: Optional[int], resolved_url: str) -> pd.DataFrame:
+    with get_db_session(resolved_url) as s:
+        q = s.query(Baseline3D, User).join(User, Baseline3D.owner_id == User.id)
+        if uid is None:
+            return pd.DataFrame(columns=BASELINES_COLUMNS)
+        if role == "coach":
+            # Isolation stricte par coach : uniquement SES figures (owner_id == uid)
+            q = q.filter(Baseline3D.owner_id == int(uid))
+        else:
+            # Élève : uniquement les figures de son coach attitré (via coach_id)
+            if coach_id is None:
+                return pd.DataFrame(columns=BASELINES_COLUMNS)
+            q = q.filter(Baseline3D.owner_id == int(coach_id))
+        rows = q.order_by(Baseline3D.exercise.asc(), Baseline3D.id.asc()).all()
+        return _rows_to_dataframe(rows)
+
+
 def load_baselines_table(
     user: Optional[Dict[str, Any]] = None,
     force_refresh: bool = False,
     db_url: Optional[str] = None,
 ) -> pd.DataFrame:
     """
-    Charge la table baselines_3d depuis SQL avec isolation stricte :
-    - Coach : ses propres baselines (owner_id == user.id) + base officielle partagée ('admin' et is_shared=True).
-              Aucune donnée d'autres coachs tiers n'est exposée.
-    - Élève : uniquement les baselines partagées (is_shared=True) de son coach (coach_id).
-              S'il n'a pas encore de coach, voit les baselines officielles partagées ('admin').
+    Charge la table baselines_3d depuis SQL avec isolation stricte et cache TTL=120s :
+    - Coach : uniquement ses propres figures (owner_id == user.id).
+    - Élève : uniquement les figures de son coach attitré (owner_id == user.coach_id).
     """
+    if force_refresh:
+        _clear_fn_cache(_load_baselines_cached)
     active_u = _resolve_active_user(user)
-    with get_db_session(db_url) as s:
-        admin_u = s.query(User).filter(func.lower(User.username) == "admin").first()
-        admin_id = int(admin_u.id) if admin_u else -1
-
-        q = s.query(Baseline3D, User).join(User, Baseline3D.owner_id == User.id)
-
-        if not active_u:
-            # Hors session UI : ne retourne que le socle officiel partagé
-            q = q.filter(Baseline3D.owner_id == admin_id, Baseline3D.is_shared.is_(True))
-        else:
-            uid = int(active_u["id"])
-            role = normalize_role(active_u.get("role", "athlete"))
-            if role == "coach":
-                if is_master_coach(active_u):
-                    q = q.filter(Baseline3D.owner_id == uid)
-                else:
-                    q = q.filter(
-                        or_(
-                            Baseline3D.owner_id == uid,
-                            and_(Baseline3D.owner_id == admin_id, Baseline3D.is_shared.is_(True)),
-                        )
-                    )
-            else:
-                coach_id = active_u.get("coach_id")
-                target_owner = int(coach_id) if coach_id is not None else admin_id
-                q = q.filter(
-                    Baseline3D.owner_id == target_owner,
-                    Baseline3D.is_shared.is_(True),
-                )
-
-        rows = q.order_by(Baseline3D.exercise.asc(), Baseline3D.id.asc()).all()
-        return _rows_to_dataframe(rows)
+    if not active_u:
+        return pd.DataFrame(columns=BASELINES_COLUMNS)
+    uid = int(active_u["id"])
+    role = normalize_role(active_u.get("role", "athlete"))
+    cid = int(active_u["coach_id"]) if active_u.get("coach_id") is not None else None
+    return _load_baselines_cached(uid, role, cid, resolve_database_url(db_url))
 
 
 # ==============================================================================
@@ -155,12 +159,12 @@ def create_figure_slots(
     user: Optional[Dict[str, Any]] = None,
     owner: Optional[str] = None,
     is_master: bool = False,
-    is_shared: bool = True,
+    is_shared: bool = False,
     db_url: Optional[str] = None,
 ) -> Tuple[bool, str]:
     """
     Étape A : Crée 3 emplacements (Face, 3/4, Profil) dans SQL baselines_3d pour le coach courant.
-    Les figures ne sont visibles que par le coach (et ses élèves si is_shared=True).
+    Par défaut is_shared=False et owner_id=current_coach.id (isolé au coach et à ses élèves rattachés).
     """
     clean_name = (exercise_name or "").strip()
     if not clean_name:
@@ -207,6 +211,7 @@ def create_figure_slots(
                 status="empty",
             ))
         s.flush()
+    _clear_fn_cache(_load_baselines_cached)
     return True, f"Figure '{clean_name}' créée avec succès (3 angles en attente) !"
 
 
@@ -219,7 +224,7 @@ def save_calibrated_slot(
     rom_bounds: Optional[Dict[str, Any]] = None,
     user: Optional[Dict[str, Any]] = None,
     owner: Optional[str] = None,
-    is_shared: bool = True,
+    is_shared: bool = False,
     quality_report: Optional[Any] = None,
     qc_confirmed_warning: bool = False,
     db_url: Optional[str] = None,
@@ -304,7 +309,7 @@ def save_calibrated_slot(
                     quality_score=int(q_score) if (is_target and q_score is not None) else None,
                 ))
         s.flush()
-
+    _clear_fn_cache(_load_baselines_cached)
     return True, f"Calibrage '{clean_name}' ({clean_view}) enregistré dans la base SQL !"
 
 
@@ -334,6 +339,7 @@ def toggle_figure_sharing(
         for r in rows:
             r.is_shared = bool(is_shared)
         s.flush()
+    _clear_fn_cache(_load_baselines_cached)
     state_lbl = "partagée avec vos élèves" if is_shared else "privée (coach uniquement)"
     return True, f"Figure '{exercise_name}' désormais {state_lbl}."
 
@@ -361,6 +367,7 @@ def reset_slot(
         slot.rom_bounds_json = None
         slot.quality_score = None
         s.flush()
+    _clear_fn_cache(_load_baselines_cached)
     return True, "Emplacement réinitialisé en attente de vidéo."
 
 
@@ -393,6 +400,7 @@ def delete_figure(
         for r in rows:
             s.delete(r)
         s.flush()
+    _clear_fn_cache(_load_baselines_cached)
     return True, f"Figure '{clean_name}' supprimée de votre bibliothèque."
 
 

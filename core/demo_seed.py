@@ -21,6 +21,15 @@ def _utcnow() -> datetime:
 
 DEMO_ATHLETES_PROFILES: List[Dict[str, Any]] = [
     {
+        "username": "eleve_demo",
+        "legacy_aliases": ["lve_dmo", "Élève Démo"],
+        "full_name": "Élève Démo",
+        "bodyweight_kg": 70.0,
+        "freq": "4x / semaine",
+        "goal": "Progression Muscle-up & Planche",
+        "profile_kind": "demo_21d",
+    },
+    {
         "username": "lucas_martin",
         "full_name": "Lucas Martin",
         "bodyweight_kg": 71.5,
@@ -41,7 +50,7 @@ DEMO_ATHLETES_PROFILES: List[Dict[str, Any]] = [
         "full_name": "Théo Moreau",
         "bodyweight_kg": 78.0,
         "freq": "6x / semaine",
-        "goal": "Maltese & Iron Cross (Profil Surcharge / Alerte Tendon)",
+        "goal": "Maltese & Iron Cross (Profil Surcharge / Pic d'intensité)",
         "profile_kind": "overreaching",
     },
     {
@@ -61,6 +70,8 @@ DEMO_ATHLETES_PROFILES: List[Dict[str, Any]] = [
         "profile_kind": "high_monotony",
     },
 ]
+
+DEMO_USERNAMES = {p["username"] for p in DEMO_ATHLETES_PROFILES} | {"lve_dmo"}
 
 
 def _generate_logs_for_profile(
@@ -114,7 +125,41 @@ def _generate_logs_for_profile(
             }
         )
 
-    if profile_kind == "sweet_spot":
+    if profile_kind == "demo_21d":
+        # 15 séances réalistes réparties sur 21 jours pour Élève Démo
+        demo_schedule = [21, 19, 18, 16, 15, 13, 12, 10, 9, 7, 6, 4, 3, 2, 1]
+        for idx, d in enumerate(demo_schedule):
+            prog = idx / max(1, len(demo_schedule) - 1)
+            if idx % 3 == 0:
+                add_log(
+                    d, 18, "Straddle Planche", "isometric", 0,
+                    tut=round(7.5 + prog * 4.0 + rng.uniform(-0.4, 0.5), 1),
+                    added_kg=0.0,
+                    rpe=7.5 + rng.uniform(-0.3, 0.4),
+                    drift_deg=4.0 - prog * 1.1,
+                    notes="Tenue propre, gainage verrouillé",
+                )
+            elif idx % 3 == 1:
+                add_log(
+                    d, 18, "Muscle-ups", "dynamic",
+                    reps=4 + (idx % 3),
+                    tut=round(14.0 + prog * 3.5, 1),
+                    added_kg=0.0 if idx < 7 else 2.5,
+                    rpe=7.8,
+                    vel_loss=14.0 + rng.uniform(-2.0, 4.0),
+                    notes="Tirage haut explosif",
+                )
+            else:
+                add_log(
+                    d, 19, "Front Lever", "isometric", 0,
+                    tut=round(9.0 + prog * 4.5, 1),
+                    added_kg=0.0,
+                    rpe=7.2 + rng.uniform(-0.3, 0.4),
+                    drift_deg=3.5 - prog * 0.8,
+                    notes="Épaules déprimées, alignement propre",
+                )
+
+    elif profile_kind == "sweet_spot":
         # Progression régulière dans la zone optimale ACWR (0.95 - 1.20)
         training_days = [34, 32, 30, 28, 26, 24, 22, 20, 18, 16, 14, 12, 10, 8, 6, 4, 2, 1]
         for idx, d in enumerate(training_days):
@@ -280,8 +325,8 @@ def _generate_logs_for_profile(
 
 def seed_demo_athletes_and_logs(session: Session, coach_user: Any) -> int:
     """
-    Crée les 5 élèves tests (s'ils n'existent pas) et insère leurs séances fictives
-    si chacun n'a pas encore de logs d'entraînement.
+    Crée les élèves de démonstration (dont Élève Démo avec 15 séances sur 21 jours)
+    et insère leurs séances fictives si chacun n'a pas encore de logs d'entraînement.
     Retourne le nombre de logs insérés.
     """
     from core.database import TrainingLog, User
@@ -291,7 +336,12 @@ def seed_demo_athletes_and_logs(session: Session, coach_user: Any) -> int:
 
     for prof in DEMO_ATHLETES_PROFILES:
         uname = prof["username"]
-        athlete = session.query(User).filter(func.lower(User.username) == uname).first()
+        aliases = [uname] + [a.lower() for a in prof.get("legacy_aliases", [])]
+        athlete = (
+            session.query(User)
+            .filter(func.lower(User.username).in_(aliases) | (func.lower(User.full_name) == prof["full_name"].lower()))
+            .first()
+        )
         if athlete is None:
             athlete = User(
                 username=uname,
@@ -303,11 +353,15 @@ def seed_demo_athletes_and_logs(session: Session, coach_user: Any) -> int:
                 bodyweight_kg=float(prof["bodyweight_kg"]),
                 freq=prof["freq"],
                 goal=prof["goal"],
+                is_demo=True,
             )
             session.add(athlete)
             session.flush()
-        elif athlete.coach_id is None:
-            athlete.coach_id = int(coach_user.id)
+        else:
+            if not getattr(athlete, "is_demo", False):
+                athlete.is_demo = True
+            if athlete.coach_id is None:
+                athlete.coach_id = int(coach_user.id)
 
         ath_logs = session.query(func.count(TrainingLog.id)).filter(TrainingLog.athlete_id == int(athlete.id)).scalar() or 0
         if ath_logs > 0:

@@ -20,40 +20,22 @@ import hashlib
 from typing import Dict, Any, List, Optional, Tuple
 import numpy as np
 
-# Imports optionnels sécurisés
-CV2_IMPORT_ERROR = None
-try:
-    import cv2
-    HAS_CV2 = True
-except Exception as e:
-    HAS_CV2 = False
-    CV2_IMPORT_ERROR = str(e)
+# Imports lourds différés (cv2, scipy, mediapipe) pour rendu UI instantané
+from core.biomechanics import (
+    _get_cv2,
+    _get_mediapipe,
+    _get_scipy_signal,
+    compute_video_hash,
+    detect_optimal_rotation,
+    ensure_model_asset,
+    get_cached_pose_landmarker,
+)
 
-try:
-    from scipy import signal as scipy_signal
-    HAS_SCIPY = True
-except ImportError:
-    HAS_SCIPY = False
-
-MEDIAPIPE_IMPORT_ERROR = None
-try:
-    import mediapipe as mp
-    from mediapipe.tasks import python as mp_tasks
-    from mediapipe.tasks.python import vision as mp_vision
-    from mediapipe.tasks.python.vision import PoseLandmark
-    HAS_MEDIAPIPE = True
-except Exception as e:
-    HAS_MEDIAPIPE = False
-    MEDIAPIPE_IMPORT_ERROR = str(e)
-
-# Streamlit import pour le cache
 try:
     import streamlit as st
     HAS_STREAMLIT = True
 except ImportError:
     HAS_STREAMLIT = False
-
-from core.biomechanics import ensure_model_asset, compute_video_hash, detect_optimal_rotation
 
 
 # ==============================================================================
@@ -138,7 +120,8 @@ def apply_butterworth_filter_1d(
         return signal.copy()
 
     min_pad = 3 * max(order, 4)
-    if HAS_SCIPY and fps > 0 and len(signal) > min_pad:
+    scipy_signal = _get_scipy_signal()
+    if scipy_signal is not None and fps > 0 and len(signal) > min_pad:
         nyquist = 0.5 * fps
         norm_cutoff = min(0.95, max(0.01, cutoff_hz / nyquist))
         try:
@@ -174,15 +157,14 @@ def _run_3d_extraction_from_video(
     Lit la vidéo, applique l'auto-rotation 90°, extrait pose_world_landmarks (3D métrique),
     calcule le vecteur 6D et filtre les séries temporelles.
     """
-    if not HAS_CV2:
-        raise ImportError(f"OpenCV (cv2) n'est pas chargé : {CV2_IMPORT_ERROR}")
-    if not HAS_MEDIAPIPE:
-        raise ImportError(f"MediaPipe n'est pas chargé : {MEDIAPIPE_IMPORT_ERROR}")
+    cv2 = _get_cv2()
+    mp, _, _, _ = _get_mediapipe()
 
     if not os.path.exists(video_path):
         raise FileNotFoundError(f"Fichier introuvable : {video_path}")
 
     model_file = ensure_model_asset()
+    landmarker = get_cached_pose_landmarker(model_file)
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         raise ValueError(f"Impossible d'ouvrir la vidéo : {video_path}")
@@ -200,12 +182,6 @@ def _run_3d_extraction_from_video(
 
         effective_fps = real_fps / float(stride)
         dt = 1.0 / effective_fps
-
-        base_options = mp_tasks.BaseOptions(model_asset_path=model_file)
-        options = mp_vision.PoseLandmarkerOptions(
-            base_options=base_options,
-            running_mode=mp_vision.RunningMode.IMAGE
-        )
 
         timestamps: List[float] = []
         raw_frame_timestamps_ms: List[float] = []
@@ -225,122 +201,121 @@ def _run_3d_extraction_from_video(
             arr[:, 2] = 0.0
             return arr
 
-        with mp_vision.PoseLandmarker.create_from_options(options) as landmarker:
-            rot_code = detect_optimal_rotation(cap, landmarker, max_width=max_width)
-            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+        rot_code = detect_optimal_rotation(cap, landmarker, max_width=max_width)
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
-            frame_idx = 0
-            while True:
-                ret, frame_bgr = cap.read()
-                if not ret or frame_bgr is None:
-                    break
+        frame_idx = 0
+        while True:
+            ret, frame_bgr = cap.read()
+            if not ret or frame_bgr is None:
+                break
 
-                pos_ms = float(cap.get(cv2.CAP_PROP_POS_MSEC) or 0.0)
-                raw_frame_timestamps_ms.append(pos_ms)
+            pos_ms = float(cap.get(cv2.CAP_PROP_POS_MSEC) or 0.0)
+            raw_frame_timestamps_ms.append(pos_ms)
 
-                if frame_idx % stride != 0:
-                    frame_idx += 1
-                    continue
-
-                curr_time = round(frame_idx / real_fps, 3)
-
-                if rot_code is not None:
-                    frame_bgr = cv2.rotate(frame_bgr, rot_code)
-
-                h, w = frame_bgr.shape[:2]
-                if w > max_width:
-                    scale = max_width / float(w)
-                    new_w = max_width
-                    new_h = max(1, int(h * scale))
-                    frame_bgr = cv2.resize(frame_bgr, (new_w, new_h), interpolation=cv2.INTER_AREA)
-                    frame_dim = (new_w, new_h)
-                else:
-                    frame_dim = (w, h)
-
-                frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-                mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
-                res = landmarker.detect(mp_img)
-
-                has_w = res.pose_world_landmarks and len(res.pose_world_landmarks) > 0
-                if has_w:
-                    wl = res.pose_world_landmarks[0]
-                    # Points 3D métriques
-                    p_nose = np.array([wl[0].x, wl[0].y, wl[0].z])
-                    p_sh_l = np.array([wl[11].x, wl[11].y, wl[11].z])
-                    p_sh_r = np.array([wl[12].x, wl[12].y, wl[12].z])
-                    p_el_l = np.array([wl[13].x, wl[13].y, wl[13].z])
-                    p_el_r = np.array([wl[14].x, wl[14].y, wl[14].z])
-                    p_wr_l = np.array([wl[15].x, wl[15].y, wl[15].z])
-                    p_wr_r = np.array([wl[16].x, wl[16].y, wl[16].z])
-                    p_hip_l = np.array([wl[23].x, wl[23].y, wl[23].z])
-                    p_hip_r = np.array([wl[24].x, wl[24].y, wl[24].z])
-                    p_kn_l = np.array([wl[25].x, wl[25].y, wl[25].z])
-                    p_kn_r = np.array([wl[26].x, wl[26].y, wl[26].z])
-                    p_ak_l = np.array([wl[27].x, wl[27].y, wl[27].z])
-                    p_ak_r = np.array([wl[28].x, wl[28].y, wl[28].z])
-
-                    sh_mid = 0.5 * (p_sh_l + p_sh_r)
-                    hip_mid = 0.5 * (p_hip_l + p_hip_r)
-
-                    # 1. Angle d'épaule (flexion/extension) : hanche-épaule-coude
-                    sh_flex_l = compute_angle_3d(p_hip_l, p_sh_l, p_el_l)
-                    sh_flex_r = compute_angle_3d(p_hip_r, p_sh_r, p_el_r)
-                    shoulder_flex = 0.5 * (sh_flex_l + sh_flex_r)
-
-                    # 2. Angle d'abduction / écartement des bras (poignet-épaule G vs D)
-                    v_arm_l = p_wr_l - p_sh_l
-                    v_arm_r = p_wr_r - p_sh_r
-                    arm_abduct = compute_vector_angle_3d(v_arm_l, v_arm_r)
-
-                    # 3. Angle du coude : épaule-coude-poignet
-                    el_l = compute_angle_3d(p_sh_l, p_el_l, p_wr_l)
-                    el_r = compute_angle_3d(p_sh_r, p_el_r, p_wr_r)
-                    elbow_ang = 0.5 * (el_l + el_r)
-
-                    # 4. Angle de hanche (alignement) : épaule-hanche-genou
-                    hip_l = compute_angle_3d(p_sh_l, p_hip_l, p_kn_l)
-                    hip_r = compute_angle_3d(p_sh_r, p_hip_r, p_kn_r)
-                    hip_ang = 0.5 * (hip_l + hip_r)
-
-                    # 5. Inclinaison du tronc / horizontale (0° = horizontal, 90° = vertical)
-                    trunk_tilt = compute_trunk_horizontal_inclination_3d(sh_mid, hip_mid)
-
-                    # 6. Orientation ventrale/dorsale (+1.0 ventral, -1.0 dorsal)
-                    vd_orient = compute_torso_ventral_dorsal_orientation(p_sh_l, p_sh_r, sh_mid, hip_mid)
-
-                    timestamps.append(curr_time)
-                    raw_shoulder_flex.append(shoulder_flex)
-                    raw_arm_abduct.append(arm_abduct)
-                    raw_elbow.append(elbow_ang)
-                    raw_hip.append(hip_ang)
-                    raw_trunk_tilt.append(trunk_tilt)
-                    raw_ventral_dorsal.append(vd_orient)
-                    raw_hip_y.append(float(hip_mid[1]))
-                    detection_valid.append(True)
-
-                    xyv = _empty_xyv()
-                    if res.pose_landmarks and len(res.pose_landmarks) > 0:
-                        lm2d = res.pose_landmarks[0]
-                        for lm_idx, lm in enumerate(lm2d[:33]):
-                            vis_v = getattr(lm, "visibility", 0.0)
-                            xyv[lm_idx, 0] = float(lm.x)
-                            xyv[lm_idx, 1] = float(lm.y)
-                            xyv[lm_idx, 2] = float(vis_v) if vis_v is not None else 0.0
-                    landmarks_2d_list.append(xyv)
-                else:
-                    # Répétition de la dernière frame valide si dispo
-                    timestamps.append(curr_time)
-                    raw_shoulder_flex.append(raw_shoulder_flex[-1] if raw_shoulder_flex else 90.0)
-                    raw_arm_abduct.append(raw_arm_abduct[-1] if raw_arm_abduct else 15.0)
-                    raw_elbow.append(raw_elbow[-1] if raw_elbow else 180.0)
-                    raw_hip.append(raw_hip[-1] if raw_hip else 170.0)
-                    raw_trunk_tilt.append(raw_trunk_tilt[-1] if raw_trunk_tilt else 0.0)
-                    raw_ventral_dorsal.append(raw_ventral_dorsal[-1] if raw_ventral_dorsal else 1.0)
-                    raw_hip_y.append(raw_hip_y[-1] if raw_hip_y else 0.0)
-                    detection_valid.append(False)
-                    landmarks_2d_list.append(_empty_xyv())
-
+            if frame_idx % stride != 0:
                 frame_idx += 1
+                continue
+
+            curr_time = round(frame_idx / real_fps, 3)
+
+            if rot_code is not None:
+                frame_bgr = cv2.rotate(frame_bgr, rot_code)
+
+            h, w = frame_bgr.shape[:2]
+            if w > max_width:
+                scale = max_width / float(w)
+                new_w = max_width
+                new_h = max(1, int(h * scale))
+                frame_bgr = cv2.resize(frame_bgr, (new_w, new_h), interpolation=cv2.INTER_AREA)
+                frame_dim = (new_w, new_h)
+            else:
+                frame_dim = (w, h)
+
+            frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+            mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
+            res = landmarker.detect(mp_img)
+
+            has_w = res.pose_world_landmarks and len(res.pose_world_landmarks) > 0
+            if has_w:
+                wl = res.pose_world_landmarks[0]
+                # Points 3D métriques
+                p_nose = np.array([wl[0].x, wl[0].y, wl[0].z])
+                p_sh_l = np.array([wl[11].x, wl[11].y, wl[11].z])
+                p_sh_r = np.array([wl[12].x, wl[12].y, wl[12].z])
+                p_el_l = np.array([wl[13].x, wl[13].y, wl[13].z])
+                p_el_r = np.array([wl[14].x, wl[14].y, wl[14].z])
+                p_wr_l = np.array([wl[15].x, wl[15].y, wl[15].z])
+                p_wr_r = np.array([wl[16].x, wl[16].y, wl[16].z])
+                p_hip_l = np.array([wl[23].x, wl[23].y, wl[23].z])
+                p_hip_r = np.array([wl[24].x, wl[24].y, wl[24].z])
+                p_kn_l = np.array([wl[25].x, wl[25].y, wl[25].z])
+                p_kn_r = np.array([wl[26].x, wl[26].y, wl[26].z])
+                p_ak_l = np.array([wl[27].x, wl[27].y, wl[27].z])
+                p_ak_r = np.array([wl[28].x, wl[28].y, wl[28].z])
+
+                sh_mid = 0.5 * (p_sh_l + p_sh_r)
+                hip_mid = 0.5 * (p_hip_l + p_hip_r)
+
+                # 1. Angle d'épaule (flexion/extension) : hanche-épaule-coude
+                sh_flex_l = compute_angle_3d(p_hip_l, p_sh_l, p_el_l)
+                sh_flex_r = compute_angle_3d(p_hip_r, p_sh_r, p_el_r)
+                shoulder_flex = 0.5 * (sh_flex_l + sh_flex_r)
+
+                # 2. Angle d'abduction / écartement des bras (poignet-épaule G vs D)
+                v_arm_l = p_wr_l - p_sh_l
+                v_arm_r = p_wr_r - p_sh_r
+                arm_abduct = compute_vector_angle_3d(v_arm_l, v_arm_r)
+
+                # 3. Angle du coude : épaule-coude-poignet
+                el_l = compute_angle_3d(p_sh_l, p_el_l, p_wr_l)
+                el_r = compute_angle_3d(p_sh_r, p_el_r, p_wr_r)
+                elbow_ang = 0.5 * (el_l + el_r)
+
+                # 4. Angle de hanche (alignement) : épaule-hanche-genou
+                hip_l = compute_angle_3d(p_sh_l, p_hip_l, p_kn_l)
+                hip_r = compute_angle_3d(p_sh_r, p_hip_r, p_kn_r)
+                hip_ang = 0.5 * (hip_l + hip_r)
+
+                # 5. Inclinaison du tronc / horizontale (0° = horizontal, 90° = vertical)
+                trunk_tilt = compute_trunk_horizontal_inclination_3d(sh_mid, hip_mid)
+
+                # 6. Orientation ventrale/dorsale (+1.0 ventral, -1.0 dorsal)
+                vd_orient = compute_torso_ventral_dorsal_orientation(p_sh_l, p_sh_r, sh_mid, hip_mid)
+
+                timestamps.append(curr_time)
+                raw_shoulder_flex.append(shoulder_flex)
+                raw_arm_abduct.append(arm_abduct)
+                raw_elbow.append(elbow_ang)
+                raw_hip.append(hip_ang)
+                raw_trunk_tilt.append(trunk_tilt)
+                raw_ventral_dorsal.append(vd_orient)
+                raw_hip_y.append(float(hip_mid[1]))
+                detection_valid.append(True)
+
+                xyv = _empty_xyv()
+                if res.pose_landmarks and len(res.pose_landmarks) > 0:
+                    lm2d = res.pose_landmarks[0]
+                    for lm_idx, lm in enumerate(lm2d[:33]):
+                        vis_v = getattr(lm, "visibility", 0.0)
+                        xyv[lm_idx, 0] = float(lm.x)
+                        xyv[lm_idx, 1] = float(lm.y)
+                        xyv[lm_idx, 2] = float(vis_v) if vis_v is not None else 0.0
+                landmarks_2d_list.append(xyv)
+            else:
+                # Répétition de la dernière frame valide si dispo
+                timestamps.append(curr_time)
+                raw_shoulder_flex.append(raw_shoulder_flex[-1] if raw_shoulder_flex else 90.0)
+                raw_arm_abduct.append(raw_arm_abduct[-1] if raw_arm_abduct else 15.0)
+                raw_elbow.append(raw_elbow[-1] if raw_elbow else 180.0)
+                raw_hip.append(raw_hip[-1] if raw_hip else 170.0)
+                raw_trunk_tilt.append(raw_trunk_tilt[-1] if raw_trunk_tilt else 0.0)
+                raw_ventral_dorsal.append(raw_ventral_dorsal[-1] if raw_ventral_dorsal else 1.0)
+                raw_hip_y.append(raw_hip_y[-1] if raw_hip_y else 0.0)
+                detection_valid.append(False)
+                landmarks_2d_list.append(_empty_xyv())
+
+            frame_idx += 1
 
         n_samples = len(timestamps)
         if n_samples == 0:

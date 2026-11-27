@@ -11,7 +11,6 @@ from core.database import (
     create_athlete_for_coach,
     delete_athlete_for_coach,
     get_coach_athletes,
-    get_training_logs_for_athlete,
     get_user_by_id,
     link_athlete_to_coach_by_code,
     login_user_in_session,
@@ -146,15 +145,16 @@ def render_tab_athletes() -> None:
 
     for ath in matched:
         aid = int(ath["id"])
-        ath_logs = get_training_logs_for_athlete(curr_u, target_athlete_id=aid)
-        avg_tut = (sum(l["tut_effective_sec"] for l in ath_logs) / len(ath_logs)) if ath_logs else 0.0
-        avg_rpe = (sum(l["rpe"] for l in ath_logs) / len(ath_logs)) if ath_logs else 0.0
+        nb_logs = int(ath.get("session_count", 0) or 0)
+        avg_tut = float(ath.get("avg_tut", 0.0) or 0.0)
+        avg_rpe = float(ath.get("avg_rpe", 0.0) or 0.0)
         safe_name = html.escape(str(ath["full_name"]))
         safe_uname = html.escape(str(ath["username"]))
         safe_freq = html.escape(str(ath.get("freq", "4x / semaine")))
         safe_goal = html.escape(str(ath.get("goal", "") or "Objectif général"))
         bw_val = float(ath.get("bodyweight_kg", 70.0))
-        is_selected = int(st.session_state.get("active_athlete_id") or u_id) == aid
+        is_selected = int(st.session_state.get("selected_athlete_id") or st.session_state.get("active_athlete_id") or u_id) == aid
+        demo_pill = '<span class="badge-amber">Démo</span>' if ath.get("is_demo") else ""
 
         border_style = "border:1px solid rgba(0,229,255,0.45);" if is_selected else ""
         render_html(f"""
@@ -164,7 +164,8 @@ def render_tab_athletes() -> None:
                         <h4 style="margin:0; font-size:1.05rem; font-weight:800; color:#F8FAFC;">👤 {safe_name} <small style="color:#64748B;">@{safe_uname}</small></h4>
                     </div>
                     <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                        <span class="badge-lime">{len(ath_logs)} Séances</span>
+                        {demo_pill}
+                        <span class="badge-lime">{nb_logs} Séances</span>
                         <span class="badge-cyan">PDC: {bw_val:.0f} kg</span>
                         <span class="badge-amber">TUT: {avg_tut:.1f}s • RPE: {avg_rpe:.1f}</span>
                     </div>
@@ -182,9 +183,9 @@ def render_tab_athletes() -> None:
         with c_sel:
             lbl_s = "📊 Voir ses stats (Actif)" if is_selected else "🎯 Suivre cet élève"
             if st.button(lbl_s, key=f"sel_ath_{aid}", type="primary" if is_selected else "secondary", use_container_width=True):
-                set_active_athlete_in_session(aid)
+                set_active_athlete_in_session(aid, sync_widgets=False)
                 st.session_state["active_athlete_profile"] = ath
-                st.session_state["_redirect_tab_idx"] = 2
+                st.session_state["active_tab"] = "📊 Stats & ACWR"
                 st.toast(f"🎯 Suivi ouvert : {ath['full_name']}")
                 st.rerun()
         with c_ed:

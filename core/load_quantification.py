@@ -62,26 +62,28 @@ def compute_external_load_au(
     exo_type: str,
     tut_effective_sec: float,
     reps: int,
-    difficulty_coef: float,
+    difficulty_coef: float = 1.0,
     added_load_kg: float = 0.0,
     bodyweight_kg: float = 70.0,
 ) -> float:
     """
-    Calcule la charge externe pondérée en Unités Arbitraires (UA) :
-    - Isométrique : TUT_effectif * Coef_figure * (1 + Lest / PDC)
-    - Dynamique   : Reps * TUT_actif * Coef_figure
+    Calcule la charge externe évolutive sans multiplicateurs opaques :
+    - Facteur de lest : (1 + Lest / PDC) uniquement si Lest > 0, sinon 1.0
+    - Isométrique : TUT_effectif * facteur_lest
+    - Dynamique   : (Reps * TUT_actif si TUT > 0 sinon Reps) * facteur_lest
     """
     tut = max(0.0, float(tut_effective_sec or 0.0))
-    coef = max(0.1, float(difficulty_coef or 1.0))
+    bw = max(25.0, float(bodyweight_kg or 70.0))
+    added = max(0.0, float(added_load_kg or 0.0))
+    weight_factor = (1.0 + added / bw) if added > 0.0 else 1.0
     is_dyn = "dyn" in str(exo_type).lower()
 
     if is_dyn:
         n_reps = max(0, int(reps or 0))
-        return round(float(n_reps) * tut * coef, 2)
+        base = (float(n_reps) * tut) if tut > 0.0 else float(n_reps)
+        return round(base * weight_factor, 2)
 
-    bw = max(25.0, float(bodyweight_kg or 70.0))
-    added = max(0.0, float(added_load_kg or 0.0))
-    return round(tut * coef * (1.0 + added / bw), 2)
+    return round(tut * weight_factor, 2)
 
 
 def compute_srpe_load(
@@ -91,16 +93,13 @@ def compute_srpe_load(
     reps: int,
 ) -> float:
     """
-    Calcule la charge interne sRPE = RPE * Volume/Durée :
-    - Isométrique : RPE * TUT_effectif (s)
-    - Dynamique   : RPE * TUT_actif (ou RPE * Reps si durée active nulle)
+    Calcule la charge interne sRPE = RPE * TUT_effectif (ou RPE * Reps si dynamique sans TUT).
     """
     clean_rpe = max(1.0, min(10.0, float(rpe or 1.0)))
     tut = max(0.0, float(tut_effective_sec or 0.0))
     is_dyn = "dyn" in str(exo_type).lower()
-    if is_dyn:
-        vol = tut if tut > 0.0 else float(max(0, int(reps or 0)))
-        return round(clean_rpe * vol, 2)
+    if is_dyn and tut <= 0.0:
+        return round(clean_rpe * float(max(0, int(reps or 0))), 2)
     return round(clean_rpe * tut, 2)
 
 
@@ -114,18 +113,11 @@ def compute_set_load_bundle(
     rpe: float,
     difficulty_coef: float = None,
 ) -> Dict[str, Any]:
-    """Calcule en un appel l'ensemble des métriques de charge d'une série."""
-    cfg = load_quantification_config()
-    coef = (
-        float(difficulty_coef)
-        if difficulty_coef is not None and float(difficulty_coef) > 0
-        else get_exercise_difficulty_coef(exercise, exo_type=exo_type, config=cfg)
-    )
+    """Calcule en un appel l'ensemble des métriques de charge d'une série (sans coefficient opaque)."""
     ext_au = compute_external_load_au(
         exo_type=exo_type,
         tut_effective_sec=tut_effective_sec,
         reps=reps,
-        difficulty_coef=coef,
         added_load_kg=added_load_kg,
         bodyweight_kg=bodyweight_kg,
     )
@@ -136,8 +128,8 @@ def compute_set_load_bundle(
         reps=reps,
     )
     return {
-        "difficulty_coef": round(coef, 3),
+        "difficulty_coef": 1.0,
         "external_load_au": ext_au,
         "srpe_load": srpe,
-        "is_tendon_stress": is_high_tendon_stress_exercise(exercise, config=cfg),
+        "is_tendon_stress": False,
     }
