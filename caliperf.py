@@ -150,20 +150,26 @@ for idx, (tab_key, dock_lbl) in enumerate(zip(MAIN_TABS, NAV_DOCK_LABELS)):
             if not is_act:
                 st.session_state["active_tab"] = tab_key
                 st.rerun()
+        if idx == 0:
+            inject_swipe_engine(stage="main")
 
 active_tab_idx = MAIN_TABS.index(cur_tab)
 prev_tab_idx = st.session_state.get("_prev_tab_idx", active_tab_idx)
+tab_switch_seq = int(st.session_state.get("_tab_switch_seq", 0))
 if active_tab_idx > prev_tab_idx:
     anim_dir = "right"
+    tab_switch_seq += 1
 elif active_tab_idx < prev_tab_idx:
     anim_dir = "left"
+    tab_switch_seq += 1
 else:
     anim_dir = "none"
 st.session_state["_prev_tab_idx"] = active_tab_idx
+st.session_state["_tab_switch_seq"] = tab_switch_seq
 
 render_html(
     f'<div id="caliperf-active-view" class="cali-active-view" '
-    f'data-tab-idx="{active_tab_idx}" data-anim-dir="{anim_dir}" '
+    f'data-tab-idx="{active_tab_idx}" data-anim-dir="{anim_dir}" data-tab-seq="{tab_switch_seq}" '
     f'style="height:0;overflow:hidden;"></div>'
 )
 
@@ -183,6 +189,3 @@ elif cur_tab == "👥 Athlètes":
 elif cur_tab == "⚙️ Réglages":
     from ui.tab_settings import render_tab_settings
     render_tab_settings()
-
-# 5. Moteur de swipe V7 stabilisé (aucun décalage horizontal, anti double-swipe)
-inject_swipe_engine(stage="main")

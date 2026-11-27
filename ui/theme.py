@@ -56,7 +56,8 @@ html, body,
 [data-testid="stAppViewContainer"],
 .main,
 [data-testid="stMain"],
-[data-testid="stMainBlockContainer"] {
+[data-testid="stMainBlockContainer"],
+[data-testid="stVerticalBlock"]:has(#caliperf-active-view) {
     overflow-x: clip !important;
     max-width: 100vw !important;
     width: 100% !important;
@@ -87,6 +88,8 @@ html, body,
 
 /* Masquer proprement la hauteur des scripts invisibles (sans display:none qui suspend les iframes) */
 [data-testid="stElementContainer"]:has(iframe[height="0"]),
+[data-testid="stElementContainer"]:has(iframe[srcdoc*="cali-"]),
+[data-testid="stHorizontalBlock"]:has(#caliperf-nav-marker) [data-testid="stElementContainer"]:has(iframe),
 .element-container:has(iframe[height="0"]),
 [data-testid="stElementContainer"]:has([data-cali-js]),
 .element-container:has([data-cali-js]) {
@@ -243,29 +246,92 @@ html, body,
     padding: 0 !important;
     overflow: hidden !important;
 }
-/* Animation directionnelle fluide 60fps à l'arrivée d'un onglet (toujours bornée par overflow-x: clip) */
-[data-testid="stElementContainer"]:has(#caliperf-active-view[data-anim-dir="right"]) ~ [data-testid="stElementContainer"] {
-    animation: caliGlideRight 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+/* Scène Pager Swipe Instagram-like (position fixed hors flux = zéro scrollWidth/décalage) */
+#caliperf-swipe-stage {
+    position: fixed !important;
+    left: 0 !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    overflow: hidden !important;
+    pointer-events: none !important;
+    z-index: 45 !important;
+    box-sizing: border-box !important;
+}
+#caliperf-swipe-incoming {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    background: #05070C !important;
+    background-image:
+        radial-gradient(ellipse 80% 50% at 15% -5%, rgba(0, 229, 255, 0.085) 0%, transparent 60%),
+        linear-gradient(rgba(255, 255, 255, 0.014) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.014) 1px, transparent 1px) !important;
+    background-size: 100% 100%, 36px 36px, 36px 36px !important;
+    padding: 0.45rem 0.85rem 80px 0.85rem !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+    border-left: 1px solid rgba(255, 255, 255, 0.10) !important;
+    border-right: 1px solid rgba(255, 255, 255, 0.10) !important;
+    box-shadow: -14px 0 36px rgba(0, 0, 0, 0.72), 14px 0 36px rgba(0, 0, 0, 0.72) !important;
     will-change: transform, opacity;
 }
-[data-testid="stElementContainer"]:has(#caliperf-active-view[data-anim-dir="left"]) ~ [data-testid="stElementContainer"] {
-    animation: caliGlideLeft 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
-    will-change: transform, opacity;
+.cali-ghost-card {
+    background: rgba(13, 18, 30, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 16px;
+    padding: 1rem 1.05rem;
+    margin-bottom: 0.75rem;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
 }
-[data-testid="stElementContainer"]:has(#caliperf-active-view[data-anim-dir="none"]) ~ [data-testid="stElementContainer"] {
-    animation: caliSoftFade 0.16s ease both;
+.cali-ghost-badge {
+    display: inline-block;
+    font-size: 0.66rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    color: #00E5FF;
+    background: rgba(0, 229, 255, 0.10);
+    border: 1px solid rgba(0, 229, 255, 0.28);
+    border-radius: 999px;
+    padding: 2px 9px;
+    margin-bottom: 0.45rem;
 }
-@keyframes caliGlideRight {
-    0% { opacity: 0.18; transform: translate3d(26px, 0, 0); }
-    100% { opacity: 1; transform: translate3d(0, 0, 0); }
+.cali-ghost-title {
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: #F8FAFC;
+    margin-bottom: 0.25rem;
 }
-@keyframes caliGlideLeft {
-    0% { opacity: 0.18; transform: translate3d(-26px, 0, 0); }
-    100% { opacity: 1; transform: translate3d(0, 0, 0); }
+.cali-ghost-sub {
+    font-size: 0.82rem;
+    color: #94A3B8;
+    line-height: 1.35;
 }
-@keyframes caliSoftFade {
-    from { opacity: 0.72; }
-    to { opacity: 1; }
+.cali-ghost-bar {
+    height: 10px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.07);
+    margin-top: 0.65rem;
+}
+.cali-dock-optimistic-on {
+    background: linear-gradient(135deg, #00E5FF 0%, #0EA5E9 100%) !important;
+    color: #020617 !important;
+    border-color: rgba(255, 255, 255, 0.25) !important;
+    box-shadow: 0 3px 12px rgba(0, 229, 255, 0.3) !important;
+}
+.cali-dock-optimistic-on p {
+    color: #020617 !important;
+    font-weight: 800 !important;
+}
+.cali-dock-optimistic-off {
+    background: transparent !important;
+    color: var(--cali-muted) !important;
+    box-shadow: none !important;
+}
+.cali-dock-optimistic-off p {
+    color: var(--cali-muted) !important;
+    font-weight: 700 !important;
 }
 
 /* Vidéo responsive (ergonomie mobile : voir vidéo + chrono ensemble) */
@@ -624,31 +690,41 @@ SWIPE_ENGINE_JS = r"""
         try { targetWin._caliperfSwipeCleanup(); } catch (errClean) {}
     }
 
+    targetWin._caliperfTabSnaps = targetWin._caliperfTabSnaps || {};
+
+    var TAB_META = [
+        { icon: '🎥', name: 'Studio Vidéo', sub: 'Auto-Track 3D, Répétitions & Fatigue Intra-Série', badge: 'BIOMÉCANIQUE 3D' },
+        { icon: '📐', name: 'Calibrage 3D', sub: 'Bibliothèque de Figures & Contrôle Qualité', badge: 'RÉFÉRENTIELS' },
+        { icon: '📊', name: 'Stats & ACWR', sub: 'Charge Hebdomadaire, EWMA & Stress Tendineux', badge: 'SUIVI LONGITUDINAL' },
+        { icon: '👥', name: 'Athlètes', sub: 'Effectif, Profils & Suivi Personnalisé', badge: 'ESPACE COACH' },
+        { icon: '⚙️', name: 'Réglages', sub: 'Profil, Apparence & Export CSV', badge: 'CONFIGURATION' }
+    ];
+
     var state = {
+        mode: 'dock',
         stContainer: null,
         tabsRoot: null,
         tabs: [],
         panels: [],
+        blocks: [],
         lastActiveIdx: 0,
         startX: 0,
         startY: 0,
         currentX: 0,
+        currentY: 0,
         dx: 0,
-        startTime: 0,
+        samples: [],
         isTracking: false,
         isHorizontal: false,
-        isAnimating: false,
-        blockClickUntil: 0,
-        activePanel: null,
-        neighborPanel: null,
+        isVerticalScroll: false,
+        navLockUntil: 0,
         targetIdx: null,
         dir: 0,
-        containerW: 360,
-        peekTopPx: 0,
-        needScrollResetOnCommit: false,
-        resetScrollTop: 0,
+        vw: 390,
         rafId: null,
-        resizeDispatchedOnDrag: false
+        stageTimer: null,
+        snapTimer: null,
+        snapScheduledTab: null
     };
 
     var noSwipeSelector = [
@@ -662,43 +738,49 @@ SWIPE_ENGINE_JS = r"""
         '[role="grid"]', '[role="treegrid"]', '[role="row"]', '[role="gridcell"]',
         '.glideDataEditor', 'canvas',
         '[data-testid="stPlotlyChart"]', '.js-plotly-plot', '.plotly', 'svg.main-svg', '.draglayer',
+        '[data-testid="stVegaLiteChart"]', '.vega-embed',
         '[data-baseweb="tab-list"]', '[data-baseweb="tab"]', '[role="tab"]',
         '.stSelectbox', '[role="combobox"]', '[role="listbox"]',
+        '[role="dialog"]', '[data-testid="stDialog"]', '[data-baseweb="modal"]', '[data-baseweb="popover"]',
         '[data-no-swipe]', '.no-swipe'
     ].join(', ');
 
-    function resolveMainStTabs(touchTarget) {
-        /* 1. Priorité absolue au conteneur d'onglets principal identifié par notre ancre */
-        var anchor = targetDoc.getElementById('caliperf-main-tabs-anchor');
-        if (anchor) {
-            var block = anchor.closest('[data-testid="stElementContainer"], .element-container') || anchor.parentElement;
-            var cursor = block ? block.nextElementSibling : null;
-            var steps = 0;
-            while (cursor && steps < 12) {
-                if (cursor.matches && cursor.matches('[data-testid="stTabs"], .stTabs')) {
-                    return cursor;
-                }
-                if (cursor.querySelector) {
-                    var found = cursor.querySelector('[data-testid="stTabs"], .stTabs');
-                    if (found) return found;
-                }
-                cursor = cursor.nextElementSibling;
-                steps++;
-            }
-        }
-        /* 2. Sinon (écran de connexion), utiliser l'onglet sous le doigt ou le premier .stTabs */
-        if (touchTarget && touchTarget.closest) {
-            var localSt = touchTarget.closest('[data-testid="stTabs"], .stTabs');
-            if (localSt) return localSt;
-        }
-        return targetDoc.querySelector('[data-testid="stTabs"], .stTabs');
+    function getNavRow() {
+        var navMark = targetDoc.getElementById('caliperf-nav-marker');
+        if (!navMark) return null;
+        return navMark.closest('[data-testid="stHorizontalBlock"]');
     }
 
-    function getTabsRootFromContainer(stEl) {
-        if (!stEl) return null;
-        var firstPanel = stEl.querySelector('[data-baseweb="tab-panel"], [role="tabpanel"]');
-        if (firstPanel && firstPanel.parentElement) return firstPanel.parentElement;
-        return stEl.firstElementChild || stEl;
+    function getDockButtons() {
+        var navRow = getNavRow();
+        if (!navRow) return [];
+        return Array.from(navRow.querySelectorAll('button'));
+    }
+
+    function getActiveViewMarker() {
+        return targetDoc.getElementById('caliperf-active-view');
+    }
+
+    function getDockContentBlocks() {
+        var viewMarker = getActiveViewMarker();
+        if (!viewMarker) return [];
+        var markerContainer = viewMarker.closest('[data-testid="stElementContainer"], .element-container');
+        if (!markerContainer || !markerContainer.parentElement) return [];
+        var out = [];
+        var cur = markerContainer.nextElementSibling;
+        while (cur) {
+            if (cur.getAttribute && cur.getAttribute('data-stale') === 'true') {
+                cur = cur.nextElementSibling;
+                continue;
+            }
+            if (cur.querySelector && (cur.querySelector('[data-cali-js]') || cur.querySelector('iframe[height="0"]'))) {
+                cur = cur.nextElementSibling;
+                continue;
+            }
+            out.push(cur);
+            cur = cur.nextElementSibling;
+        }
+        return out;
     }
 
     function getDirectTabs(stEl) {
@@ -708,18 +790,37 @@ SWIPE_ENGINE_JS = r"""
         });
     }
 
-    function getDirectPanels(stEl) {
-        if (!stEl) return [];
-        return Array.from(stEl.querySelectorAll('[data-baseweb="tab-panel"], [role="tabpanel"]')).filter(function(p) {
-            return p.closest('[data-testid="stTabs"], .stTabs') === stEl;
-        });
-    }
-
     function getActiveIndex(tabs) {
         for (var i = 0; i < tabs.length; i++) {
             if (tabs[i].getAttribute('aria-selected') === 'true') return i;
         }
         return 0;
+    }
+
+    function resolveNavMode(touchTarget) {
+        var navRow = getNavRow();
+        if (navRow) {
+            var navBtns = Array.from(navRow.querySelectorAll('button'));
+            if (navBtns.length > 0) {
+                var viewMarker = getActiveViewMarker();
+                var activeIdx = viewMarker ? parseInt(viewMarker.getAttribute('data-tab-idx') || '0', 10) : -1;
+                if (isNaN(activeIdx) || activeIdx < 0 || activeIdx >= navBtns.length) {
+                    activeIdx = 0;
+                    for (var i = 0; i < navBtns.length; i++) {
+                        if (navBtns[i].getAttribute('kind') === 'primary') { activeIdx = i; break; }
+                    }
+                }
+                return { mode: 'dock', stEl: navRow, tabs: navBtns, activeIdx: activeIdx };
+            }
+        }
+        var stEl = null;
+        if (touchTarget && touchTarget.closest) {
+            stEl = touchTarget.closest('[data-testid="stTabs"], .stTabs');
+        }
+        if (!stEl) stEl = targetDoc.querySelector('[data-testid="stTabs"], .stTabs');
+        if (!stEl) return null;
+        var tabs = getDirectTabs(stEl);
+        return { mode: 'tabs', stEl: stEl, tabs: tabs, activeIdx: getActiveIndex(tabs) };
     }
 
     function syncProgressDots(activeIdx, previewIdx, progress) {
@@ -751,8 +852,29 @@ SWIPE_ENGINE_JS = r"""
         }
     }
 
+    function setOptimisticDock(targetIdx) {
+        var btns = getDockButtons();
+        for (var i = 0; i < btns.length; i++) {
+            btns[i].classList.remove('cali-dock-optimistic-on', 'cali-dock-optimistic-off');
+            if (i === targetIdx) {
+                btns[i].classList.add('cali-dock-optimistic-on');
+            } else {
+                btns[i].classList.add('cali-dock-optimistic-off');
+            }
+        }
+    }
+
+    function clearOptimisticDock() {
+        var btns = getDockButtons();
+        for (var i = 0; i < btns.length; i++) {
+            btns[i].classList.remove('cali-dock-optimistic-on', 'cali-dock-optimistic-off');
+        }
+    }
+
     function isInsideScrollableOrBlocked(el) {
         if (!el) return false;
+        var navRow = getNavRow();
+        if (navRow && navRow.contains(el)) return true;
         var editableEl = el.closest ? el.closest('input:not([type="file"]):not([type="range"]), textarea') : null;
         if (editableEl && editableEl === targetDoc.activeElement) return true;
         if (el.closest && el.closest(noSwipeSelector)) return true;
@@ -787,61 +909,152 @@ SWIPE_ENGINE_JS = r"""
         } catch (errR) {}
     }
 
-    function clearInlinePanelStyles(panel) {
-        if (!panel) return;
-        panel.classList.remove('cali-swipe-peek');
-        panel.style.position = '';
-        panel.style.top = '';
-        panel.style.left = '';
-        panel.style.width = '';
-        panel.style.zIndex = '';
-        panel.style.pointerEvents = '';
-        panel.style.willChange = '';
-        panel.style.transition = '';
-        panel.style.transform = '';
-        panel.style.opacity = '';
+    function clearBlockStyles(blocks) {
+        if (!blocks) return;
+        for (var i = 0; i < blocks.length; i++) {
+            var b = blocks[i];
+            if (!b) continue;
+            if (b.getAnimations) {
+                try {
+                    var anims = b.getAnimations();
+                    for (var j = 0; j < anims.length; j++) anims[j].cancel();
+                } catch (ea) {}
+            }
+            b.style.transition = '';
+            b.style.transform = '';
+            b.style.opacity = '';
+            b.style.willChange = '';
+        }
     }
 
-    function prepareNeighborPanel(targetIdx, activePanel, tabsRoot) {
-        var neighbor = state.panels[targetIdx];
-        if (!neighbor) return null;
+    function clearAllSiblingsStyles() {
+        var viewMarker = getActiveViewMarker();
+        if (!viewMarker) return;
+        var mc = viewMarker.closest('[data-testid="stElementContainer"], .element-container');
+        if (!mc) return;
+        var all = [];
+        var cur = mc.nextElementSibling;
+        while (cur) {
+            all.push(cur);
+            cur = cur.nextElementSibling;
+        }
+        clearBlockStyles(all);
+    }
 
-        var topPx = activePanel.offsetTop;
-        var needReset = false;
-        var resetTop = 0;
-        var mainScroller = targetDoc.querySelector('[data-testid="stMain"]');
+    function buildGhostCardHtml(idx) {
+        var m = TAB_META[idx] || { icon: '⚡', name: 'CaliPerf', sub: 'Chargement de la vue...', badge: 'CALIPERF PRO' };
+        return (
+            '<div class="cali-ghost-card">' +
+                '<div class="cali-ghost-badge">' + m.badge + '</div>' +
+                '<div class="cali-ghost-title">' + m.icon + ' ' + m.name + '</div>' +
+                '<div class="cali-ghost-sub">' + m.sub + '</div>' +
+                '<div class="cali-ghost-bar" style="width:72%;"></div>' +
+            '</div>' +
+            '<div class="cali-ghost-card" style="opacity:0.78;">' +
+                '<div class="cali-ghost-bar" style="width:44%;margin-top:0;"></div>' +
+                '<div class="cali-ghost-bar" style="width:92%;height:42px;border-radius:12px;"></div>' +
+                '<div class="cali-ghost-bar" style="width:65%;"></div>' +
+            '</div>'
+        );
+    }
 
-        if (mainScroller && tabsRoot) {
-            var tabsRect = tabsRoot.getBoundingClientRect();
-            var mainRect = mainScroller.getBoundingClientRect();
-            var headerAllowance = 56;
-            var visibleTopInTabs = (mainRect.top + headerAllowance) - tabsRect.top;
-            if (visibleTopInTabs > topPx + 24) {
-                topPx = Math.min(
-                    visibleTopInTabs,
-                    Math.max(topPx, activePanel.offsetTop + activePanel.offsetHeight - 240)
-                );
-                needReset = true;
-                var panelTopInScroll = mainScroller.scrollTop + (activePanel.getBoundingClientRect().top - mainRect.top);
-                resetTop = Math.max(0, panelTopInScroll - headerAllowance);
+    function captureTabSnapshot(tabIdx) {
+        if (typeof tabIdx !== 'number' || tabIdx < 0 || tabIdx > 4) return;
+        var blocks = getDockContentBlocks();
+        if (!blocks.length) return;
+        try {
+            var parts = [];
+            for (var i = 0; i < blocks.length && parts.length < 6; i++) {
+                if ((blocks[i].offsetHeight || 0) < 6) continue;
+                var clone = blocks[i].cloneNode(true);
+                var bad = clone.querySelectorAll('script, style, iframe, video, audio, input, select, textarea, form');
+                for (var j = 0; j < bad.length; j++) {
+                    var ph = targetDoc.createElement('div');
+                    var tag = bad[j].tagName;
+                    if (tag === 'VIDEO' || tag === 'IFRAME' || tag === 'AUDIO') {
+                        ph.style.cssText = 'height:110px;border-radius:12px;background:rgba(13,18,30,0.85);border:1px solid rgba(255,255,255,0.06);margin:6px 0;';
+                    } else {
+                        ph.style.cssText = 'display:none;';
+                    }
+                    if (bad[j].parentNode) bad[j].parentNode.replaceChild(ph, bad[j]);
+                }
+                var allAttrs = clone.querySelectorAll('[id], [name], [for]');
+                for (var k = 0; k < allAttrs.length; k++) {
+                    allAttrs[k].removeAttribute('id');
+                    allAttrs[k].removeAttribute('name');
+                    allAttrs[k].removeAttribute('for');
+                }
+                if (clone.removeAttribute) clone.removeAttribute('id');
+                parts.push(clone.outerHTML);
+            }
+            var htmlStr = parts.join('');
+            if (htmlStr && htmlStr.length > 400 && htmlStr.length < 180000) {
+                targetWin._caliperfTabSnaps[tabIdx] = htmlStr;
+            }
+        } catch (errSnap) {}
+    }
+
+    function removeSwipeStage() {
+        if (state.stageTimer) {
+            targetWin.clearTimeout(state.stageTimer);
+            state.stageTimer = null;
+        }
+        var oldStage = targetDoc.getElementById('caliperf-swipe-stage');
+        if (oldStage && oldStage.parentNode) {
+            oldStage.parentNode.removeChild(oldStage);
+        }
+    }
+
+    function dissolveSwipeStage() {
+        var stage = targetDoc.getElementById('caliperf-swipe-stage');
+        if (!stage) return;
+        if (state.stageTimer) {
+            targetWin.clearTimeout(state.stageTimer);
+            state.stageTimer = null;
+        }
+        stage.style.transition = 'opacity 140ms ease-out';
+        stage.style.opacity = '0';
+        state.stageTimer = targetWin.setTimeout(function() {
+            removeSwipeStage();
+        }, 150);
+    }
+
+    function ensureSwipeStage(targetIdx) {
+        var stage = targetDoc.getElementById('caliperf-swipe-stage');
+        var navRow = getNavRow();
+        var topPx = 118;
+        if (navRow) {
+            var r = navRow.getBoundingClientRect();
+            topPx = Math.max(48, Math.round(r.bottom + 6));
+        } else {
+            var vm = getActiveViewMarker();
+            if (vm) {
+                var vr = vm.getBoundingClientRect();
+                if (vr.top > 40) topPx = Math.round(vr.top);
             }
         }
+        if (!stage) {
+            stage = targetDoc.createElement('div');
+            stage.id = 'caliperf-swipe-stage';
+            stage.setAttribute('aria-hidden', 'true');
+            stage.setAttribute('inert', '');
+            var incoming = targetDoc.createElement('div');
+            incoming.id = 'caliperf-swipe-incoming';
+            stage.appendChild(incoming);
+            targetDoc.body.appendChild(stage);
+        }
+        stage.style.top = topPx + 'px';
+        stage.style.bottom = '0px';
+        stage.style.opacity = '1';
+        stage.style.transition = 'none';
 
-        state.needScrollResetOnCommit = needReset;
-        state.resetScrollTop = resetTop;
-        state.peekTopPx = topPx;
-
-        neighbor.classList.add('cali-swipe-peek');
-        neighbor.style.position = 'absolute';
-        neighbor.style.top = topPx + 'px';
-        neighbor.style.left = '0';
-        neighbor.style.width = '100%';
-        neighbor.style.zIndex = '4';
-        neighbor.style.pointerEvents = 'none';
-        neighbor.style.willChange = 'transform, opacity';
-        neighbor.style.transition = 'none';
-
-        return neighbor;
+        var inc = targetDoc.getElementById('caliperf-swipe-incoming');
+        if (inc && inc.getAttribute('data-target-idx') !== String(targetIdx)) {
+            inc.setAttribute('data-target-idx', String(targetIdx));
+            var snapHtml = targetWin._caliperfTabSnaps && targetWin._caliperfTabSnaps[targetIdx];
+            inc.innerHTML = snapHtml ? snapHtml : buildGhostCardHtml(targetIdx);
+        }
+        return inc;
     }
 
     function renderDragFrame() {
@@ -849,105 +1062,139 @@ SWIPE_ENGINE_JS = r"""
         if (!state.isTracking || !state.isHorizontal) return;
 
         var dx = state.dx;
-        var w = state.containerW || 360;
-        var desiredDir = dx < 0 ? 1 : -1;
-        var desiredTarget = state.lastActiveIdx + desiredDir;
-        if (desiredTarget < 0 || desiredTarget >= state.tabs.length) {
-            desiredTarget = null;
+        var vw = state.vw || 390;
+        var dir = dx < 0 ? 1 : -1;
+        var targetIdx = state.lastActiveIdx + dir;
+        if (targetIdx < 0 || targetIdx >= state.tabs.length) {
+            targetIdx = null;
         }
+        state.dir = dir;
+        state.targetIdx = targetIdx;
 
-        /* Si l'utilisateur inverse son geste en cours de glissement, basculer proprement le panneau voisin */
-        if (desiredTarget !== state.targetIdx) {
-            if (state.neighborPanel) {
-                clearInlinePanelStyles(state.neighborPanel);
-                state.neighborPanel = null;
+        var blocks = state.blocks;
+        if (!blocks || !blocks.length) return;
+
+        if (targetIdx === null) {
+            removeSwipeStage();
+            var elasticDx = dx * 0.22;
+            for (var i = 0; i < blocks.length; i++) {
+                blocks[i].style.transition = 'none';
+                blocks[i].style.willChange = 'transform';
+                blocks[i].style.transform = 'translate3d(' + elasticDx.toFixed(1) + 'px, 0, 0)';
+                blocks[i].style.opacity = '1';
             }
-            state.targetIdx = desiredTarget;
-            state.dir = desiredDir;
-            state.resizeDispatchedOnDrag = false;
-            if (state.targetIdx !== null && state.activePanel) {
-                state.neighborPanel = prepareNeighborPanel(state.targetIdx, state.activePanel, state.tabsRoot);
-                if (state.neighborPanel && !state.resizeDispatchedOnDrag) {
-                    state.resizeDispatchedOnDrag = true;
-                    triggerResizePulse();
-                }
-            }
-        }
-
-        if (!state.activePanel) return;
-
-        if (state.targetIdx === null || !state.neighborPanel) {
-            /* Effet élastique naturel aux extrémités (ou si panneau suivant pas encore monté) */
-            var factor = state.targetIdx === null ? 0.22 : 0.65;
-            var elasticDx = dx * factor;
-            state.activePanel.style.transition = 'none';
-            state.activePanel.style.willChange = 'transform';
-            state.activePanel.style.transform = 'translate3d(' + elasticDx.toFixed(1) + 'px, 0, 0)';
-            state.activePanel.style.opacity = state.targetIdx === null ? '1' : Math.max(0.45, 1 - Math.abs(dx) / w * 0.45).toFixed(3);
-            syncProgressDots(state.lastActiveIdx, state.targetIdx, state.targetIdx !== null ? Math.min(1, Math.abs(dx) / w) : 0);
+            syncProgressDots(state.lastActiveIdx, null, 0);
             return;
         }
 
-        var clampedDx = Math.max(-w, Math.min(w, dx));
-        var progress = Math.min(1, Math.abs(clampedDx) / w);
-        var scaleOut = 1 - progress * 0.03;
-        var opacityOut = 1 - progress * 0.45;
-        var scaleIn = 0.965 + progress * 0.035;
-        var opacityIn = 0.35 + progress * 0.65;
-        var incomingX = (state.dir * w) + clampedDx;
+        var clampedDx = Math.max(-vw, Math.min(vw, dx));
+        var progress = Math.min(1, Math.abs(clampedDx) / vw);
+        var outOpacity = (1 - progress * 0.14).toFixed(3);
 
-        state.activePanel.style.transition = 'none';
-        state.activePanel.style.willChange = 'transform, opacity';
-        state.activePanel.style.transform = 'translate3d(' + clampedDx.toFixed(1) + 'px, 0, 0) scale(' + scaleOut.toFixed(4) + ')';
-        state.activePanel.style.opacity = opacityOut.toFixed(3);
+        for (var j = 0; j < blocks.length; j++) {
+            blocks[j].style.transition = 'none';
+            blocks[j].style.willChange = 'transform, opacity';
+            blocks[j].style.transform = 'translate3d(' + clampedDx.toFixed(1) + 'px, 0, 0)';
+            blocks[j].style.opacity = outOpacity;
+        }
 
-        state.neighborPanel.style.transition = 'none';
-        state.neighborPanel.style.transform = 'translate3d(' + incomingX.toFixed(1) + 'px, 0, 0) scale(' + scaleIn.toFixed(4) + ')';
-        state.neighborPanel.style.opacity = opacityIn.toFixed(3);
+        var inc = ensureSwipeStage(targetIdx);
+        if (inc) {
+            var incomingX = (dir * vw) + clampedDx;
+            inc.style.transition = 'none';
+            inc.style.transform = 'translate3d(' + incomingX.toFixed(1) + 'px, 0, 0)';
+            inc.style.opacity = (0.76 + progress * 0.24).toFixed(3);
+        }
 
-        syncProgressDots(state.lastActiveIdx, state.targetIdx, progress);
+        syncProgressDots(state.lastActiveIdx, targetIdx, progress);
     }
 
-    function resolveNavMode(touchTarget) {
-        /* 1. Dock 5 pilules (#caliperf-nav-marker) : source de vérité exacte via data-tab-idx / bouton primary */
-        var navMark = targetDoc.getElementById('caliperf-nav-marker');
-        if (navMark) {
-            var navRow = navMark.closest('[data-testid="stHorizontalBlock"]');
-            if (navRow) {
-                var navBtns = Array.from(navRow.querySelectorAll('button'));
-                if (navBtns.length > 0) {
-                    var viewMarker = targetDoc.getElementById('caliperf-active-view');
-                    var activeIdx = viewMarker ? parseInt(viewMarker.getAttribute('data-tab-idx') || '0', 10) : -1;
-                    if (isNaN(activeIdx) || activeIdx < 0 || activeIdx >= navBtns.length) {
-                        activeIdx = 0;
-                        for (var i = 0; i < navBtns.length; i++) {
-                            if (navBtns[i].getAttribute('kind') === 'primary') { activeIdx = i; break; }
-                        }
-                    }
-                    return {
-                        mode: 'dock',
-                        stEl: navRow,
-                        tabs: navBtns,
-                        activeIdx: activeIdx
-                    };
-                }
+    function playWaapiEnter(blocks, dirPx, durMs) {
+        if (!blocks || !blocks.length) return;
+        for (var i = 0; i < blocks.length; i++) {
+            var el = blocks[i];
+            if (!el || !el.animate) continue;
+            try {
+                el.animate([
+                    { opacity: 0.12, transform: 'translate3d(' + dirPx + 'px, 0, 0)' },
+                    { opacity: 1, transform: 'translate3d(0, 0, 0)' }
+                ], {
+                    duration: durMs || 280,
+                    easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+                    fill: 'none'
+                });
+            } catch (errAnim) {}
+        }
+    }
+
+    function handleActiveTabSeqChange() {
+        var vm = getActiveViewMarker();
+        if (!vm) return;
+        var tabIdx = parseInt(vm.getAttribute('data-tab-idx') || '0', 10);
+        var animDir = vm.getAttribute('data-anim-dir') || 'none';
+        var tabSeq = vm.getAttribute('data-tab-seq') || '0';
+
+        if (targetWin._caliperfLastTabSeq === tabSeq) {
+            if (!targetWin._caliperfTabSnaps[tabIdx] && state.snapScheduledTab !== tabIdx) {
+                state.snapScheduledTab = tabIdx;
+                if (state.snapTimer) targetWin.clearTimeout(state.snapTimer);
+                state.snapTimer = targetWin.setTimeout(function() {
+                    state.snapScheduledTab = null;
+                    captureTabSnapshot(tabIdx);
+                }, 250);
             }
+            return;
         }
-        /* 2. Mode classique stTabs (écran d'authentification) */
-        var stEl = null;
-        if (touchTarget && touchTarget.closest) {
-            stEl = touchTarget.closest('[data-testid="stTabs"], .stTabs');
+        var isFirstBoot = (typeof targetWin._caliperfLastTabSeq === 'undefined');
+        targetWin._caliperfLastTabSeq = tabSeq;
+
+        if (isFirstBoot) {
+            syncProgressDots(tabIdx, null, 0);
+            state.snapScheduledTab = tabIdx;
+            if (state.snapTimer) targetWin.clearTimeout(state.snapTimer);
+            state.snapTimer = targetWin.setTimeout(function() {
+                state.snapScheduledTab = null;
+                captureTabSnapshot(tabIdx);
+            }, 250);
+            return;
         }
-        if (!stEl) stEl = targetDoc.querySelector('[data-testid="stTabs"], .stTabs');
-        if (!stEl) return null;
-        var tabs = getDirectTabs(stEl);
-        var aIdx = getActiveIndex(tabs);
-        return {
-            mode: 'tabs',
-            stEl: stEl,
-            tabs: tabs,
-            activeIdx: aIdx
-        };
+
+        clearOptimisticDock();
+        syncProgressDots(tabIdx, null, 0);
+
+        var blocks = getDockContentBlocks();
+        clearBlockStyles(blocks);
+
+        var pending = targetWin._caliperfPendingEnter;
+        targetWin._caliperfPendingEnter = null;
+
+        var vw = targetWin.innerWidth || 390;
+        if (pending && pending.source === 'swipe' && pending.targetIdx === tabIdx && targetDoc.getElementById('caliperf-swipe-stage')) {
+            /* Attendre la fin du glissement vers x=0 avant nettoyage complet et fondu invisible sur le vrai onglet */
+            var remMs = Math.max(0, (pending.animDoneAt || 0) - Date.now());
+            var finishHandoff = function() {
+                clearAllSiblingsStyles();
+                dissolveSwipeStage();
+            };
+            if (remMs > 15) {
+                targetWin.setTimeout(finishHandoff, remMs);
+            } else {
+                finishHandoff();
+            }
+        } else if (animDir === 'right' || animDir === 'left') {
+            clearAllSiblingsStyles();
+            removeSwipeStage();
+            var dirSign = animDir === 'left' ? -1 : 1;
+            var slideDist = dirSign * Math.min(180, Math.round(vw * 0.46));
+            playWaapiEnter(blocks, slideDist, 280);
+        } else {
+            clearAllSiblingsStyles();
+            removeSwipeStage();
+        }
+
+        targetWin.setTimeout(triggerResizePulse, 70);
+        if (state.snapTimer) targetWin.clearTimeout(state.snapTimer);
+        state.snapTimer = targetWin.setTimeout(function() { captureTabSnapshot(tabIdx); }, 500);
     }
 
     function onTouchStart(e) {
@@ -965,6 +1212,7 @@ SWIPE_ENGINE_JS = r"""
             state.isTracking = false;
             return;
         }
+        state.mode = ctx.mode;
         state.tabs = ctx.tabs;
         state.lastActiveIdx = ctx.activeIdx;
         state.startX = e.touches[0].clientX;
@@ -972,21 +1220,58 @@ SWIPE_ENGINE_JS = r"""
         state.currentX = state.startX;
         state.currentY = state.startY;
         state.dx = 0;
+        state.vw = targetWin.innerWidth || 390;
+        state.samples = [{ x: state.startX, t: Date.now() }];
         state.isTracking = true;
+        state.isHorizontal = false;
+        state.isVerticalScroll = false;
+        state.targetIdx = null;
+        state.dir = 0;
+        state.blocks = (ctx.mode === 'dock') ? getDockContentBlocks() : [];
+        if (ctx.mode === 'dock' && !targetWin._caliperfTabSnaps[ctx.activeIdx]) {
+            captureTabSnapshot(ctx.activeIdx);
+        }
     }
 
     function onTouchMove(e) {
-        if (!state.isTracking || !e.touches || e.touches.length !== 1) return;
+        if (!state.isTracking || state.isVerticalScroll || !e.touches || e.touches.length !== 1) return;
         state.currentX = e.touches[0].clientX;
         state.currentY = e.touches[0].clientY;
         state.dx = state.currentX - state.startX;
         var dy = state.currentY - state.startY;
-        if (Math.abs(state.dx) > 16 && Math.abs(state.dx) > Math.abs(dy) * 1.4) {
+
+        if (!state.isHorizontal) {
+            if (Math.abs(state.dx) < 10 && Math.abs(dy) < 10) return;
+            if (Math.abs(dy) > Math.abs(state.dx) * 1.1) {
+                state.isVerticalScroll = true;
+                state.isTracking = false;
+                return;
+            }
+            if (Math.abs(state.dx) >= 10 && Math.abs(state.dx) > Math.abs(dy) * 1.25) {
+                state.isHorizontal = true;
+                if (state.mode === 'dock') {
+                    clearBlockStyles(state.blocks);
+                }
+            } else {
+                return;
+            }
+        }
+
+        var now = Date.now();
+        state.samples.push({ x: state.currentX, t: now });
+        while (state.samples.length > 5 && now - state.samples[0].t > 110) {
+            state.samples.shift();
+        }
+
+        if (state.mode === 'dock') {
+            if (!state.rafId) {
+                state.rafId = targetWin.requestAnimationFrame(renderDragFrame);
+            }
+        } else {
             var dir = state.dx < 0 ? 1 : -1;
             var previewIdx = state.lastActiveIdx + dir;
             if (previewIdx >= 0 && previewIdx < state.tabs.length) {
-                var prog = Math.min(1, Math.abs(state.dx) / 140);
-                syncProgressDots(state.lastActiveIdx, previewIdx, prog);
+                syncProgressDots(state.lastActiveIdx, previewIdx, Math.min(1, Math.abs(state.dx) / 140));
             }
         }
     }
@@ -994,62 +1279,203 @@ SWIPE_ENGINE_JS = r"""
     function onTouchEnd(e) {
         if (!state.isTracking) return;
         state.isTracking = false;
+        if (state.rafId) {
+            targetWin.cancelAnimationFrame(state.rafId);
+            state.rafId = null;
+        }
 
         var touch = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0] : null;
         var endX = touch ? touch.clientX : state.currentX;
         var endY = touch ? touch.clientY : state.currentY;
         var dx = endX - state.startX;
         var dy = endY - state.startY;
+        var vw = state.vw || 390;
 
-        if (Math.abs(dx) > 65 && Math.abs(dx) > Math.abs(dy) * 1.9) {
-            var dir = dx < 0 ? 1 : -1;
-            var targetIdx = state.lastActiveIdx + dir;
-            if (targetIdx >= 0 && targetIdx < state.tabs.length) {
-                var targetBtn = state.tabs[targetIdx];
-                if (targetBtn) {
-                    state.navLockUntil = Date.now() + 450;
-                    if (targetWin.navigator && targetWin.navigator.vibrate) {
-                        try { targetWin.navigator.vibrate(10); } catch (vErr) {}
-                    }
-                    syncProgressDots(targetIdx, null, 0);
-                    targetBtn.click();
-                    return;
+        var vx = 0;
+        if (state.samples.length >= 2) {
+            var first = state.samples[0];
+            var last = state.samples[state.samples.length - 1];
+            var dt = Math.max(12, last.t - first.t);
+            vx = (last.x - first.x) / dt;
+        }
+
+        var dir = dx < 0 ? 1 : -1;
+        var targetIdx = state.lastActiveIdx + dir;
+        var validTarget = (targetIdx >= 0 && targetIdx < state.tabs.length);
+        var threshold = Math.min(88, vw * 0.22);
+        var shouldCommit = validTarget && (
+            Math.abs(dx) >= threshold ||
+            (Math.abs(dx) >= 48 && Math.abs(vx) > 0.45 && ((dx < 0 && vx < 0) || (dx > 0 && vx > 0)))
+        ) && Math.abs(dx) > Math.abs(dy) * 1.25;
+
+        if (shouldCommit) {
+            var targetBtn = state.tabs[targetIdx];
+            if (targetBtn) {
+                state.navLockUntil = Date.now() + 450;
+                if (targetWin.navigator && targetWin.navigator.vibrate) {
+                    try { targetWin.navigator.vibrate(10); } catch (vErr) {}
                 }
+                syncProgressDots(targetIdx, null, 0);
+
+                if (state.mode === 'dock') {
+                    setOptimisticDock(targetIdx);
+                    var blocks = state.blocks;
+                    var inc = ensureSwipeStage(targetIdx);
+                    var dur = Math.max(155, Math.min(225, Math.round(220 * (1 - Math.min(0.6, Math.abs(dx) / vw)))));
+                    targetWin._caliperfPendingEnter = { targetIdx: targetIdx, dir: dir, source: 'swipe', startedAt: Date.now(), animDoneAt: Date.now() + dur };
+                    var easing = 'cubic-bezier(0.22, 1, 0.36, 1)';
+                    var curOutOpacity = Math.max(0.84, 1 - Math.min(1, Math.abs(dx) / vw) * 0.14);
+                    clearBlockStyles(blocks);
+                    for (var i = 0; i < blocks.length; i++) {
+                        if (blocks[i].animate) {
+                            try {
+                                blocks[i].animate([
+                                    { transform: 'translate3d(' + dx.toFixed(1) + 'px, 0, 0)', opacity: curOutOpacity },
+                                    { transform: 'translate3d(' + (-dir * vw) + 'px, 0, 0)', opacity: 0.72 }
+                                ], { duration: dur, easing: easing, fill: 'forwards' });
+                            } catch (eOutAnim) {}
+                        }
+                    }
+                    if (inc) {
+                        inc.style.transition = 'transform ' + dur + 'ms ' + easing + ', opacity ' + dur + 'ms ease';
+                        inc.style.transform = 'translate3d(0px, 0, 0)';
+                        inc.style.opacity = '1';
+                    }
+                    state.stageTimer = targetWin.setTimeout(function() {
+                        var curVm = getActiveViewMarker();
+                        var curRenderedIdx = curVm ? parseInt(curVm.getAttribute('data-tab-idx') || '-1', 10) : -1;
+                        if (curRenderedIdx === targetIdx) {
+                            clearAllSiblingsStyles();
+                            dissolveSwipeStage();
+                        }
+                    }, dur + 30);
+                    /* Sécurité absolue : ne jamais laisser la scène figée si Streamlit ignore un clic */
+                    targetWin.setTimeout(function() {
+                        if (targetWin._caliperfPendingEnter && Date.now() - targetWin._caliperfPendingEnter.startedAt > 3000) {
+                            targetWin._caliperfPendingEnter = null;
+                            clearOptimisticDock();
+                            clearAllSiblingsStyles();
+                            removeSwipeStage();
+                        }
+                    }, 3200);
+                }
+
+                var clickIdx = targetIdx;
+                var fallbackBtn = targetBtn;
+                var clickMode = state.mode;
+                var fireDockClick = function() {
+                    var btnToClick = fallbackBtn;
+                    if (clickMode === 'dock') {
+                        var fresh = getDockButtons();
+                        if (fresh[clickIdx]) btnToClick = fresh[clickIdx];
+                    }
+                    if (btnToClick && btnToClick.click) {
+                        btnToClick.click();
+                    }
+                };
+                fireDockClick();
+                if (clickMode === 'dock') {
+                    targetWin.setTimeout(function() {
+                        var p = targetWin._caliperfPendingEnter;
+                        var curVm = getActiveViewMarker();
+                        var curIdx = curVm ? parseInt(curVm.getAttribute('data-tab-idx') || '-1', 10) : -1;
+                        var appEl = targetDoc.querySelector('[data-testid="stApp"]');
+                        var scriptState = appEl ? appEl.getAttribute('data-test-script-state') : '';
+                        if (p && p.source === 'swipe' && p.targetIdx === clickIdx && curIdx !== clickIdx && scriptState !== 'running') {
+                            fireDockClick();
+                        }
+                    }, 650);
+                }
+                state.isHorizontal = false;
+                return;
             }
         }
+
+        /* Geste annulé ou en bout de course : ressort doux vers 0px puis nettoyage complet */
+        if (state.mode === 'dock' && state.isHorizontal) {
+            var cancelBlocks = state.blocks;
+            var cancelInc = targetDoc.getElementById('caliperf-swipe-incoming');
+            var snapDur = 230;
+            var snapEase = 'cubic-bezier(0.22, 1, 0.36, 1)';
+            for (var k = 0; k < cancelBlocks.length; k++) {
+                cancelBlocks[k].style.transition = 'transform ' + snapDur + 'ms ' + snapEase + ', opacity ' + snapDur + 'ms ease';
+                cancelBlocks[k].style.transform = 'translate3d(0px, 0, 0)';
+                cancelBlocks[k].style.opacity = '1';
+            }
+            if (cancelInc) {
+                cancelInc.style.transition = 'transform ' + snapDur + 'ms ' + snapEase + ', opacity ' + snapDur + 'ms ease';
+                cancelInc.style.transform = 'translate3d(' + (dir * vw) + 'px, 0, 0)';
+                cancelInc.style.opacity = '0.5';
+            }
+            state.stageTimer = targetWin.setTimeout(function() {
+                clearBlockStyles(cancelBlocks);
+                removeSwipeStage();
+            }, snapDur + 20);
+        } else {
+            removeSwipeStage();
+        }
+        state.isHorizontal = false;
         syncProgressDots(state.lastActiveIdx, null, 0);
     }
 
     function onTouchCancel() {
         state.isTracking = false;
+        state.isHorizontal = false;
+        if (state.rafId) {
+            targetWin.cancelAnimationFrame(state.rafId);
+            state.rafId = null;
+        }
+        clearBlockStyles(state.blocks);
+        removeSwipeStage();
+        syncProgressDots(state.lastActiveIdx, null, 0);
     }
 
     function onGlobalClickCapture(e) {
+        var navRow = getNavRow();
+        if (navRow && e.target && e.target.closest) {
+            var dockBtn = e.target.closest('button');
+            if (dockBtn && navRow.contains(dockBtn) && e.isTrusted) {
+                var btns = getDockButtons();
+                var nextIdx = btns.indexOf(dockBtn);
+                var vm = getActiveViewMarker();
+                var curIdx = vm ? parseInt(vm.getAttribute('data-tab-idx') || '0', 10) : 0;
+                if (nextIdx !== -1 && nextIdx !== curIdx) {
+                    var dir = nextIdx > curIdx ? 1 : -1;
+                    setOptimisticDock(nextIdx);
+                    syncProgressDots(nextIdx, null, 0);
+                    targetWin._caliperfPendingEnter = { targetIdx: nextIdx, dir: dir, source: 'click', startedAt: Date.now() };
+                    var blocks = getDockContentBlocks();
+                    for (var i = 0; i < blocks.length; i++) {
+                        if (blocks[i].animate) {
+                            try {
+                                blocks[i].animate([
+                                    { opacity: 1, transform: 'translate3d(0, 0, 0)' },
+                                    { opacity: 0.25, transform: 'translate3d(' + (-dir * 54) + 'px, 0, 0)' }
+                                ], { duration: 155, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'forwards' });
+                            } catch (eOut) {}
+                        }
+                    }
+                }
+                return;
+            }
+        }
         onTabClickCapture(e);
     }
 
-    /* Animation directionnelle lors d'un clic direct sur les boutons d'onglets */
     function onTabClickCapture(e) {
         var tabBtn = e.target && e.target.closest ? e.target.closest('button[data-baseweb="tab"], [role="tab"]') : null;
         if (!tabBtn) return;
-
         var stEl = tabBtn.closest('[data-testid="stTabs"], .stTabs');
-        var root = getTabsRootFromContainer(stEl);
-        if (!stEl || !root) return;
-
+        if (!stEl) return;
         var tabs = getDirectTabs(stEl);
         var nextIdx = tabs.indexOf(tabBtn);
         if (nextIdx === -1) return;
-
         targetWin.requestAnimationFrame(function() {
-            if (stEl === resolveMainStTabs(null)) {
-                syncProgressDots(nextIdx, null, 0);
-            }
+            syncProgressDots(nextIdx, null, 0);
             targetWin.setTimeout(triggerResizePulse, 50);
         });
     }
 
-    /* Synchronisation initiale des pastilles de progression avec l'onglet actif */
     function syncInitialDots() {
         var ctx = resolveNavMode(null);
         if (!ctx) return;
@@ -1065,12 +1491,18 @@ SWIPE_ENGINE_JS = r"""
     var observer = null;
     if (typeof targetWin.MutationObserver !== 'undefined') {
         observer = new targetWin.MutationObserver(function() {
-            if (!state.isTracking) {
+            handleActiveTabSeqChange();
+            if (!state.isTracking && !targetWin._caliperfPendingEnter) {
                 syncInitialDots();
             }
         });
         if (targetDoc.body) {
-            observer.observe(targetDoc.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-selected'] });
+            observer.observe(targetDoc.body, {
+                childList: true,
+                subtree: true,
+                attributes: true,
+                attributeFilter: ['aria-selected', 'data-tab-idx', 'data-tab-seq']
+            });
         }
     }
 
@@ -1084,33 +1516,8 @@ SWIPE_ENGINE_JS = r"""
         if (observer) observer.disconnect();
     };
 
+    handleActiveTabSeqChange();
     syncInitialDots();
-    if (typeof targetWin.__CALI_REDIRECT_TAB_IDX__ === 'number' && targetWin.__CALI_REDIRECT_TAB_IDX__ >= 0) {
-        var rIdx = targetWin.__CALI_REDIRECT_TAB_IDX__;
-        targetWin.__CALI_REDIRECT_TAB_IDX__ = null;
-        var doRedirect = function() {
-            var stEl = resolveMainStTabs(null);
-            if (!stEl) return false;
-            var tabs = getDirectTabs(stEl);
-            if (tabs[rIdx]) {
-                if (getActiveIndex(tabs) !== rIdx) {
-                    tabs[rIdx].click();
-                }
-                try {
-                    tabs[rIdx].scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-                } catch (e) {}
-                syncProgressDots(rIdx, null, 0);
-                targetWin.setTimeout(triggerResizePulse, 80);
-                return true;
-            }
-            return false;
-        };
-        targetWin.setTimeout(function() {
-            if (!doRedirect()) {
-                targetWin.setTimeout(doRedirect, 180);
-            }
-        }, 60);
-    }
 })();
 """
 
@@ -1122,21 +1529,14 @@ def inject_theme() -> None:
 
 def inject_swipe_engine(stage: str = "app", redirect_tab_idx: int = None) -> None:
     """
-    Injecte le moteur de geste tactile fluide V5 (Live Peek) + redirection optionnelle d'onglet.
+    Injecte le moteur de geste tactile fluide V8 (Pager Instagram 1:1) + redirection optionnelle d'onglet.
+    Utilise components.html(height=0) car Streamlit >=1.53 n'exécute pas de manière fiable <script> dans st.html.
     """
     import time as _time
     safe_stage = "".join(c for c in (stage or "app") if c.isalnum() or c in "_-") or "app"
     script_payload = f"/* cali-stage:{safe_stage} */\n{SWIPE_ENGINE_JS}"
     html_payload = f'<span data-cali-js="{safe_stage}" style="display:none;"></span><script>{script_payload}</script>'
-    mounted_st_html = False
-    try:
-        if hasattr(st, "html") and "unsafe_allow_javascript" in inspect.signature(st.html).parameters:
-            st.html(html_payload, unsafe_allow_javascript=True)
-            mounted_st_html = True
-    except Exception:
-        pass
-    if not mounted_st_html:
-        components.html(html_payload, height=0)
+    components.html(html_payload, height=0)
 
     if redirect_tab_idx is not None:
         idx_int = max(0, int(redirect_tab_idx))
