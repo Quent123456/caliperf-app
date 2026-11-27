@@ -2,8 +2,8 @@
 CaliPerf Pro - Cockpit Biomécanique 3D, Contrôle Qualité & Suivi Longitudinal SQL.
 Point d'entrée haute performance :
 - Connexion hybride SQLAlchemy cachée (@st.cache_resource) PostgreSQL / SQLite
-- Rendu exclusif de l'onglet actif (Lazy Tab Rendering)
-- Moteur de swipe mobile V6 & redirection directe Athlètes -> Stats & ACWR
+- Rendu exclusif de l'onglet actif (Lazy Tab Rendering) sur dock 5 pilules 100% synchronisé
+- Moteur de swipe mobile stabilisé (overflow-x: clip, zéro décalage d'écran)
 """
 
 import importlib
@@ -42,6 +42,15 @@ MAIN_TABS = [
     "📊 Stats & ACWR",
     "👥 Athlètes",
     "⚙️ Réglages",
+]
+
+# Libellés compacts pour tenir tous les 5 onglets sur un écran smartphone 390px sans scroll horizontal
+NAV_DOCK_LABELS = [
+    "🎥\nStudio",
+    "📐\nCalib",
+    "📊\nStats",
+    "👥\nÉlèves",
+    "⚙️\nRégl.",
 ]
 
 # 1. Initialisation SQL, restauration de session (?session= sur F5) et Design System
@@ -115,7 +124,7 @@ else:
     fresh_u = get_user_by_id(int(curr_user["id"])) or curr_user
     st.session_state["active_athlete_profile"] = fresh_u
 
-# 4. Navigation segmentée + Rendu Exclusif de l'Onglet Actif (Lazy Tab Rendering)
+# 4. Dock de navigation 5 pilules (zéro scroll horizontal, synchronisation Python exacte)
 from ui.header import render_app_header, render_swipe_hud_and_anchor
 
 render_app_header()
@@ -125,44 +134,42 @@ cur_tab = st.session_state.get("active_tab") or MAIN_TABS[0]
 if cur_tab not in MAIN_TABS:
     cur_tab = MAIN_TABS[0]
 st.session_state["active_tab"] = cur_tab
-st.session_state["nav_active_tab"] = cur_tab
 
+nav_cols = st.columns(len(MAIN_TABS))
+for idx, (tab_key, dock_lbl) in enumerate(zip(MAIN_TABS, NAV_DOCK_LABELS)):
+    with nav_cols[idx]:
+        if idx == 0:
+            render_html('<span id="caliperf-nav-marker" style="display:none;"></span>')
+        is_act = (cur_tab == tab_key)
+        if st.button(
+            dock_lbl,
+            key=f"nav_dock_btn_{idx}",
+            type="primary" if is_act else "secondary",
+            use_container_width=True,
+        ):
+            if not is_act:
+                st.session_state["active_tab"] = tab_key
+                st.rerun()
 
-def _on_nav_tab_change() -> None:
-    chosen_t = st.session_state.get("nav_active_tab")
-    if chosen_t in MAIN_TABS:
-        st.session_state["active_tab"] = chosen_t
-
-
-render_html('<div id="caliperf-nav-marker" class="cali-nav-anchor" style="display:none;"></div>')
-selected_tab = st.radio(
-    "Navigation principale",
-    options=MAIN_TABS,
-    horizontal=True,
-    label_visibility="collapsed",
-    key="nav_active_tab",
-    on_change=_on_nav_tab_change,
-)
-st.session_state["active_tab"] = selected_tab
-active_tab_idx = MAIN_TABS.index(selected_tab)
-
+active_tab_idx = MAIN_TABS.index(cur_tab)
 render_html(f'<div id="caliperf-active-view" class="cali-active-view" data-tab-idx="{active_tab_idx}" style="height:0;overflow:hidden;"></div>')
 
-if selected_tab == "🎥 Studio":
+# Rendu exclusif de l'onglet actif (Lazy Tab Rendering)
+if cur_tab == "🎥 Studio":
     from ui.tab_studio import render_tab_studio
     render_tab_studio()
-elif selected_tab == "📐 Calibrage 3D":
+elif cur_tab == "📐 Calibrage 3D":
     from ui.tab_calibration import render_tab_calibration
     render_tab_calibration()
-elif selected_tab == "📊 Stats & ACWR":
+elif cur_tab == "📊 Stats & ACWR":
     from ui.tab_stats import render_tab_stats
     render_tab_stats()
-elif selected_tab == "👥 Athlètes":
+elif cur_tab == "👥 Athlètes":
     from ui.tab_athletes import render_tab_athletes
     render_tab_athletes()
-elif selected_tab == "⚙️ Réglages":
+elif cur_tab == "⚙️ Réglages":
     from ui.tab_settings import render_tab_settings
     render_tab_settings()
 
-# 5. Moteur de swipe V6 synchronisé sur l'onglet actif
+# 5. Moteur de swipe V7 stabilisé (aucun décalage horizontal, anti double-swipe)
 inject_swipe_engine(stage="main")

@@ -57,7 +57,7 @@ html, body,
 .main,
 [data-testid="stMain"],
 [data-testid="stMainBlockContainer"] {
-    overflow-x: hidden !important;
+    overflow-x: clip !important;
     max-width: 100vw !important;
     width: 100% !important;
     box-sizing: border-box !important;
@@ -175,60 +175,64 @@ html, body,
     }
 }
 
-/* Dock de navigation segmentée Lazy Tab Rendering (st.radio horizontal) */
-[data-testid="stElementContainer"]:has(#caliperf-nav-marker) {
+/* Dock de navigation 5 pilules fixes (100% visible sur 390px, zéro scroll horizontal) */
+[data-testid="stHorizontalBlock"]:has(#caliperf-nav-marker) {
+    flex-wrap: nowrap !important;
+    gap: 4px !important;
+    background: rgba(11, 16, 28, 0.92) !important;
+    padding: 5px !important;
+    border-radius: 15px !important;
+    border: 1px solid rgba(255, 255, 255, 0.09) !important;
+    margin-bottom: 0.55rem !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 8px 24px rgba(0, 0, 0, 0.35) !important;
+    width: 100% !important;
+    overflow: hidden !important;
+}
+[data-testid="stHorizontalBlock"]:has(#caliperf-nav-marker) > [data-testid="stColumn"] {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    width: auto !important;
+    padding: 0 !important;
+}
+[data-testid="stHorizontalBlock"]:has(#caliperf-nav-marker) > [data-testid="stColumn"]:nth-child(1) [data-testid="stVerticalBlock"] {
+    gap: 0 !important;
+}
+[data-testid="stHorizontalBlock"]:has(#caliperf-nav-marker) [data-testid="stElementContainer"]:has(#caliperf-nav-marker) {
     height: 0 !important;
     min-height: 0 !important;
     margin: 0 !important;
     padding: 0 !important;
     overflow: hidden !important;
 }
-[data-testid="stElementContainer"]:has(#caliperf-nav-marker) + [data-testid="stElementContainer"] [data-testid="stRadio"] > div[role="radiogroup"] {
-    flex-direction: row !important;
-    flex-wrap: nowrap !important;
-    gap: 6px !important;
-    background: rgba(11, 16, 28, 0.9) !important;
-    padding: 5px !important;
-    border-radius: 16px !important;
-    border: 1px solid rgba(255, 255, 255, 0.09) !important;
-    overflow-x: auto !important;
-    scrollbar-width: none !important;
-    -ms-overflow-style: none !important;
-    -webkit-overflow-scrolling: touch !important;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 8px 24px rgba(0, 0, 0, 0.35) !important;
-}
-[data-testid="stElementContainer"]:has(#caliperf-nav-marker) + [data-testid="stElementContainer"] [data-testid="stRadio"] > div[role="radiogroup"]::-webkit-scrollbar {
-    display: none !important;
-}
-[data-testid="stElementContainer"]:has(#caliperf-nav-marker) + [data-testid="stElementContainer"] [data-testid="stRadio"] label {
-    flex: 1 0 auto !important;
-    min-height: 42px !important;
-    padding: 0 13px !important;
-    margin: 0 !important;
-    border-radius: 11px !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    cursor: pointer !important;
+[data-testid="stHorizontalBlock"]:has(#caliperf-nav-marker) button {
+    min-height: 44px !important;
+    height: 44px !important;
+    padding: 2px 2px !important;
+    border-radius: 10px !important;
     border: 1px solid transparent !important;
-    transition: color 0.22s ease, background 0.22s ease, transform 0.2s cubic-bezier(0.22, 1, 0.36, 1) !important;
+    line-height: 1.15 !important;
+    transition: background 0.18s ease, transform 0.15s ease !important;
 }
-[data-testid="stElementContainer"]:has(#caliperf-nav-marker) + [data-testid="stElementContainer"] [data-testid="stRadio"] label > div:first-child {
-    display: none !important;
-}
-[data-testid="stElementContainer"]:has(#caliperf-nav-marker) + [data-testid="stElementContainer"] [data-testid="stRadio"] label p {
+[data-testid="stHorizontalBlock"]:has(#caliperf-nav-marker) button p {
+    font-size: 0.68rem !important;
     font-weight: 700 !important;
-    font-size: 0.86rem !important;
-    color: var(--cali-muted) !important;
-    white-space: nowrap !important;
+    white-space: pre-line !important;
+    text-align: center !important;
     margin: 0 !important;
+    line-height: 1.15 !important;
 }
-[data-testid="stElementContainer"]:has(#caliperf-nav-marker) + [data-testid="stElementContainer"] [data-testid="stRadio"] label:has(input:checked) {
+[data-testid="stHorizontalBlock"]:has(#caliperf-nav-marker) button[kind="secondary"] {
+    background: transparent !important;
+    color: var(--cali-muted) !important;
+    box-shadow: none !important;
+}
+[data-testid="stHorizontalBlock"]:has(#caliperf-nav-marker) button[kind="primary"] {
     background: linear-gradient(135deg, #00E5FF 0%, #0EA5E9 100%) !important;
+    color: #020617 !important;
     border-color: rgba(255, 255, 255, 0.25) !important;
-    box-shadow: 0 4px 16px rgba(0, 229, 255, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.35) !important;
+    box-shadow: 0 3px 12px rgba(0, 229, 255, 0.3) !important;
 }
-[data-testid="stElementContainer"]:has(#caliperf-nav-marker) + [data-testid="stElementContainer"] [data-testid="stRadio"] label:has(input:checked) p {
+[data-testid="stHorizontalBlock"]:has(#caliperf-nav-marker) button[kind="primary"] p {
     color: #020617 !important;
     font-weight: 800 !important;
 }
@@ -238,6 +242,14 @@ html, body,
     margin: 0 !important;
     padding: 0 !important;
     overflow: hidden !important;
+}
+/* Animation douce de fondu à l'arrivée d'un onglet (zéro translateX pour ne pas décaler l'écran) */
+[data-testid="stElementContainer"]:has(#caliperf-active-view) ~ [data-testid="stElementContainer"] {
+    animation: caliSoftFade 0.2s ease both;
+}
+@keyframes caliSoftFade {
+    from { opacity: 0.55; }
+    to { opacity: 1; }
 }
 
 /* Vidéo responsive (ergonomie mobile : voir vidéo + chrono ensemble) */
@@ -730,7 +742,13 @@ SWIPE_ENGINE_JS = r"""
         if (el.closest && el.closest(noSwipeSelector)) return true;
         var curr = el;
         while (curr && curr !== targetDoc.body && curr !== targetDoc.documentElement) {
-            if (curr.getAttribute && curr.getAttribute('data-baseweb') === 'tab-panel') {
+            var tid = curr.getAttribute ? curr.getAttribute('data-testid') : '';
+            if (
+                (curr.getAttribute && curr.getAttribute('data-baseweb') === 'tab-panel') ||
+                tid === 'stMainBlockContainer' ||
+                tid === 'stMain' ||
+                tid === 'stAppViewContainer'
+            ) {
                 break;
             }
             if (curr.nodeType === 1) {
@@ -875,29 +893,28 @@ SWIPE_ENGINE_JS = r"""
     }
 
     function resolveNavMode(touchTarget) {
-        /* 1. Mode Lazy Tab Dock (#caliperf-nav-marker) prioritaire */
+        /* 1. Dock 5 pilules (#caliperf-nav-marker) : source de vérité exacte via data-tab-idx / bouton primary */
         var navMark = targetDoc.getElementById('caliperf-nav-marker');
         if (navMark) {
-            var navEl = navMark.closest('[data-testid="stElementContainer"], .element-container');
-            var nextEl = navEl ? navEl.nextElementSibling : null;
-            var radioGroup = nextEl ? nextEl.querySelector('[data-testid="stRadio"] div[role="radiogroup"]') : null;
-            if (radioGroup) {
-                var pills = Array.from(radioGroup.querySelectorAll('label'));
-                var activeIdx = 0;
-                for (var i = 0; i < pills.length; i++) {
-                    var inp = pills[i].querySelector('input[type="radio"]');
-                    if (inp && inp.checked) { activeIdx = i; break; }
+            var navRow = navMark.closest('[data-testid="stHorizontalBlock"]');
+            if (navRow) {
+                var navBtns = Array.from(navRow.querySelectorAll('button'));
+                if (navBtns.length > 0) {
+                    var viewMarker = targetDoc.getElementById('caliperf-active-view');
+                    var activeIdx = viewMarker ? parseInt(viewMarker.getAttribute('data-tab-idx') || '0', 10) : -1;
+                    if (isNaN(activeIdx) || activeIdx < 0 || activeIdx >= navBtns.length) {
+                        activeIdx = 0;
+                        for (var i = 0; i < navBtns.length; i++) {
+                            if (navBtns[i].getAttribute('kind') === 'primary') { activeIdx = i; break; }
+                        }
+                    }
+                    return {
+                        mode: 'dock',
+                        stEl: navRow,
+                        tabs: navBtns,
+                        activeIdx: activeIdx
+                    };
                 }
-                var mainBlock = radioGroup.closest('[data-testid="stVerticalBlock"]');
-                return {
-                    mode: 'lazy',
-                    stEl: radioGroup,
-                    root: mainBlock,
-                    tabs: pills,
-                    panels: [],
-                    activeIdx: activeIdx,
-                    activeP: targetDoc.querySelector('[data-testid="stMainBlockContainer"]') || mainBlock
-                };
             }
         }
         /* 2. Mode classique stTabs (écran d'authentification) */
@@ -908,20 +925,20 @@ SWIPE_ENGINE_JS = r"""
         if (!stEl) stEl = targetDoc.querySelector('[data-testid="stTabs"], .stTabs');
         if (!stEl) return null;
         var tabs = getDirectTabs(stEl);
-        var panels = getDirectPanels(stEl);
         var aIdx = getActiveIndex(tabs);
         return {
             mode: 'tabs',
             stEl: stEl,
-            root: getTabsRootFromContainer(stEl),
             tabs: tabs,
-            panels: panels,
-            activeIdx: aIdx,
-            activeP: panels[aIdx] || panels[0] || null
+            activeIdx: aIdx
         };
     }
 
     function onTouchStart(e) {
+        if (Date.now() < (state.navLockUntil || 0)) {
+            state.isTracking = false;
+            return;
+        }
         if (!e.touches || e.touches.length !== 1) return;
         if (isInsideScrollableOrBlocked(e.target)) {
             state.isTracking = false;
@@ -959,20 +976,18 @@ SWIPE_ENGINE_JS = r"""
         var dx = endX - state.startX;
         var dy = endY - state.startY;
 
-        if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 2.0) {
+        if (Math.abs(dx) > 65 && Math.abs(dx) > Math.abs(dy) * 1.9) {
             var dir = dx < 0 ? 1 : -1;
             var targetIdx = state.lastActiveIdx + dir;
             if (targetIdx >= 0 && targetIdx < state.tabs.length) {
                 var targetBtn = state.tabs[targetIdx];
                 if (targetBtn) {
+                    state.navLockUntil = Date.now() + 450;
                     if (targetWin.navigator && targetWin.navigator.vibrate) {
                         try { targetWin.navigator.vibrate(10); } catch (vErr) {}
                     }
                     syncProgressDots(targetIdx, null, 0);
                     targetBtn.click();
-                    try {
-                        targetBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-                    } catch (sErr) {}
                 }
             }
         }
