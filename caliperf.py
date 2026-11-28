@@ -16,7 +16,7 @@ if _APP_ROOT not in sys.path:
     sys.path.insert(0, _APP_ROOT)
 
 st.set_page_config(
-    page_title="CaliPerf Pro | Studio Biomécanique 3D",
+    page_title="CaliPerf — Suivi & Analyse Vidéo",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -101,14 +101,14 @@ if curr_role == "coach":
             set_active_athlete_in_session(int(chosen), sync_widgets=True)
 
     with st.sidebar:
-        st.markdown("### 🎯 Athlète actif")
+        st.markdown("### Athlète actif")
         selected_id = st.selectbox(
             "Basculer sur un suivi :",
             options=option_ids,
             format_func=lambda pid: (
-                f"🏋️ Moi-même ({profile_by_id[pid]['full_name']})"
+                f"Moi-même ({profile_by_id[pid]['full_name']})"
                 if pid == int(curr_user["id"]) else
-                f"🤸 {profile_by_id[pid]['full_name']} ({profile_by_id[pid]['bodyweight_kg']:.0f} kg)"
+                f"{profile_by_id[pid]['full_name']} ({profile_by_id[pid]['bodyweight_kg']:.0f} kg)"
             ),
             key="sidebar_active_athlete_select",
             on_change=_on_sidebar_athlete_change,
@@ -117,7 +117,7 @@ if curr_role == "coach":
         st.session_state["active_athlete_profile"] = active_profile
         st.caption(
             f"Code invitation coach : **{curr_user.get('invite_code') or '—'}**\n\n"
-            f"PDC actif : **{active_profile.get('bodyweight_kg', 70.0):.1f} kg**"
+            f"Poids de corps : **{active_profile.get('bodyweight_kg', 70.0):.1f} kg**"
         )
 else:
     st.session_state.active_athlete_id = int(curr_user["id"])

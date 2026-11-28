@@ -110,7 +110,7 @@ def render_active_athlete_pill() -> None:
         render_html(
             f'<span id="caliperf-athlete-pill-marker" style="display:none;"></span>'
             f'<div style="display:flex;align-items:center;gap:6px;white-space:nowrap;">'
-            f'<span style="font-size:0.74rem;font-weight:700;color:#94A3B8;">🎯 Suivi</span>'
+            f'<span style="font-size:0.74rem;font-weight:700;color:#94A3B8;">Suivi</span>'
             f'<span class="{pill_badge_cls} cali-tabular" style="font-size:0.65rem;padding:2px 7px;">{html.escape(pill_role_txt)}</span>'
             f'</div>'
         )
@@ -119,9 +119,9 @@ def render_active_athlete_pill() -> None:
             "Athlète actif :",
             options=option_ids,
             format_func=lambda pid: (
-                f"🏋️ Moi-même ({profile_by_id[pid]['full_name']})"
+                f"Moi-même ({profile_by_id[pid]['full_name']})"
                 if pid == u_id else
-                f"🤸 {profile_by_id[pid]['full_name']} ({float(profile_by_id[pid].get('bodyweight_kg', 70.0) or 70.0):.0f} kg)"
+                f"{profile_by_id[pid]['full_name']} ({float(profile_by_id[pid].get('bodyweight_kg', 70.0) or 70.0):.0f} kg)"
             ),
             key="header_active_athlete_select",
             label_visibility="collapsed",

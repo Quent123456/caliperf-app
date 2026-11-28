@@ -29,18 +29,22 @@ def render_empty_state(
     description: str,
     action_label: Optional[str] = None,
     target_tab: Optional[str] = None,
-    icon: str = "📭",
+    icon: str = "",
     key: Optional[str] = None,
 ) -> None:
-    """Affiche un état vide soigné avec action optionnelle de redirection vers un onglet."""
+    """Affiche un état vide discret et bienveillant avec action optionnelle."""
     safe_title = _html.escape(str(title))
     safe_desc = _html.escape(str(description))
-    safe_icon = _html.escape(str(icon))
+    safe_icon = _html.escape(str(icon or "")).strip()
+    icon_html = (
+        f'<div style="font-size:1.55rem; margin-bottom:0.3rem; line-height:1; opacity:0.85;">{safe_icon}</div>'
+        if safe_icon else ""
+    )
     render_html(f"""
         <div class="cali-empty-state">
-            <div style="font-size:1.85rem; margin-bottom:0.35rem; line-height:1;">{safe_icon}</div>
-            <div style="font-size:0.98rem; font-weight:800; color:#F8FAFC; margin-bottom:0.25rem;">{safe_title}</div>
-            <p style="margin:0 auto; max-width:440px; font-size:0.83rem; color:#94A3B8; line-height:1.45;">{safe_desc}</p>
+            {icon_html}
+            <div style="font-size:0.96rem; font-weight:700; color:#F8FAFC; margin-bottom:0.28rem;">{safe_title}</div>
+            <p style="margin:0 auto; max-width:440px; font-size:0.84rem; color:#94A3B8; line-height:1.5;">{safe_desc}</p>
         </div>
     """)
     if action_label and target_tab:
@@ -59,8 +63,8 @@ THEME_CSS = """
     --cali-surface: rgba(13, 18, 30, 0.86);
     --cali-surface-solid: #0D121E;
     --cali-surface-elevated: rgba(19, 27, 45, 0.92);
-    --cali-border: rgba(148, 163, 184, 0.16);
-    --cali-border-strong: rgba(148, 163, 184, 0.24);
+    --cali-border: rgba(148, 163, 184, 0.14);
+    --cali-border-strong: rgba(148, 163, 184, 0.22);
     --cali-cyan: #00E5FF;
     --cali-sky: #0EA5E9;
     --cali-emerald: #10B981;
@@ -736,18 +740,53 @@ table, .js-plotly-plot, .no-swipe {
     font-variant-numeric: tabular-nums !important;
 }
 
-/* Bordures fines harmonisées sur métriques & conteneurs */
+/* Bordures fines harmonisées sur métriques, cartes & conteneurs */
+.cali-card, .cali-kpi-tile {
+    border-color: rgba(148, 163, 184, 0.14) !important;
+}
+.cali-card, .cali-card-accent {
+    margin-bottom: 1rem;
+}
 [data-testid="stMetric"] {
     background: rgba(13, 18, 30, 0.72);
-    border: 1px solid rgba(148, 163, 184, 0.16);
+    border: 1px solid rgba(148, 163, 184, 0.14);
     border-radius: 13px;
-    padding: 0.65rem 0.75rem;
+    padding: 0.7rem 0.8rem;
 }
 [data-testid="stExpander"] {
-    border-color: rgba(148, 163, 184, 0.16) !important;
+    border-color: rgba(148, 163, 184, 0.14) !important;
+    margin-bottom: 0.4rem;
+}
+
+/* Alignement vertical strict de la barre d'onglets (suppression du décalage colonne Studio) */
+[data-testid="stHorizontalBlock"]:has([class*="st-key-nav_dock_btn_"]),
+[data-testid="stHorizontalBlock"]:has([id*="nav_dock_btn_"]) {
+    align-items: stretch !important;
+}
+[data-testid="stHorizontalBlock"]:has([class*="st-key-nav_dock_btn_"]) [data-testid="stVerticalBlock"],
+[data-testid="stHorizontalBlock"]:has([id*="nav_dock_btn_"]) [data-testid="stVerticalBlock"] {
+    gap: 0 !important;
+    row-gap: 0 !important;
+}
+[data-testid="stHorizontalBlock"]:has([class*="st-key-nav_dock_btn_"]) [data-testid="stElementContainer"]:has(#caliperf-nav-marker),
+[data-testid="stHorizontalBlock"]:has([class*="st-key-nav_dock_btn_"]) [data-testid="stElementContainer"]:has(iframe),
+[data-testid="stHorizontalBlock"]:has([id*="nav_dock_btn_"]) [data-testid="stElementContainer"]:has(#caliperf-nav-marker),
+[data-testid="stHorizontalBlock"]:has([id*="nav_dock_btn_"]) [data-testid="stElementContainer"]:has(iframe) {
+    height: 0 !important;
+    min-height: 0 !important;
+    max-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    overflow: hidden !important;
+    line-height: 0 !important;
 }
 
 /* Polish visuel de la barre d'onglets (CSS uniquement sur nav_dock_btn_*) */
+[class*="st-key-nav_dock_btn_"] {
+    margin: 0 !important;
+    padding: 0 !important;
+}
 [class*="st-key-nav_dock_btn_"] button {
     border-radius: 12px !important;
     letter-spacing: 0.015em !important;
@@ -767,20 +806,20 @@ table, .js-plotly-plot, .no-swipe {
 
 /* États vides & Pilule Athlète Actif Coach */
 .cali-empty-state {
-    background: rgba(13, 18, 30, 0.82);
-    border: 1px dashed rgba(148, 163, 184, 0.28);
+    background: rgba(13, 18, 30, 0.78);
+    border: 1px dashed rgba(148, 163, 184, 0.22);
     border-radius: 16px;
     padding: 1.45rem 1.05rem;
     text-align: center;
-    margin: 0.45rem 0 0.85rem 0;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    margin: 0.65rem 0 1rem 0;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 .cali-athlete-pill-wrap {
     display: flex;
     align-items: center;
     gap: 8px;
     background: rgba(13, 18, 30, 0.84);
-    border: 1px solid rgba(148, 163, 184, 0.16);
+    border: 1px solid rgba(148, 163, 184, 0.14);
     border-radius: 12px;
     padding: 5px 10px;
     min-height: 40px;
@@ -790,10 +829,10 @@ table, .js-plotly-plot, .no-swipe {
     align-items: center !important;
     gap: 8px !important;
     background: rgba(13, 18, 30, 0.84) !important;
-    border: 1px solid rgba(148, 163, 184, 0.16) !important;
+    border: 1px solid rgba(148, 163, 184, 0.14) !important;
     border-radius: 12px !important;
     padding: 4px 8px !important;
-    margin: 0.1rem 0 0.35rem 0 !important;
+    margin: 0.15rem 0 0.45rem 0 !important;
     width: 100% !important;
 }
 [data-testid="stHorizontalBlock"]:has(#caliperf-athlete-pill-marker) > [data-testid="stColumn"]:nth-child(1) {

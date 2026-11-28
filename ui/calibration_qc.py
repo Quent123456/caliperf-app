@@ -14,23 +14,23 @@ from ui.theme import render_html
 
 _STATUS_META = {
     "PASS": {
-        "icon": "✅",
+        "icon": "",
         "badge_cls": "badge-lime",
-        "label": "VALIDÉ",
+        "label": "Vidéo valide",
         "accent": "#34D399",
         "rec_bg": "rgba(16, 185, 129, 0.08)",
     },
     "WARNING": {
-        "icon": "⚠️",
+        "icon": "",
         "badge_cls": "badge-amber",
-        "label": "AVERTISSEMENT",
+        "label": "À vérifier",
         "accent": "#FBBF24",
         "rec_bg": "rgba(245, 158, 11, 0.10)",
     },
     "REJECT": {
-        "icon": "❌",
+        "icon": "",
         "badge_cls": "badge-crimson",
-        "label": "REFUSÉ",
+        "label": "Vidéo non exploitable",
         "accent": "#FB7185",
         "rec_bg": "rgba(244, 63, 94, 0.12)",
     },
@@ -39,8 +39,7 @@ _STATUS_META = {
 
 def render_quality_diagnostic_card(report: QualityReport, compact: bool = False) -> None:
     """
-    Rend la carte Diagnostic Qualité (score /100 + liste des 5 vérifications + conseils correctifs).
-    Compatible mobile et PC sans indentation >= 4 espaces dans les blocs HTML.
+    Rend la carte de vérification vidéo (score /100 + 5 contrôles + conseils correctifs).
     """
     meta = _STATUS_META.get(report.status, _STATUS_META["WARNING"])
     score = max(0, min(100, int(report.global_score)))
@@ -50,12 +49,12 @@ def render_quality_diagnostic_card(report: QualityReport, compact: bool = False)
         header_html = (
             '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:6px;">'
             '<div>'
-            f'<span class="{meta["badge_cls"]}">{meta["icon"]} DIAGNOSTIC QUALITÉ • {meta["label"]}</span>'
+            f'<span class="{meta["badge_cls"]}">Vérification de la vidéo • {meta["label"]}</span>'
             f'<div style="font-size:0.82rem; color:#CBD5E1; margin-top:4px; line-height:1.35;">{safe_summary}</div>'
             '</div>'
             '<div style="text-align:right; min-width:86px;">'
             f'<div class="cali-tabular" style="font-family:\'JetBrains Mono\',monospace; font-variant-numeric:tabular-nums; font-size:1.35rem; font-weight:800; color:{meta["accent"]}; line-height:1;">{score}<span style="font-size:0.8rem; color:#94A3B8;">/100</span></div>'
-            '<div style="font-size:0.68rem; color:#94A3B8; text-transform:uppercase; letter-spacing:0.05em;">Score global</div>'
+            '<div style="font-size:0.68rem; color:#94A3B8; text-transform:uppercase; letter-spacing:0.05em;">Score qualité</div>'
             '</div>'
             '</div>'
         )
@@ -71,7 +70,7 @@ def render_quality_diagnostic_card(report: QualityReport, compact: bool = False)
                 rec_block = (
                     f'<div style="margin-top:3px; padding:4px 8px; border-radius:6px; '
                     f'background:{cm["rec_bg"]}; color:#F8FAFC; font-size:0.76rem; line-height:1.35;">'
-                    f'💡 <b>Action :</b> {escape(chk.recommendation)}'
+                    f'<b>Conseil :</b> {escape(chk.recommendation)}'
                     '</div>'
                 )
             msg_block = (
@@ -80,9 +79,9 @@ def render_quality_diagnostic_card(report: QualityReport, compact: bool = False)
                 f'<div style="font-size:0.78rem; color:#CBD5E1; line-height:1.35;">{escape(chk.message)}</div>'
             )
             rows_html.append(
-                f'<div style="padding:{row_pad}; border-bottom:1px solid rgba(255,255,255,0.06);">'
-                '<div style="display:flex; align-items:flex-start; gap:7px;">'
-                f'<span style="font-size:0.9rem; line-height:1.2;">{cm["icon"]}</span>'
+                f'<div style="padding:{row_pad}; border-bottom:1px solid rgba(148,163,184,0.12);">'
+                '<div style="display:flex; align-items:flex-start; gap:8px;">'
+                f'<span style="width:8px; height:8px; margin-top:5px; border-radius:999px; background:{cm["accent"]}; flex-shrink:0;"></span>'
                 '<div style="flex:1; min-width:0;">'
                 f'<div style="font-size:0.82rem; font-weight:700; color:#F8FAFC;">{escape(chk.title)} '
                 f'<span class="cali-tabular" style="font-family:\'JetBrains Mono\',monospace; font-variant-numeric:tabular-nums; font-size:0.72rem; color:{cm["accent"]}; font-weight:700;">({chk.score}/100)</span></div>'
@@ -100,20 +99,17 @@ def render_qc_save_gate(
     report: QualityReport,
     save_button_key: str,
     confirm_checkbox_key: str,
-    button_label: str = "Enregistrer ce calibrage"
+    button_label: str = "Enregistrer cette figure"
 ) -> Tuple[bool, bool]:
     """
-    Applique la règle de sauvegarde du Quality Control Gate :
-    - PASS : bouton actif directement.
-    - WARNING : bandeau d'avertissement + case à cocher obligatoire avant activation.
-    - REJECT : bouton désactivé + message invitant à refilmer selon le protocole.
-
-    Retourne (clicked_save, qc_confirmed_warning).
+    Applique la règle de validation après vérification vidéo :
+    - PASS (Vidéo valide) : bouton actif directement.
+    - WARNING (À vérifier) : confirmation demandée avant enregistrement.
+    - REJECT (Vidéo non exploitable) : enregistrement bloqué.
     """
     if report.status == "REJECT":
         st.error(
-            "🚫 **Sauvegarde bloquée pour protéger la base `Baselines_3D` :** "
-            "corrigez les erreurs critiques ci-dessus et refilmez selon le protocole (📖 **Tuto calibration 3D**)."
+            "**Vidéo non exploitable :** corrigez les points signalés ci-dessus et filmez à nouveau en suivant le guide."
         )
         st.button(
             button_label,
@@ -126,7 +122,7 @@ def render_qc_save_gate(
 
     if report.status == "WARNING":
         st.warning(
-            "⚠️ **Avertissement qualité détecté :** vérifiez les points signalés ci-dessus avant d'enregistrer dans `Baselines_3D`."
+            "**À vérifier :** contrôlez les remarques ci-dessus avant d'enregistrer cette figure de référence."
         )
         confirmed = st.checkbox(
             "Confirmer l'enregistrement malgré l'avertissement",

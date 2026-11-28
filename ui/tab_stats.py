@@ -46,9 +46,9 @@ def _format_mobile_journal_dataframe(df_filtered: pd.DataFrame) -> pd.DataFrame:
         rows.append({
             "Date": short_dt,
             "Exercice": str(r.get("exercise", "")),
-            "Mode": mode_lbl,
-            "TUT / Reps": tut_reps_lbl,
-            "RPE": f"{float(r.get('rpe', 0.0) or 0.0):.1f}",
+            "Type": mode_lbl,
+            "Volume": tut_reps_lbl,
+            "Effort": f"{float(r.get('rpe', 0.0) or 0.0):.1f}/10",
         })
     return pd.DataFrame(rows)
 
@@ -61,10 +61,10 @@ def _fragment_decorator(fn):
 
 @_fragment_decorator
 def _render_filtered_journal_fragment(logs: List[Dict[str, Any]], curr_u: Dict[str, Any]) -> None:
-    """Fragment isolé : filtrer par exercice ou supprimer ne recharge pas les graphiques ACWR."""
+    """Fragment isolé : filtrer par exercice ou supprimer ne recharge pas les graphiques de charge."""
     df_logs = pd.DataFrame(logs)
     all_exos = ["Tous les exercices"] + sorted(list(df_logs["exercise"].dropna().astype(str).unique()))
-    selected_exo = st.selectbox("🏋️ Filtrer le journal :", all_exos, key="stats_filter_exo")
+    selected_exo = st.selectbox("Filtrer par exercice :", all_exos, key="stats_filter_exo")
     df_filtered = df_logs if selected_exo == "Tous les exercices" else df_logs[df_logs["exercise"] == selected_exo]
 
     if not df_filtered.empty:
@@ -74,33 +74,33 @@ def _render_filtered_journal_fragment(logs: List[Dict[str, Any]], curr_u: Dict[s
         avg_rpe = float(df_filtered["rpe"].mean())
 
         render_html(f"""
-            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:0.7rem;">
+            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:0.85rem;">
                 <div class="cali-kpi-tile">
-                    <div class="cali-kpi-lbl">Séances Filtrées</div>
+                    <div class="cali-kpi-lbl">Séances filtrées</div>
                     <div class="cali-kpi-val">{total_sessions}</div>
                 </div>
                 <div class="cali-kpi-tile">
-                    <div class="cali-kpi-lbl">TUT Cumulé</div>
+                    <div class="cali-kpi-lbl">Temps sous tension total</div>
                     <div class="cali-kpi-val" style="color:#34D399;">{total_tut:.0f}<span style="font-size:0.85rem;color:#94A3B8;margin-left:3px;">s</span></div>
                 </div>
                 <div class="cali-kpi-tile">
-                    <div class="cali-kpi-lbl">TUT Moyen</div>
+                    <div class="cali-kpi-lbl">Temps moyen / série</div>
                     <div class="cali-kpi-val" style="color:#00E5FF;">{avg_tut:.1f}<span style="font-size:0.85rem;color:#94A3B8;margin-left:3px;">s</span></div>
                 </div>
                 <div class="cali-kpi-tile">
-                    <div class="cali-kpi-lbl">RPE Moyen</div>
+                    <div class="cali-kpi-lbl">Effort moyen</div>
                     <div class="cali-kpi-val" style="color:#FBBF24;">{avg_rpe:.1f}<span style="font-size:0.85rem;color:#94A3B8;margin-left:3px;">/10</span></div>
                 </div>
             </div>
         """)
 
-        st.markdown("##### 📜 Journal des séances SQL")
+        st.markdown("##### Historique des séances")
         df_mobile = _format_mobile_journal_dataframe(df_filtered)
         st.dataframe(df_mobile, use_container_width=True, hide_index=True)
 
         confirm_del = st.checkbox("Confirmer la suppression", key="stats_confirm_delete_last")
         if st.button(
-            "🗑️ Supprimer la dernière séance affichée",
+            "Supprimer la dernière séance affichée",
             key="btn_undo_last_eval",
             use_container_width=True,
             disabled=not confirm_del,
@@ -108,7 +108,7 @@ def _render_filtered_journal_fragment(logs: List[Dict[str, Any]], curr_u: Dict[s
             last_id = int(df_filtered.iloc[-1]["id"])
             ok_d, msg_d = delete_training_log(last_id, curr_u)
             if ok_d:
-                st.toast(f"🗑️ {msg_d}")
+                st.toast(msg_d)
                 try:
                     st.rerun(scope="app")
                 except TypeError:
@@ -118,12 +118,12 @@ def _render_filtered_journal_fragment(logs: List[Dict[str, Any]], curr_u: Dict[s
 
 
 def render_tab_stats() -> None:
-    """Rend le tableau de bord longitudinal ACWR EWMA, les graphiques et exports."""
+    """Rend le tableau de bord de suivi de charge, les graphiques et exports."""
     curr_u = st.session_state.get("current_user")
     if not curr_u:
         return
 
-    render_html("<h3 style='margin:0 0 0.45rem 0; font-size:1.15rem; font-weight:800; color:#F8FAFC;'>📊 Suivi & ACWR</h3>")
+    render_html("<h3 style='margin:0 0 0.55rem 0; font-size:1.15rem; font-weight:800; color:#F8FAFC;'>Suivi de charge & progression</h3>")
 
     curr_role = normalize_role(curr_u.get("role", "athlete"))
     if curr_role == "coach":
@@ -141,12 +141,12 @@ def render_tab_stats() -> None:
                 set_active_athlete_in_session(int(chosen), sync_widgets=True)
 
         selected_stat_id = st.selectbox(
-            "🎯 Athlète affiché :",
+            "Athlète affiché :",
             options=option_ids,
             format_func=lambda pid: (
-                f"🏋️ Moi-même ({profile_by_id[pid]['full_name']})"
+                f"Moi-même ({profile_by_id[pid]['full_name']})"
                 if pid == int(curr_u["id"]) else
-                f"🤸 {profile_by_id[pid]['full_name']} ({profile_by_id[pid]['bodyweight_kg']:.0f} kg)"
+                f"{profile_by_id[pid]['full_name']} ({profile_by_id[pid]['bodyweight_kg']:.0f} kg)"
             ),
             key="stats_athlete_select",
             on_change=_on_stats_athlete_change,
@@ -160,22 +160,22 @@ def render_tab_stats() -> None:
     logs = get_training_logs_for_athlete(curr_u, target_athlete_id=target_id)
     dash_metrics = render_longitudinal_dashboard(active_profile, logs)
 
-    render_html("<hr style='border:0; border-top:1px solid rgba(255,255,255,0.08); margin: 0.85rem 0;'>")
+    render_html("<hr style='border:0; border-top:1px solid rgba(148,163,184,0.14); margin: 1.05rem 0;'>")
 
     if not logs:
         render_empty_state(
-            title="Aucune séance enregistrée pour cet athlète",
-            description="Validez vos analyses vidéo ou saisies manuelles dans le Studio pour alimenter le journal SQL, l'ACWR et le bilan PDF.",
-            action_label="🎥 Aller au Studio Vidéo",
+            title="Aucune séance pour le moment",
+            description="Aucune séance pour le moment. Analyse une vidéo dans le Studio ou ajoute une série manuellement pour démarrer le suivi.",
+            action_label="Ouvrir le Studio",
             target_tab="🎥 Studio",
-            icon="📉",
+            icon="",
             key="empty_stats_go_studio",
         )
     else:
         _render_filtered_journal_fragment(logs, curr_u)
 
-    render_html("<hr style='border:0; border-top:1px solid rgba(255,255,255,0.08); margin: 0.85rem 0;'>")
-    st.markdown("##### 📤 Exports autonomes (CSV, Excel `.xlsx` & Bilan PDF)")
+    render_html("<hr style='border:0; border-top:1px solid rgba(148,163,184,0.14); margin: 1.05rem 0;'>")
+    st.markdown("##### Exports & Bilan PDF")
 
     df_logs_exp = build_logs_export_dataframe(logs)
     df_base_exp = load_baselines_table(user=curr_u)
@@ -185,7 +185,7 @@ def render_tab_stats() -> None:
     with c_ex1:
         csv_bytes = export_dataframe_to_csv_bytes(df_logs_exp)
         st.download_button(
-            "📥 Journal (.csv)",
+            "Exporter en CSV",
             data=csv_bytes,
             file_name=f"caliperf_journal_{datetime.now().strftime('%Y%m%d')}.csv",
             mime="text/csv",
@@ -195,7 +195,7 @@ def render_tab_stats() -> None:
     with c_ex2:
         xlsx_bytes = export_workbook_xlsx_bytes(logs, daily_acwr_df, df_base_exp)
         st.download_button(
-            "📊 Classeur (.xlsx)",
+            "Exporter en Excel",
             data=xlsx_bytes,
             file_name=f"caliperf_rapport_{datetime.now().strftime('%Y%m%d')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -207,7 +207,7 @@ def render_tab_stats() -> None:
         pdf_bytes = generate_athlete_pdf_report(active_profile, coach_prof, logs, dash_metrics)
         safe_fn = "".join(c if c.isalnum() else "_" for c in str(active_profile.get("username", "athlete"))).strip("_") or "athlete"
         st.download_button(
-            "📄 Bilan PDF (.pdf)",
+            "Bilan PDF",
             data=pdf_bytes,
             file_name=f"caliperf_bilan_{safe_fn}_{datetime.now().strftime('%Y%m%d')}.pdf",
             mime="application/pdf",

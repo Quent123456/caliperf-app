@@ -25,8 +25,8 @@ from ui.theme import render_html
 
 def _get_role_description(role: str) -> str:
     if normalize_role(role) == "coach":
-        return "Coach CaliPerf : création et calibrage de vos figures 3D, gestion isolée de vos athlètes et suivi ACWR."
-    return "Élève CaliPerf : suivi de vos séances, analyse 3D sur les baselines partagées de votre coach et exports."
+        return "Coach CaliPerf : gestion de vos figures de référence, suivi de vos athlètes et charge d'entraînement."
+    return "Élève CaliPerf : suivi de vos séances, analyse vidéo sur les figures de votre coach et exports."
 
 
 def _rerun_app() -> None:

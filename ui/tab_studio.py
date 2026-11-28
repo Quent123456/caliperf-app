@@ -167,7 +167,7 @@ def _render_post_save_feedback_banner() -> None:
     comp = last_set.get("comparison")
 
     if comp is None:
-        comp_badge = '<span class="badge-cyan">🆕 1ère référence</span>'
+        comp_badge = '<span class="badge-cyan">1ère référence</span>'
         comp_txt = f"Première séance enregistrée sur <b>{safe_exo}</b> pour {safe_ath}."
     else:
         d_tut = float(comp.get("delta_tut", 0.0))
@@ -176,23 +176,23 @@ def _render_post_save_feedback_banner() -> None:
         prev_reps = int(comp.get("prev_reps", 0))
         if is_dyn and (cur_reps > 0 or prev_reps > 0):
             if d_reps > 0:
-                comp_badge = f'<span class="badge-lime cali-tabular">📈 +{d_reps} rep(s)</span>'
+                comp_badge = f'<span class="badge-lime cali-tabular">+{d_reps} rep(s)</span>'
             elif d_reps < 0:
-                comp_badge = f'<span class="badge-amber cali-tabular">📉 {d_reps} rep(s)</span>'
+                comp_badge = f'<span class="badge-amber cali-tabular">{d_reps} rep(s)</span>'
             else:
-                comp_badge = '<span class="badge-cyan cali-tabular">⚖️ = Reps</span>'
+                comp_badge = '<span class="badge-cyan cali-tabular">= Reps</span>'
             comp_txt = (
                 f"Comparaison vs séance précédente : <b class='cali-tabular'>{cur_reps} reps ({cur_tut:.1f}s)</b> "
                 f"contre <b class='cali-tabular'>{prev_reps} reps ({prev_tut:.1f}s)</b> "
-                f"(<b class='cali-tabular'>{d_tut:+.1f}s</b> TUT)."
+                f"(<b class='cali-tabular'>{d_tut:+.1f}s</b>)."
             )
         else:
             if d_tut > 0.05:
-                comp_badge = f'<span class="badge-lime cali-tabular">📈 +{d_tut:.1f}s TUT</span>'
+                comp_badge = f'<span class="badge-lime cali-tabular">+{d_tut:.1f}s</span>'
             elif d_tut < -0.05:
-                comp_badge = f'<span class="badge-amber cali-tabular">📉 {d_tut:.1f}s TUT</span>'
+                comp_badge = f'<span class="badge-amber cali-tabular">{d_tut:.1f}s</span>'
             else:
-                comp_badge = '<span class="badge-cyan cali-tabular">⚖️ = TUT</span>'
+                comp_badge = '<span class="badge-cyan cali-tabular">= Temps</span>'
             comp_txt = (
                 f"Comparaison vs séance précédente : <b class='cali-tabular'>{cur_tut:.1f}s</b> "
                 f"contre <b class='cali-tabular'>{prev_tut:.1f}s</b>."
@@ -200,16 +200,16 @@ def _render_post_save_feedback_banner() -> None:
 
     lest_part = f" • Lest {cur_lest:.1f} kg" if cur_lest > 0 else ""
     summary_line = (
-        f"{cur_reps} reps • {cur_tut:.1f}s{lest_part} • RPE {cur_rpe:.1f}"
+        f"{cur_reps} reps • {cur_tut:.1f}s{lest_part} • Effort {cur_rpe:.1f}/10"
         if is_dyn else
-        f"{cur_tut:.1f}s TUT{lest_part} • RPE {cur_rpe:.1f}"
+        f"{cur_tut:.1f}s sous tension{lest_part} • Effort {cur_rpe:.1f}/10"
     )
 
     render_html(f"""
-        <div class="cali-card-accent" style="padding:11px 13px; margin:0.4rem 0 0.6rem 0;">
+        <div class="cali-card-accent" style="padding:11px 13px; margin:0.4rem 0 0.7rem 0;">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
                 <span style="font-size:0.86rem; font-weight:800; color:#F8FAFC;">
-                    ✅ {safe_exo} • {safe_ath} <span class="badge-cyan cali-tabular" style="margin-left:4px;">Série #{rep_cnt}</span>
+                    {safe_exo} • {safe_ath} <span class="badge-cyan cali-tabular" style="margin-left:4px;">Série #{rep_cnt}</span>
                 </span>
                 {comp_badge}
             </div>
@@ -220,7 +220,7 @@ def _render_post_save_feedback_banner() -> None:
 
     c_rep, c_cls = st.columns([3.0, 1.0])
     with c_rep:
-        if st.button("⚡ +1 Série identique", key="btn_studio_repeat_last_set", type="primary", use_container_width=True):
+        if st.button("+1 Série identique", key="btn_studio_repeat_last_set", type="primary", use_container_width=True):
             new_cnt = rep_cnt + 1
             base_notes = str(last_set.get("notes") or "").strip()
             rep_note = f"{base_notes} (Série +{new_cnt})".strip() if base_notes else f"Série identique #{new_cnt}"
@@ -243,11 +243,11 @@ def _render_post_save_feedback_banner() -> None:
             )
             last_set["repeat_count"] = new_cnt
             st.session_state["last_logged_studio_set"] = last_set
-            st.toast(f"⚡ Série #{new_cnt} enregistrée ({last_set['exercise']}) !")
+            st.toast(f"Série #{new_cnt} enregistrée ({last_set['exercise']}).")
             time.sleep(0.15)
             st.rerun()
     with c_cls:
-        if st.button("✖ Masquer", key="btn_studio_dismiss_last_set", use_container_width=True):
+        if st.button("Masquer", key="btn_studio_dismiss_last_set", use_container_width=True):
             st.session_state.pop("last_logged_studio_set", None)
             st.rerun()
 
@@ -308,15 +308,15 @@ def _render_live_stopwatch_display(sw: dict) -> None:
         disp_tst = float(sw["tst_val"])
         render_html(f"""
             <div style="text-align: center; padding: 0.1rem 0 0.25rem 0;">
-                <span class="digital-sub">TEMPS SOUS TENSION (TST)</span>
+                <span class="digital-sub">TEMPS SOUS TENSION</span>
                 <div class="digital-timer">{disp_tst:.2f}<span style="font-size:1.15rem; color:#94A3B8; margin-left:3px;">s</span></div>
             </div>
         """)
 
 
 def _get_dynamic_exercise_choices(user) -> list:
-    """Construit la liste des exercices forçables depuis baselines_3d SQL scopée."""
-    choices = [("auto", "Auto (1-NN 3D)")]
+    """Construit la liste des exercices disponibles depuis les figures de référence."""
+    choices = [("auto", "Détection automatique")]
     seen = set()
     try:
         df_b = load_baselines_table(user=user)
@@ -344,23 +344,23 @@ def _get_dynamic_exercise_choices(user) -> list:
 
 
 def _render_intra_set_fatigue_panel(bio_r: dict, current_fname: str) -> None:
-    """Affiche l'analyse de dérive technique intra-série (Δθ ou perte de vélocité %)."""
+    """Affiche l'évolution de la posture ou de la vitesse pendant la série."""
     fatigue = bio_r.get("fatigue") or {}
     if not fatigue.get("available"):
         return
 
-    with st.expander("🔋 Dérive Technique Intra-Série & Fatigue", expanded=True):
+    with st.expander("Fatigue pendant la série", expanded=True):
         if fatigue.get("type") == "isometric":
             sh_d = fatigue.get("shoulder_drift_deg", 0.0)
             hip_d = fatigue.get("hip_drift_deg", 0.0)
             trunk_d = fatigue.get("trunk_drift_deg", 0.0)
             c1, c2, c3 = st.columns(3)
-            c1.metric("Δθ Épaule", f"{sh_d:+.1f}°")
-            c2.metric("Δθ Hanche", f"{hip_d:+.1f}°")
-            c3.metric("Δθ Tronc", f"{trunk_d:+.1f}°")
+            c1.metric("Variation épaule", f"{sh_d:+.1f}°")
+            c2.metric("Variation hanche", f"{hip_d:+.1f}°")
+            c3.metric("Variation buste", f"{trunk_d:+.1f}°")
         else:
             loss_pct = float(fatigue.get("velocity_loss_pct", 0.0) or 0.0)
-            st.metric("Perte de vélocité", f"{loss_pct:.1f}%", fatigue.get("failure_proximity_label", ""))
+            st.metric("Perte de vitesse", f"{loss_pct:.1f}%", fatigue.get("failure_proximity_label", ""))
 
 
 def render_tab_studio() -> None:
@@ -393,12 +393,12 @@ def render_tab_studio() -> None:
                 set_active_athlete_in_session(int(chosen), sync_widgets=True)
 
         sel_top_id = st.selectbox(
-            "🎯 Athlète suivi (enregistrement SQL) :",
+            "Athlète suivi :",
             options=opt_ids_top,
             format_func=lambda pid: (
-                f"🏋️ Moi-même ({profile_map[pid]['full_name']})"
+                f"Moi-même ({profile_map[pid]['full_name']})"
                 if pid == u_id else
-                f"🤸 {profile_map[pid]['full_name']} ({profile_map[pid]['bodyweight_kg']:.0f} kg)"
+                f"{profile_map[pid]['full_name']} ({profile_map[pid]['bodyweight_kg']:.0f} kg)"
             ),
             key="studio_athlete_select",
             on_change=_on_studio_ath_change,
@@ -411,7 +411,7 @@ def render_tab_studio() -> None:
 
     _render_post_save_feedback_banner()
 
-    with st.expander("1️⃣ Importer des vidéos (jusqu'à 10 fichiers)", expanded=not bool(st.session_state.get("active_uploaded_files"))):
+    with st.expander("Importer des vidéos (10 fichiers max)", expanded=not bool(st.session_state.get("active_uploaded_files"))):
         uploaded_files = st.file_uploader(
             "Importer les vidéos (.mp4, .mov, .avi)",
             type=["mp4", "mov", "avi"],
@@ -419,7 +419,7 @@ def render_tab_studio() -> None:
             label_visibility="collapsed"
         )
         if st.session_state.get("active_uploaded_files"):
-            if st.button("🧹 Vider la file de vidéos", key="btn_clear_studio_queue", use_container_width=True):
+            if st.button("Vider la file de vidéos", key="btn_clear_studio_queue", use_container_width=True):
                 st.session_state.active_uploaded_files = []
                 st.session_state.batch_results = []
                 st.session_state.active_video_idx = 0
@@ -427,7 +427,7 @@ def render_tab_studio() -> None:
 
     if uploaded_files:
         if len(uploaded_files) > 10:
-            st.warning("⚠️ Lot limité à 10 vidéos simultanées : les 10 premières ont été retenues.")
+            st.warning("Lot limité à 10 vidéos simultanées : les 10 premières ont été retenues.")
             uploaded_files = uploaded_files[:10]
         st.session_state.active_uploaded_files = uploaded_files
     else:
@@ -436,20 +436,19 @@ def render_tab_studio() -> None:
     # Option repliable de saisie manuelle sans vidéo (fermée par défaut)
     if not uploaded_files:
         render_html("""
-            <div class="cali-card-accent" style="text-align:center; padding: 1.8rem 1rem; margin-top: 0.3rem;">
-                <div style="font-size: 2rem; margin-bottom: 0.35rem;">🎬</div>
-                <h3 style="margin: 0 0 0.3rem 0; font-size: 1.12rem; color:#F8FAFC;">Studio Vidéo Prêt</h3>
+            <div class="cali-card-accent" style="text-align:center; padding: 1.75rem 1rem; margin-top: 0.45rem;">
+                <h3 style="margin: 0 0 0.35rem 0; font-size: 1.12rem; color:#F8FAFC;">Studio Vidéo Prêt</h3>
                 <p style="color:#94A3B8; font-size: 0.85rem; max-width: 440px; margin: 0 auto; line-height:1.45;">
-                    Importez une vidéo pour lancer l'Analyse 3D, ou utilisez la saisie manuelle ci-dessous sans vidéo.
+                    Importez une vidéo pour lancer l'analyse vidéo, ou saisissez une série manuellement ci-dessous.
                 </p>
             </div>
         """)
-        with st.expander("⏱️ Saisie manuelle sans vidéo", expanded=False):
+        with st.expander("Saisie manuelle sans vidéo", expanded=False):
             manual_sw = _ensure_stopwatch_entry("__manual__")
             _render_live_stopwatch_display(manual_sw)
             cm1, cm2 = st.columns(2)
             with cm1:
-                if st.button("⏸️ PAUSE" if manual_sw["running"] else "▶️ DÉMARRER", key="btn_man_run", use_container_width=True):
+                if st.button("Pause" if manual_sw["running"] else "Démarrer", key="btn_man_run", use_container_width=True):
                     if manual_sw["running"]:
                         manual_sw["tst_val"] += time.time() - manual_sw["start_time"]
                         manual_sw["running"] = False
@@ -458,13 +457,13 @@ def render_tab_studio() -> None:
                         manual_sw["running"] = True
                     st.rerun()
             with cm2:
-                if st.button("🔄 RAZ", key="btn_man_raz", use_container_width=True):
+                if st.button("Remettre à zéro", key="btn_man_raz", use_container_width=True):
                     manual_sw["tst_val"] = 0.0
                     manual_sw["running"] = False
                     st.rerun()
 
             with st.form("form_manual_no_video_log"):
-                m_exo = st.text_input("🏋️ Exercice :", value=str(manual_sw.get("last_exo", "Full Planche")))
+                m_exo = st.text_input("Exercice :", value=str(manual_sw.get("last_exo", "Full Planche")))
                 m_lest_ctx = (int(active_profile["id"]), str(m_exo).strip().lower())
                 if manual_sw.get("_lest_ctx") != m_lest_ctx:
                     manual_sw["added_load_kg"] = _get_last_added_load_for_exercise(curr_u, int(active_profile["id"]), m_exo)
@@ -473,16 +472,16 @@ def render_tab_studio() -> None:
                 with mt1:
                     m_type = st.selectbox("Type :", ["isometric", "dynamic"], format_func=lambda x: "Isométrique" if x == "isometric" else "Dynamique")
                 with mt2:
-                    m_tut = st.number_input("TUT effectif (s) :", min_value=0.0, max_value=3600.0, value=round(float(manual_sw["tst_val"]), 2), step=0.5)
+                    m_tut = st.number_input("Temps sous tension (s) :", min_value=0.0, max_value=3600.0, value=round(float(manual_sw["tst_val"]), 2), step=0.5)
                 mn1, mn2 = st.columns(2)
                 with mn1:
                     m_reps = st.number_input("Répétitions :", min_value=0, max_value=200, value=0, step=1)
                 with mn2:
                     m_lest = st.number_input("Lest additionnel (kg) :", min_value=0.0, max_value=200.0, value=float(manual_sw.get("added_load_kg", 0.0)), step=1.25)
-                m_rpe = st.slider("🔥 RPE (1–10) :", min_value=1.0, max_value=10.0, value=7.5, step=0.5)
-                if st.form_submit_button("💾 Enregistrer dans le journal SQL", type="primary", use_container_width=True):
+                m_rpe = st.slider("Effort ressenti (1–10) :", min_value=1.0, max_value=10.0, value=7.5, step=0.5)
+                if st.form_submit_button("Enregistrer la séance", type="primary", use_container_width=True):
                     if m_tut <= 0 and m_reps <= 0:
-                        st.warning("⚠️ Indiquez un TUT > 0 s ou au moins 1 répétition.")
+                        st.warning("Indiquez un temps sous tension > 0 s ou au moins 1 répétition.")
                     else:
                         manual_sw["last_exo"] = m_exo
                         manual_sw["added_load_kg"] = float(m_lest)
@@ -500,7 +499,7 @@ def render_tab_studio() -> None:
                             rpe=float(m_rpe),
                             notes="Saisie manuelle",
                         )
-                        st.toast(f"✅ Séance enregistrée pour {active_profile['full_name']} !")
+                        st.toast(f"Séance enregistrée pour {active_profile['full_name']}.")
                         st.rerun()
         return
 
@@ -517,40 +516,40 @@ def render_tab_studio() -> None:
     if total_files > 1:
         col_prev, col_status, col_next = st.columns([1, 2, 1])
         with col_prev:
-            if st.button("◀️ Préc.", key="btn_prev_vid", use_container_width=True, disabled=(cur_idx == 0)):
+            if st.button("Précédente", key="btn_prev_vid", use_container_width=True, disabled=(cur_idx == 0)):
                 st.session_state.active_video_idx = max(0, cur_idx - 1)
                 st.rerun()
         with col_status:
             is_analyzed = current_fname in st.session_state.processed_videos
             badge_type = "badge-lime" if is_analyzed else "badge-amber"
-            status_text = "✅ Analysée" if is_analyzed else "⏳ En attente"
+            status_text = "Analysée" if is_analyzed else "En attente"
             render_html(f"""
                 <div style="text-align:center; padding-top: 2px;">
-                    <span style="font-size: 0.84rem; font-weight:700; color:#F8FAFC;">Vidéo {cur_idx + 1} / {total_files}</span>
+                    <span class="cali-tabular" style="font-size: 0.84rem; font-weight:700; color:#F8FAFC;">Vidéo {cur_idx + 1} / {total_files}</span>
                     <div style="margin-top:3px;"><span class="{badge_type}">{status_text}</span></div>
                 </div>
             """)
         with col_next:
-            if st.button("Suiv. ▶️", key="btn_next_vid", use_container_width=True, disabled=(cur_idx >= total_files - 1)):
+            if st.button("Suivante", key="btn_next_vid", use_container_width=True, disabled=(cur_idx >= total_files - 1)):
                 st.session_state.active_video_idx = min(total_files - 1, cur_idx + 1)
                 st.rerun()
 
     auto_student_name, auto_exo = detect_student_and_exercise(current_fname, athlete_names)
     sw = _ensure_stopwatch_entry(current_fname)
 
-    # Réglages optionnels d'analyse + BOUTON UNIQUE D'ANALYSE 3D
+    # Réglages optionnels d'analyse + bouton d'analyse vidéo
     exo_choices = _get_dynamic_exercise_choices(curr_u)
     c_opt1, c_opt2 = st.columns([1.2, 1.2])
     with c_opt1:
         forced_opt = st.selectbox(
-            "Exercice (Auto ou forcé) :",
+            "Exercice (auto ou choisi) :",
             exo_choices,
             format_func=lambda x: x[1],
             key=f"forced_exo_{current_fname}",
         )
     with c_opt2:
         custom_tol = st.slider(
-            "Tolérance angulaire (±°) :",
+            "Tolérance de détection (°) :",
             min_value=8.0,
             max_value=25.0,
             value=15.0,
@@ -558,8 +557,8 @@ def render_tab_studio() -> None:
             key=f"tol_slider_{current_fname}",
         )
 
-    if st.button("🚀 Lancer l'Analyse 3D", key=f"btn_unified_run_3d_{current_fname}", type="primary", use_container_width=True):
-        with st.spinner("Extraction cinématique MediaPipe 3D CPU en cours..."):
+    if st.button("Lancer l'analyse vidéo", key=f"btn_unified_run_3d_{current_fname}", type="primary", use_container_width=True):
+        with st.spinner("Analyse vidéo en cours..."):
             try:
                 from core.rep_counter import analyze_single_video_pipeline
                 forced_key = None if forced_opt[0] == "auto" else forced_opt[0]
@@ -578,16 +577,16 @@ def render_tab_studio() -> None:
                 sw.pop("_lest_ctx", None)
                 st.session_state.biomech_results[current_fname] = res
                 st.session_state.processed_videos.add(current_fname)
-                st.toast(f"✅ {res['exercise_display']} : TUT = {sw['tst_val']} s | {sw['reps']} reps")
+                st.toast(f"{res['exercise_display']} : {sw['tst_val']} s | {sw['reps']} reps")
                 time.sleep(0.15)
                 st.rerun()
             except Exception as err_track:
-                st.error(f"Erreur d'analyse MediaPipe 3D : {err_track}")
+                st.error(f"Erreur lors de l'analyse vidéo : {err_track}")
 
     gem_key = get_gemini_api_key()
     if gem_key:
-        if st.button("🧠 Analyse IA Gemini Vision (Secours)", key=f"gemini_fb_{current_fname}", use_container_width=True):
-            with st.spinner("Analyse Gemini Flash Vision..."):
+        if st.button("Estimation rapide (Gemini Vision)", key=f"gemini_fb_{current_fname}", use_container_width=True):
+            with st.spinner("Estimation rapide en cours..."):
                 from services.gemini_vision import analyze_motion_gemini
                 with temporary_video_file(current_file) as cur_temp:
                     g_data, _, g_msg = analyze_motion_gemini(cur_temp, gem_key)
@@ -596,13 +595,13 @@ def render_tab_studio() -> None:
                     sw["reps"] = int(g_data.get("reps", 0))
                     sw["detected_exo"] = g_data.get("exercise_display", auto_exo)
                     sw["exo_type"] = g_data.get("type", "isometric")
-                    st.toast(f"🧠 Gemini : {sw['detected_exo']} | TUT={sw['tst_val']}s | {sw['reps']} reps")
+                    st.toast(f"Estimation : {sw['detected_exo']} | {sw['tst_val']}s | {sw['reps']} reps")
                     st.rerun()
                 else:
                     st.warning(g_msg)
 
     # ==========================================================================
-    # ÉTAPE 2 : RÉSULTATS & DIAGNOSTIC BIOMÉCANIQUE
+    # RÉSULTATS DE L'ANALYSE VIDÉO
     # ==========================================================================
     st.video(current_file)
 
@@ -612,25 +611,25 @@ def render_tab_studio() -> None:
         det_type_lbl = "Isométrique" if bio_cur.get("type") == "isometric" else "Dynamique"
         det_tut = float(bio_cur.get("tut", 0.0) or 0.0)
         det_reps = int(bio_cur.get("reps", 0) or 0)
-        det_drift = str(bio_cur.get("drift", "Stable"))
+        det_drift = str(bio_cur.get("drift", "Stable")).replace("⚠️ Repli secours", "Estimation rapide").replace("Repli secours", "Estimation rapide")
 
         render_html(f"""
-            <div class="cali-card" style="padding: 12px 14px; margin-bottom: 0.65rem; border-color: rgba(0,229,255,0.28);">
+            <div class="cali-card" style="padding: 12px 14px; margin-bottom: 0.75rem; border-color: rgba(148,163,184,0.14);">
                 <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
-                    <span style="font-size:0.95rem; font-weight:800; color:#F8FAFC;">2️⃣ {det_exo}</span>
+                    <span style="font-size:0.95rem; font-weight:800; color:#F8FAFC;">{det_exo}</span>
                     <span class="badge-cyan">{det_type_lbl}</span>
                 </div>
                 <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; text-align:center;">
                     <div style="background:rgba(255,255,255,0.03); border-radius:9px; padding:7px 4px;">
-                        <div style="font-size:0.64rem; color:#94A3B8; font-weight:700; text-transform:uppercase;">TUT Effectif</div>
-                        <div style="font-size:1.12rem; font-weight:800; color:#00E5FF; font-family:'JetBrains Mono',monospace;">{det_tut:.2f} s</div>
+                        <div style="font-size:0.64rem; color:#94A3B8; font-weight:700; text-transform:uppercase;">Temps sous tension</div>
+                        <div class="cali-tabular" style="font-size:1.12rem; font-weight:800; color:#00E5FF; font-family:'JetBrains Mono',monospace;">{det_tut:.2f} s</div>
                     </div>
                     <div style="background:rgba(255,255,255,0.03); border-radius:9px; padding:7px 4px;">
                         <div style="font-size:0.64rem; color:#94A3B8; font-weight:700; text-transform:uppercase;">Répétitions</div>
-                        <div style="font-size:1.12rem; font-weight:800; color:#34D399; font-family:'JetBrains Mono',monospace;">{det_reps}</div>
+                        <div class="cali-tabular" style="font-size:1.12rem; font-weight:800; color:#34D399; font-family:'JetBrains Mono',monospace;">{det_reps}</div>
                     </div>
                     <div style="background:rgba(255,255,255,0.03); border-radius:9px; padding:7px 4px;">
-                        <div style="font-size:0.64rem; color:#94A3B8; font-weight:700; text-transform:uppercase;">Diagnostic</div>
+                        <div style="font-size:0.64rem; color:#94A3B8; font-weight:700; text-transform:uppercase;">Observation</div>
                         <div style="font-size:0.74rem; font-weight:700; color:#E2E8F0; line-height:1.25;">{det_drift}</div>
                     </div>
                 </div>
@@ -644,7 +643,7 @@ def render_tab_studio() -> None:
         seg = bio_cur.get("segmentation") or {}
         effort_w = seg.get("effort_window") or {}
 
-        with st.expander("📈 Courbes Articulaires 3D (Plotly) & Calibration", expanded=False):
+        with st.expander("Détail des courbes articulaires & figures de référence", expanded=False):
             try:
                 import plotly.graph_objects as go
                 has_plotly = True
@@ -657,11 +656,11 @@ def render_tab_studio() -> None:
 
                 fig_3d = go.Figure()
                 if "elbow_angle" in filt_features:
-                    fig_3d.add_trace(go.Scatter(x=t_ser, y=filt_features["elbow_angle"], mode="lines", name="Coude 3D (°)", line=dict(color="#00E5FF", width=2.5)))
+                    fig_3d.add_trace(go.Scatter(x=t_ser, y=filt_features["elbow_angle"], mode="lines", name="Coude (°)", line=dict(color="#00E5FF", width=2.5)))
                 if "shoulder_flexion" in filt_features:
-                    fig_3d.add_trace(go.Scatter(x=t_ser, y=filt_features["shoulder_flexion"], mode="lines", name="Épaule 3D (°)", line=dict(color="#F59E0B", width=2.0)))
+                    fig_3d.add_trace(go.Scatter(x=t_ser, y=filt_features["shoulder_flexion"], mode="lines", name="Épaule (°)", line=dict(color="#F59E0B", width=2.0)))
                 if "trunk_inclination" in filt_features:
-                    fig_3d.add_trace(go.Scatter(x=t_ser, y=filt_features["trunk_inclination"], mode="lines", name="Tronc (°)", line=dict(color="#10B981", width=1.8, dash="dot")))
+                    fig_3d.add_trace(go.Scatter(x=t_ser, y=filt_features["trunk_inclination"], mode="lines", name="Buste (°)", line=dict(color="#10B981", width=1.8, dash="dot")))
 
                 if is_iso:
                     for hb in ev.get("hold_blocks", []):
@@ -671,7 +670,7 @@ def render_tab_studio() -> None:
                         fig_3d.add_vrect(x0=rep["start_time"], x1=rep["end_time"], fillcolor="rgba(0,229,255,0.15)", layer="below", line_width=0)
 
                 fig_3d.update_layout(
-                    title="Cinématique Articulaire 3D (°)",
+                    title="Angles articulaires (°)",
                     xaxis_title="Temps (s)",
                     yaxis_title="Degrés (°)",
                     paper_bgcolor="rgba(13,18,30,0.6)",
@@ -684,7 +683,7 @@ def render_tab_studio() -> None:
                 st.plotly_chart(fig_3d, use_container_width=True)
 
             if u_role == "coach" and kin and seg and "effort_window" in seg:
-                render_html("<hr style='border:0; border-top:1px solid rgba(255,255,255,0.08); margin:8px 0;'>")
+                render_html("<hr style='border:0; border-top:1px solid rgba(148,163,184,0.14); margin:8px 0;'>")
                 user_cam_view = st.selectbox("Angle de vue :", VALID_CAMERA_VIEWS, key=f"sel_cam_add_{current_fname}")
                 qc_studio = evaluate_calibration_quality(
                     kinematics=kin,
@@ -698,7 +697,7 @@ def render_tab_studio() -> None:
                     report=qc_studio,
                     save_button_key=f"btn_add_to_base_{current_fname}",
                     confirm_checkbox_key=f"chk_studio_qc_{current_fname}_{user_cam_view}",
-                    button_label="💾 Enregistrer comme référence 3D",
+                    button_label="Enregistrer comme figure de référence",
                 )
                 if clicked_b:
                     means_v, stds_v = compute_active_feature_vectors(kin, effort_w)
@@ -714,13 +713,13 @@ def render_tab_studio() -> None:
                         qc_confirmed_warning=qc_ack_b,
                     )
                     if ok_b:
-                        st.success(f"✅ {det_exo} ({user_cam_view}) calibré !")
+                        st.success(f"{det_exo} ({user_cam_view}) enregistré.")
                         st.rerun()
                     else:
                         st.error(msg_b)
 
     # ==========================================================================
-    # ÉTAPE 3 : FORMULAIRE UNIQUE D'ENREGISTREMENT SQL
+    # VALIDATION DE LA SÉANCE
     # ==========================================================================
     fat_cur = bio_cur.get("fatigue") or {}
     default_aid = int(active_profile["id"])
@@ -741,10 +740,10 @@ def render_tab_studio() -> None:
         sw["added_load_kg"] = _get_last_added_load_for_exercise(curr_u, int(default_aid), prefill_exo_name)
         sw["_lest_ctx"] = lest_ctx_key
 
-    st.markdown("##### 3️⃣ Validation & Enregistrement SQL")
+    st.markdown("##### Validation de la séance")
     with st.form(key=f"eval_form_{current_fname}"):
         sel_aid = st.selectbox(
-            "👤 Athlète :",
+            "Athlète :",
             options=opt_ids,
             index=opt_ids.index(default_aid) if default_aid in opt_ids else 0,
             format_func=lambda pid: profile_map[pid]["full_name"],
@@ -753,7 +752,7 @@ def render_tab_studio() -> None:
 
         c_ex1, c_ex2 = st.columns([1.4, 1.0])
         with c_ex1:
-            val_exo = st.text_input("🏋️ Exercice :", value=str(sw.get("detected_exo", auto_exo)))
+            val_exo = st.text_input("Exercice :", value=str(sw.get("detected_exo", auto_exo)))
         with c_ex2:
             cur_tp = str(bio_cur.get("type", sw.get("exo_type", "isometric")))
             val_type = st.selectbox(
@@ -765,14 +764,14 @@ def render_tab_studio() -> None:
 
         c_num1, c_num2, c_num3 = st.columns(3)
         with c_num1:
-            val_tut = st.number_input("TUT effectif (s) :", min_value=0.0, max_value=3600.0, value=round(float(sw.get("tst_val", 0.0)), 2), step=0.5)
+            val_tut = st.number_input("Temps sous tension (s) :", min_value=0.0, max_value=3600.0, value=round(float(sw.get("tst_val", 0.0)), 2), step=0.5)
         with c_num2:
             val_reps = st.number_input("Répétitions :", min_value=0, max_value=200, value=int(sw.get("reps", 0)), step=1)
         with c_num3:
             val_lest = st.number_input("Lest (kg) :", min_value=0.0, max_value=200.0, value=float(sw.get("added_load_kg", 0.0)), step=1.25)
 
         bw_ref = float(target_ath_obj.get("bodyweight_kg", 70.0) or 70.0)
-        rpe_score = st.slider(f"🔥 RPE (1–10) • PDC {bw_ref:.0f} kg :", min_value=1.0, max_value=10.0, value=float(sw.get("rpe", 7.5)), step=0.5)
+        rpe_score = st.slider(f"Effort ressenti (1–10) • Poids {bw_ref:.0f} kg :", min_value=1.0, max_value=10.0, value=float(sw.get("rpe", 7.5)), step=0.5)
 
         preview_bundle = compute_set_load_bundle(
             exercise=val_exo,
@@ -785,21 +784,21 @@ def render_tab_studio() -> None:
         )
 
         pondered_badge = (
-            f'<span>🏋️ Volume pondéré : <b style="color:#34D399;font-family:\'JetBrains Mono\',monospace;">{preview_bundle["external_load_au"]:.1f}</b></span>'
+            f'<span>Volume pondéré : <b class="cali-tabular" style="color:#34D399;font-family:\'JetBrains Mono\',monospace;">{preview_bundle["external_load_au"]:.1f}</b></span>'
             if float(val_lest or 0.0) > 0.0 else ""
         )
         render_html(f"""
-            <div style="background:rgba(0,229,255,0.08);border:1px solid rgba(0,229,255,0.25);border-radius:10px;padding:8px 10px;margin:4px 0 8px 0;font-size:0.78rem;display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;">
-                <span>⏱️ TUT effectif : <b style="color:#00E5FF;font-family:'JetBrains Mono',monospace;">{val_tut:.1f} s</b></span>
+            <div style="background:rgba(0,229,255,0.08);border:1px solid rgba(0,229,255,0.22);border-radius:10px;padding:8px 10px;margin:4px 0 8px 0;font-size:0.78rem;display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;">
+                <span>Temps sous tension : <b class="cali-tabular" style="color:#00E5FF;font-family:'JetBrains Mono',monospace;">{val_tut:.1f} s</b></span>
                 {pondered_badge}
-                <span>🔥 Charge interne sRPE : <b style="color:#FBBF24;font-family:'JetBrains Mono',monospace;">{preview_bundle['srpe_load']:.1f}</b></span>
+                <span>Charge ressentie : <b class="cali-tabular" style="color:#FBBF24;font-family:'JetBrains Mono',monospace;">{preview_bundle['srpe_load']:.1f}</b></span>
             </div>
         """)
 
-        coach_notes = st.text_input("💬 Notes / Consignes :", placeholder="Ex: Verrouillage strict, bon tempo")
-        if st.form_submit_button("💾 Enregistrer dans le journal SQL", type="primary", use_container_width=True):
+        coach_notes = st.text_input("Notes / Consignes :", placeholder="Ex: Verrouillage strict, bon tempo")
+        if st.form_submit_button("Enregistrer la séance", type="primary", use_container_width=True):
             if val_tut <= 0 and val_reps <= 0:
-                st.warning("⚠️ Indiquez un TUT > 0 s ou au moins 1 répétition.")
+                st.warning("Indiquez un temps sous tension > 0 s ou au moins 1 répétition.")
             else:
                 sw["tst_val"] = float(val_tut)
                 sw["reps"] = int(val_reps)
@@ -823,7 +822,7 @@ def render_tab_studio() -> None:
                     notes=coach_notes or f"Vidéo: {current_fname}",
                 )
                 st.session_state.processed_videos.add(current_fname)
-                st.toast(f"✅ Séance enregistrée : {target_ath_obj['full_name']} • sRPE {saved_bundle['srpe_load']}")
+                st.toast(f"Séance enregistrée : {target_ath_obj['full_name']} • Charge {saved_bundle['srpe_load']}")
 
                 if st.session_state.get("session_settings", {}).get("auto_advance", True) and cur_idx < total_files - 1:
                     st.session_state.active_video_idx += 1
@@ -832,11 +831,11 @@ def render_tab_studio() -> None:
                 st.rerun()
 
     # Saisie manuelle repliable en bas de page même quand une vidéo est chargée
-    with st.expander("⏱️ Saisie manuelle sans vidéo", expanded=False):
+    with st.expander("Saisie manuelle sans vidéo", expanded=False):
         _render_live_stopwatch_display(sw)
         cm1, cm2 = st.columns(2)
         with cm1:
-            if st.button("⏸️ PAUSE" if sw["running"] else "▶️ DÉMARRER", key=f"btn_man_v_{current_fname}", use_container_width=True):
+            if st.button("Pause" if sw["running"] else "Démarrer", key=f"btn_man_v_{current_fname}", use_container_width=True):
                 if sw["running"]:
                     sw["tst_val"] += time.time() - sw["start_time"]
                     sw["running"] = False
@@ -845,7 +844,7 @@ def render_tab_studio() -> None:
                     sw["running"] = True
                 st.rerun()
         with cm2:
-            if st.button("🔄 RAZ", key=f"btn_raz_v_{current_fname}", use_container_width=True):
+            if st.button("Remettre à zéro", key=f"btn_raz_v_{current_fname}", use_container_width=True):
                 sw["tst_val"] = 0.0
                 sw["running"] = False
                 st.rerun()
