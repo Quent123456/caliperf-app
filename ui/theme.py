@@ -7,7 +7,9 @@ Fournit :
   la page suivante glisse et apparaît progressivement sous le doigt à 60/120fps sans flash ni saccade.
 """
 
+import html as _html
 import inspect
+from typing import Optional
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -22,6 +24,32 @@ def render_html(html_str: str) -> None:
     st.markdown(cleaned, unsafe_allow_html=True)
 
 
+def render_empty_state(
+    title: str,
+    description: str,
+    action_label: Optional[str] = None,
+    target_tab: Optional[str] = None,
+    icon: str = "📭",
+    key: Optional[str] = None,
+) -> None:
+    """Affiche un état vide soigné avec action optionnelle de redirection vers un onglet."""
+    safe_title = _html.escape(str(title))
+    safe_desc = _html.escape(str(description))
+    safe_icon = _html.escape(str(icon))
+    render_html(f"""
+        <div class="cali-empty-state">
+            <div style="font-size:1.85rem; margin-bottom:0.35rem; line-height:1;">{safe_icon}</div>
+            <div style="font-size:0.98rem; font-weight:800; color:#F8FAFC; margin-bottom:0.25rem;">{safe_title}</div>
+            <p style="margin:0 auto; max-width:440px; font-size:0.83rem; color:#94A3B8; line-height:1.45;">{safe_desc}</p>
+        </div>
+    """)
+    if action_label and target_tab:
+        btn_key = key or f"empty_act_{abs(hash((title, target_tab))) % 1000000}"
+        if st.button(action_label, key=btn_key, type="primary", use_container_width=True):
+            st.session_state["active_tab"] = target_tab
+            st.rerun()
+
+
 THEME_CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap');
@@ -31,8 +59,8 @@ THEME_CSS = """
     --cali-surface: rgba(13, 18, 30, 0.86);
     --cali-surface-solid: #0D121E;
     --cali-surface-elevated: rgba(19, 27, 45, 0.92);
-    --cali-border: rgba(255, 255, 255, 0.08);
-    --cali-border-strong: rgba(255, 255, 255, 0.14);
+    --cali-border: rgba(148, 163, 184, 0.16);
+    --cali-border-strong: rgba(148, 163, 184, 0.24);
     --cali-cyan: #00E5FF;
     --cali-sky: #0EA5E9;
     --cali-emerald: #10B981;
@@ -699,6 +727,92 @@ table, .js-plotly-plot, .no-swipe {
 /* Zone d'import vidéo : autorise le défilement vertical et libère le swipe horizontal JS */
 [data-testid="stFileUploader"], [data-testid="stFileUploaderDropzone"] {
     touch-action: pan-y pinch-zoom !important;
+}
+
+/* Typographie numérique tabulaire (métriques, KPIs, scores /100, tableaux) */
+[data-testid="stMetricValue"], [data-testid="stMetricDelta"],
+[data-testid="stDataFrame"], [data-testid="stTable"], table, td, th,
+.cali-kpi-val, .digital-timer, .cali-tabular {
+    font-variant-numeric: tabular-nums !important;
+}
+
+/* Bordures fines harmonisées sur métriques & conteneurs */
+[data-testid="stMetric"] {
+    background: rgba(13, 18, 30, 0.72);
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 13px;
+    padding: 0.65rem 0.75rem;
+}
+[data-testid="stExpander"] {
+    border-color: rgba(148, 163, 184, 0.16) !important;
+}
+
+/* Polish visuel de la barre d'onglets (CSS uniquement sur nav_dock_btn_*) */
+[class*="st-key-nav_dock_btn_"] button {
+    border-radius: 12px !important;
+    letter-spacing: 0.015em !important;
+    transition: color 0.18s ease, transform 0.14s ease, opacity 0.18s ease !important;
+}
+[class*="st-key-nav_dock_btn_"] button[kind="secondary"]:hover {
+    color: #F8FAFC !important;
+}
+[class*="st-key-nav_dock_btn_"] button[kind="primary"] p {
+    font-weight: 800 !important;
+}
+@media (max-width: 480px) {
+    [class*="st-key-nav_dock_btn_"] button p {
+        font-size: 0.66rem !important;
+    }
+}
+
+/* États vides & Pilule Athlète Actif Coach */
+.cali-empty-state {
+    background: rgba(13, 18, 30, 0.82);
+    border: 1px dashed rgba(148, 163, 184, 0.28);
+    border-radius: 16px;
+    padding: 1.45rem 1.05rem;
+    text-align: center;
+    margin: 0.45rem 0 0.85rem 0;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+.cali-athlete-pill-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(13, 18, 30, 0.84);
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 12px;
+    padding: 5px 10px;
+    min-height: 40px;
+}
+[data-testid="stHorizontalBlock"]:has(#caliperf-athlete-pill-marker) {
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    gap: 8px !important;
+    background: rgba(13, 18, 30, 0.84) !important;
+    border: 1px solid rgba(148, 163, 184, 0.16) !important;
+    border-radius: 12px !important;
+    padding: 4px 8px !important;
+    margin: 0.1rem 0 0.35rem 0 !important;
+    width: 100% !important;
+}
+[data-testid="stHorizontalBlock"]:has(#caliperf-athlete-pill-marker) > [data-testid="stColumn"]:nth-child(1) {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+}
+[data-testid="stHorizontalBlock"]:has(#caliperf-athlete-pill-marker) > [data-testid="stColumn"]:nth-child(2) {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+}
+[data-testid="stHorizontalBlock"]:has(#caliperf-athlete-pill-marker) [data-baseweb="select"] > div {
+    min-height: 34px !important;
+    background: rgba(5, 7, 12, 0.72) !important;
+    border-color: rgba(0, 229, 255, 0.24) !important;
+    border-radius: 9px !important;
+    font-size: 0.8rem !important;
 }
 </style>
 """

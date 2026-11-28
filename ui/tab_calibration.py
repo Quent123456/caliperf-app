@@ -27,7 +27,7 @@ from services.export_service import (
 )
 from ui.calibration_qc import render_qc_save_gate, render_quality_diagnostic_card
 from ui.calibration_tutorial import render_tutorial_button
-from ui.theme import render_html
+from ui.theme import render_empty_state, render_html
 
 
 def _render_last_calibration_preview() -> None:
@@ -175,7 +175,11 @@ def render_tab_calibration() -> None:
     render_html("<h4 style='margin: 0.85rem 0 0.45rem 0; font-size:1rem; font-weight:800; color:#F8FAFC;'>📚 Répertoire des mouvements</h4>")
 
     if not distinct_figures:
-        st.info("ℹ️ Aucune figure disponible. Créez-en une ci-dessus ou rattachez-vous à un coach.")
+        render_empty_state(
+            title="Aucune figure disponible",
+            description="Créez votre première figure dans l'Étape A ci-dessus ou rattachez votre compte élève à un coach.",
+            icon="📐",
+        )
     else:
         col_f1, col_f2 = st.columns([1.4, 1.4])
         with col_f1:

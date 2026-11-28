@@ -89,6 +89,7 @@ if curr_role == "coach":
     st.session_state["sidebar_active_athlete_select"] = cur_active_id
     st.session_state["stats_athlete_select"] = cur_active_id
     st.session_state["studio_athlete_select"] = cur_active_id
+    st.session_state["header_active_athlete_select"] = cur_active_id
 
     option_ids = [int(p["id"]) for p in selectable_profiles]
     st.session_state["selectable_profiles_map"] = profile_by_id
@@ -125,9 +126,10 @@ else:
     st.session_state["active_athlete_profile"] = fresh_u
 
 # 4. Dock de navigation 5 pilules (zéro scroll horizontal, synchronisation Python exacte)
-from ui.header import render_app_header, render_swipe_hud_and_anchor
+from ui.header import render_active_athlete_pill, render_app_header, render_swipe_hud_and_anchor
 
 render_app_header()
+render_active_athlete_pill()
 render_swipe_hud_and_anchor(num_tabs=len(MAIN_TABS))
 
 cur_tab = st.session_state.get("active_tab") or MAIN_TABS[0]

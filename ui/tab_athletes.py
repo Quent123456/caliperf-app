@@ -4,6 +4,7 @@ ui/tab_athletes.py - Compartiment 4 : Gestion isolée des athlètes SQL & PDC.
 
 import html
 import time
+from urllib.parse import quote
 import streamlit as st
 
 from core.auth import normalize_role
@@ -18,7 +19,22 @@ from core.database import (
     update_athlete_for_coach,
     update_user_profile_sql,
 )
-from ui.theme import render_html
+from ui.theme import render_empty_state, render_html
+
+
+def _build_coach_invite_url(invite_code: str) -> str:
+    """Construit l'URL partageable ?invite=<CODE> en s'appuyant sur l'hôte courant si disponible."""
+    code_q = quote(str(invite_code or "").strip())
+    rel = f"?invite={code_q}"
+    try:
+        headers = getattr(getattr(st, "context", None), "headers", None) or {}
+        host = headers.get("Host") or headers.get("host") or ""
+        proto = headers.get("X-Forwarded-Proto") or headers.get("x-forwarded-proto") or ("https" if host and "127.0.0.1" not in host and "localhost" not in host else "http")
+        if host:
+            return f"{proto}://{host}/{rel}"
+    except Exception:
+        pass
+    return rel
 
 
 def render_tab_athletes() -> None:
@@ -74,16 +90,21 @@ def render_tab_athletes() -> None:
 
     # Vue Coach
     invite_code = curr_u.get("invite_code") or "—"
+    invite_url = _build_coach_invite_url(invite_code) if invite_code != "—" else "—"
     render_html(f"""
-        <div style="margin-bottom: 0.65rem;">
+        <div style="margin-bottom: 0.45rem;">
             <h3 style="margin:0; font-size:1.18rem; font-weight:800; color:#F8FAFC;">
                 👥 Mes Athlètes & Code d'Invitation
             </h3>
             <p style="margin:2px 0 0 0; font-size:0.8rem; color:#94A3B8;">
-                Code invitation coach : <b style="color:#00E5FF; font-family:'JetBrains Mono',monospace;">{html.escape(invite_code)}</b> • Isolation stricte par coach.
+                Code invitation coach : <b class="cali-tabular" style="color:#00E5FF; font-family:'JetBrains Mono',monospace;">{html.escape(invite_code)}</b> • Isolation stricte par coach.
             </p>
         </div>
     """)
+    if invite_code != "—":
+        with st.container(border=True):
+            st.caption("🔗 Lien d'invitation élève prêt à partager (pré-remplit automatiquement l'inscription) :")
+            st.code(invite_url, language=None)
 
     with st.expander("➕ Créer un élève directement dans mon espace", expanded=False):
         with st.form("add_student_tab_form", clear_on_submit=True):
@@ -128,7 +149,11 @@ def render_tab_athletes() -> None:
 
     athletes = get_coach_athletes(u_id)
     if not athletes:
-        st.info("Aucun élève rattaché pour le moment. Créez-en un ci-dessus ou partagez votre code d'invitation.")
+        render_empty_state(
+            title="Aucun élève rattaché pour le moment",
+            description="Créez un profil élève directement ci-dessus ou partagez votre lien d'invitation (?invite=CODE) pour qu'il se rattache à votre espace.",
+            icon="👥",
+        )
         return
 
     search_s = ""

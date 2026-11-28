@@ -18,6 +18,17 @@ from core.database import (
 from ui.theme import render_html
 
 
+def _get_invite_code_from_query() -> str:
+    """Lit le paramètre URL ?invite=CODE s'il est présent."""
+    try:
+        raw = st.query_params.get("invite", "")
+        if isinstance(raw, list):
+            raw = raw[0] if raw else ""
+        return str(raw or "").strip()
+    except Exception:
+        return ""
+
+
 def render_landing_page() -> None:
     """Affiche l'écran d'accueil épuré avec aperçu des capacités et accès rapide."""
     curr_u = st.session_state.get("current_user")
@@ -169,9 +180,17 @@ def render_auth_portal() -> None:
                     st.error("Compte principal introuvable en base SQL.")
 
     with tab_register:
+        invite_qp = _get_invite_code_from_query()
+        if invite_qp:
+            st.info(f"🔗 Invitation coach détectée : **{invite_qp}** — pré-remplie ci-dessous pour votre compte Élève.")
         render_html("<small style='color:#94A3B8;'>Créez votre compte Coach ou Élève. Un élève peut saisir le code d'invitation de son coach.</small>")
         with st.form("form_register_user", clear_on_submit=False):
-            reg_role = st.radio("Je suis :", ["🏋️ Coach", "🤸 Élève"], horizontal=True)
+            reg_role = st.radio(
+                "Je suis :",
+                ["🏋️ Coach", "🤸 Élève"],
+                index=1 if invite_qp else 0,
+                horizontal=True,
+            )
             col_rn1, col_rn2 = st.columns([1.6, 1.0])
             with col_rn1:
                 reg_full_name = st.text_input("Nom complet / Prénom :", placeholder="ex: Alexandre Coach")
@@ -182,7 +201,11 @@ def render_auth_portal() -> None:
             with col_ru1:
                 reg_username = st.text_input("Identifiant unique (login) :", placeholder="ex: coach_alex")
             with col_ru2:
-                reg_invite = st.text_input("Code invitation coach (si Élève) :", placeholder="ex: CALI-A1B2C3")
+                reg_invite = st.text_input(
+                    "Code invitation coach (si Élève) :",
+                    value=invite_qp,
+                    placeholder="ex: CALI-A1B2C3",
+                )
 
             col_rp1, col_rp2 = st.columns(2)
             with col_rp1:

@@ -20,9 +20,10 @@ from services.export_service import (
     build_logs_export_dataframe,
     export_dataframe_to_csv_bytes,
     export_workbook_xlsx_bytes,
+    generate_athlete_pdf_report,
 )
 from ui.dashboard_load import render_longitudinal_dashboard
-from ui.theme import render_html
+from ui.theme import render_empty_state, render_html
 
 
 def _format_mobile_journal_dataframe(df_filtered: pd.DataFrame) -> pd.DataFrame:
@@ -162,30 +163,29 @@ def render_tab_stats() -> None:
     render_html("<hr style='border:0; border-top:1px solid rgba(255,255,255,0.08); margin: 0.85rem 0;'>")
 
     if not logs:
-        render_html("""
-            <div class="cali-card" style="text-align:center; padding: 1.5rem 1rem;">
-                <div style="font-size:1.8rem; margin-bottom:0.35rem;">📉</div>
-                <b style="color:#F8FAFC;">Aucune séance enregistrée pour cet athlète</b>
-                <p style="color:#94A3B8; font-size:0.84rem; margin:6px 0 0 0;">
-                    Validez vos analyses dans l'onglet <b>Studio</b> pour alimenter le journal SQL et l'ACWR.
-                </p>
-            </div>
-        """)
+        render_empty_state(
+            title="Aucune séance enregistrée pour cet athlète",
+            description="Validez vos analyses vidéo ou saisies manuelles dans le Studio pour alimenter le journal SQL, l'ACWR et le bilan PDF.",
+            action_label="🎥 Aller au Studio Vidéo",
+            target_tab="🎥 Studio",
+            icon="📉",
+            key="empty_stats_go_studio",
+        )
     else:
         _render_filtered_journal_fragment(logs, curr_u)
 
     render_html("<hr style='border:0; border-top:1px solid rgba(255,255,255,0.08); margin: 0.85rem 0;'>")
-    st.markdown("##### 📤 Exports autonomes (CSV & Excel `.xlsx`)")
+    st.markdown("##### 📤 Exports autonomes (CSV, Excel `.xlsx` & Bilan PDF)")
 
     df_logs_exp = build_logs_export_dataframe(logs)
     df_base_exp = load_baselines_table(user=curr_u)
     daily_acwr_df = dash_metrics.get("daily_df")
 
-    c_ex1, c_ex2 = st.columns(2)
+    c_ex1, c_ex2, c_ex3 = st.columns(3)
     with c_ex1:
         csv_bytes = export_dataframe_to_csv_bytes(df_logs_exp)
         st.download_button(
-            "📥 Exporter Journal (.csv)",
+            "📥 Journal (.csv)",
             data=csv_bytes,
             file_name=f"caliperf_journal_{datetime.now().strftime('%Y%m%d')}.csv",
             mime="text/csv",
@@ -195,10 +195,22 @@ def render_tab_stats() -> None:
     with c_ex2:
         xlsx_bytes = export_workbook_xlsx_bytes(logs, daily_acwr_df, df_base_exp)
         st.download_button(
-            "📊 Exporter Classeur (.xlsx)",
+            "📊 Classeur (.xlsx)",
             data=xlsx_bytes,
             file_name=f"caliperf_rapport_{datetime.now().strftime('%Y%m%d')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
             key="btn_export_workbook_xlsx",
+        )
+    with c_ex3:
+        coach_prof = curr_u if curr_role == "coach" else None
+        pdf_bytes = generate_athlete_pdf_report(active_profile, coach_prof, logs, dash_metrics)
+        safe_fn = "".join(c if c.isalnum() else "_" for c in str(active_profile.get("username", "athlete"))).strip("_") or "athlete"
+        st.download_button(
+            "📄 Bilan PDF (.pdf)",
+            data=pdf_bytes,
+            file_name=f"caliperf_bilan_{safe_fn}_{datetime.now().strftime('%Y%m%d')}.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+            key="btn_export_athlete_pdf",
         )

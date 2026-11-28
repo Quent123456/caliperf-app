@@ -7,9 +7,10 @@ ui/header.py - Barre supérieure responsive sur une seule ligne :
 import html
 import streamlit as st
 
-from core.auth import get_role_badge_info, render_avatar_html
+from core.auth import get_role_badge_info, normalize_role, render_avatar_html
+from core.database import get_coach_athletes, set_active_athlete_in_session
 from ui.profile_dialog import open_profile_modal
-from ui.theme import render_html
+from ui.theme import render_empty_state, render_html
 
 
 def render_app_header() -> None:
@@ -64,6 +65,68 @@ def render_app_header() -> None:
     with col_prof_btn:
         if st.button("👤", key="btn_open_profile_header", help="Mon profil, statut & photo", use_container_width=True):
             open_profile_modal()
+
+
+def render_active_athlete_pill() -> None:
+    """Affiche pour le coach une pilule compacte avec sélecteur rapide en 1 tap sous le header."""
+    curr_u = st.session_state.get("current_user")
+    if not curr_u or normalize_role(curr_u.get("role", "athlete")) != "coach":
+        return
+
+    u_id = int(curr_u["id"])
+    profile_by_id = st.session_state.get("selectable_profiles_map")
+    option_ids = st.session_state.get("selectable_profile_ids")
+    if not profile_by_id or not option_ids:
+        coach_athletes = get_coach_athletes(u_id)
+        profiles = [curr_u] + coach_athletes
+        profile_by_id = {int(p["id"]): p for p in profiles}
+        option_ids = [int(p["id"]) for p in profiles]
+
+    cur_aid = int(
+        st.session_state.get("selected_athlete_id")
+        or st.session_state.get("active_athlete_id")
+        or u_id
+    )
+    if cur_aid not in profile_by_id:
+        cur_aid = u_id
+    st.session_state["header_active_athlete_select"] = cur_aid
+    active_p = profile_by_id[cur_aid]
+    st.session_state["active_athlete_profile"] = active_p
+
+    is_self = (cur_aid == u_id)
+    pill_badge_cls = "badge-cyan" if is_self else "badge-lime"
+    pill_role_txt = "Moi-même" if is_self else f"Élève • {float(active_p.get('bodyweight_kg', 70.0) or 70.0):.0f} kg"
+
+    def _on_header_athlete_change() -> None:
+        chosen = st.session_state.get("header_active_athlete_select")
+        if chosen is not None:
+            cid = int(chosen)
+            set_active_athlete_in_session(cid, sync_widgets=True)
+            if cid in profile_by_id:
+                st.session_state["active_athlete_profile"] = profile_by_id[cid]
+
+    c_pill, c_sel = st.columns([0.95, 1.55])
+    with c_pill:
+        render_html(
+            f'<span id="caliperf-athlete-pill-marker" style="display:none;"></span>'
+            f'<div style="display:flex;align-items:center;gap:6px;white-space:nowrap;">'
+            f'<span style="font-size:0.74rem;font-weight:700;color:#94A3B8;">🎯 Suivi</span>'
+            f'<span class="{pill_badge_cls} cali-tabular" style="font-size:0.65rem;padding:2px 7px;">{html.escape(pill_role_txt)}</span>'
+            f'</div>'
+        )
+    with c_sel:
+        st.selectbox(
+            "Athlète actif :",
+            options=option_ids,
+            format_func=lambda pid: (
+                f"🏋️ Moi-même ({profile_by_id[pid]['full_name']})"
+                if pid == u_id else
+                f"🤸 {profile_by_id[pid]['full_name']} ({float(profile_by_id[pid].get('bodyweight_kg', 70.0) or 70.0):.0f} kg)"
+            ),
+            key="header_active_athlete_select",
+            label_visibility="collapsed",
+            on_change=_on_header_athlete_change,
+        )
 
 
 def render_swipe_hud_and_anchor(num_tabs: int = 5) -> None:
